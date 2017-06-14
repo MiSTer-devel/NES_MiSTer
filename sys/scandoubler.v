@@ -153,7 +153,7 @@ always @(posedge clk_sys) begin
 		if(!hs && hs_in) hs_rise <= {hcnt,1'b1};
 
 		vs <= vs_in;
-		if(vs && ~vs_in) sd_line <= 0;
+		if(vs && ~vs_in) sd_line <= 1; //hack for NES!
 	end
 
 	if(ce_x4) begin
