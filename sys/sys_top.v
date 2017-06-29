@@ -170,6 +170,27 @@ cyclonev_hps_interface_mpu_general_purpose h2f_gp
 );
 
 
+///////////////////////////  RESET  ///////////////////////////////////
+
+reg reset_req = 0;
+always @(posedge FPGA_CLK2_50) begin
+	reg [1:0] resetd, resetd2;
+	reg       old_reset;
+
+	//latch the reset
+	old_reset <= reset;
+	if(~old_reset & reset) reset_req <= 1;
+
+	//special combination to set/clear the reset
+	//preventing of accidental reset control
+	if(resetd==1) reset_req <= 1;
+	if(resetd==2 && resetd2==0) reset_req <= 0;
+
+	resetd  <= gp_out[31:30];
+	resetd2 <= resetd;
+end
+
+
 ///////////////////////// VIP version  ///////////////////////////////
 
 `ifndef LITE
@@ -178,7 +199,7 @@ wire reset;
 vip vip
 (
 	//Reset/Clock
-	.reset_reset_req(gp_out[30]),
+	.reset_reset_req(reset_req),
 	.reset_reset(reset),
 
 	//DE10-nano has no reset signal on GPIO, so core has to emulate cold reset button.
@@ -357,7 +378,7 @@ wire reset;
 sysmem_lite sysmem
 (
 	//Reset/Clock
-	.reset_reset_req(gp_out[30]),
+	.reset_reset_req(reset_req),
 	.reset_reset(reset),
 
 	//DE10-nano has no reset signal on GPIO, so core has to emulate cold reset button.

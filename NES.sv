@@ -139,6 +139,7 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3))) hps_io
 	.ioctl_download(downloading),
 	.ioctl_wr(loader_clk),
 	.ioctl_dout(loader_input),
+	.ioctl_wait(0),
 
    .ps2_kbd_clk(ps2_kbd_clk),
    .ps2_kbd_data(ps2_kbd_data),

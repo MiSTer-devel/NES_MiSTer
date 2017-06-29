@@ -70,6 +70,7 @@ module hps_io #(parameter STRLEN=0, PS2DIV=1000, WIDE=0) // WIDE=1 for 16 bit fi
 	output reg               ioctl_wr,
 	output reg        [24:0] ioctl_addr,         // in WIDE mode address will be incremented by 2
 	output reg [FIODWIDTH:0] ioctl_dout,
+	input                    ioctl_wait,
 
 	// ps2 keyboard emulation
 	output            ps2_kbd_clk,
@@ -84,7 +85,7 @@ module hps_io #(parameter STRLEN=0, PS2DIV=1000, WIDE=0) // WIDE=1 for 16 bit fi
 localparam FIODWIDTH = (WIDE) ? 15 : 7;
 localparam FIOAWIDTH = (WIDE) ?  7 : 8;
 
-wire        io_wait  = 0;
+wire        io_wait  = ioctl_wait;
 wire        io_enable= |HPS_BUS[35:34];
 wire        io_strobe= HPS_BUS[33];
 wire        io_wide  = (WIDE) ? 1'b1 : 1'b0;
