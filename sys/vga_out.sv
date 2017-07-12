@@ -1,42 +1,12 @@
 
 module vga_out
 (
-	input         clk_sys,
-
-	input         io_uio,
-	input         io_strobe,
-	input   [7:0] io_din,
-	
-
 	input         ypbpr_full,
+	input         ypbpr_en,
+
 	input  [23:0] din,
-	output [23:0] dout,
-	output        scaler,
-	output        csync
+	output [23:0] dout
 );
-
-reg [7:0] cfg;
-wire ypbpr_en = cfg[5];
-assign csync  = cfg[3];
-assign scaler = cfg[2];
-
-always@(posedge clk_sys) begin
-	reg  [7:0] cmd;
-	reg        has_cmd;
-	reg        old_strobe;
-
-	old_strobe <= io_strobe;
-
-	if(~io_uio) has_cmd <= 0;
-	else if(~old_strobe & io_strobe) begin
-			if(!has_cmd) begin
-				has_cmd <= 1;
-				cmd <= io_din;
-			end else begin
-				if(cmd == 1) cfg <= io_din;
-			end
-	end
-end
 
 wire [5:0] yuv_full[225] = '{
   6'd0,   6'd0,  6'd0,  6'd0,  6'd1,  6'd1,  6'd1,  6'd1,

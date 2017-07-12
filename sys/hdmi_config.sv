@@ -17,6 +17,8 @@ module hdmi_config
 	// 1 - 16:9
 	input       iAR,
 	
+	input       audio_48k,
+
 	//	I2C Side
 	output		I2C_SCL,
 	inout 		I2C_SDA
@@ -47,7 +49,7 @@ always@(posedge iCLK or negedge iRST_N) begin
 	reg  [1:0] mSetup_ST = 0;
 
 	if(!iRST_N) begin
-		LUT_INDEX	<=	8'd0;
+		LUT_INDEX	<=	0;
 		mSetup_ST	<=	0;
 		mI2C_GO		<=	0;
 	end else begin
@@ -237,7 +239,7 @@ wire [15:0] init_data[58] =
 									
 	{8'h0D, 8'b0001_0000},	// [4:0] I2S Bit (Word) Width for Right-Justified.
 	{8'h14, 8'b0000_0010},	// [3:0] Audio Word Length. b0010 = 16 bits.
-	{8'h15, 8'b0010_0000},	// I2S Sampling Rate [7:4]. b0000 = (44.1KHz). b0010 = 48KHz.
+	{8'h15, ~audio_48k, 7'b010_0000},	// I2S Sampling Rate [7:4]. b0000 = (44.1KHz). b0010 = 48KHz.
 									// Input ID [3:1] b000 (0) = 24-bit RGB 444 or YCrCb 444 with Separate Syncs.
 									
 //	{8'h15, 8'b0010_0001},	// I2S Sampling Rate [7:4]. b0000 = (44.1KHz). b0010 = 48KHz.
@@ -246,14 +248,14 @@ wire [15:0] init_data[58] =
 //	{8'h15, 8'b0010_0011},	// I2S Sampling Rate [7:4]. b0000 = (44.1KHz). b0010 = 48KHz.
 									// Input ID [3:0] b0011 (3) = 16, 20, 24 bit YCbCr 4:2:2 (2x Pixel Clock, with Separate Syncs).
 	
-	// Audio Clock Config: 74.25/12 = 148500/12375 = 6187.5
+	// Audio Clock Config
 	16'h0100,					//  
-	16'h0230,					// Set N Value 12375
-	16'h0357,					// 
+	audio_48k ? 16'h0218 : 16'h0230,	// Set N Value 12288/6144
+	16'h0300,					//
 
-	16'h0702,					//
-	16'h0844,					// Set CTS Value 148500
-	16'h0914,					//
+	16'h0701,					//
+	16'h0822,					// Set CTS Value 74250
+	16'h090A,					//
 
 	16'hFFFF 				   // END
 };

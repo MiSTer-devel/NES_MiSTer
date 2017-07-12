@@ -170,6 +170,39 @@ cyclonev_hps_interface_mpu_general_purpose h2f_gp
 );
 
 
+reg [15:0] cfg;
+
+reg  cfg_ready = 0;
+wire audio_96k = cfg[6];
+wire ypbpr_en  = cfg[5];
+wire csync     = cfg[3];
+`ifndef LITE
+wire vga_scaler= cfg[2];
+`endif
+
+always@(posedge clk_sys) begin
+	reg  [7:0] cmd;
+	reg        has_cmd;
+	reg        old_strobe;
+
+	old_strobe <= io_strobe;
+
+	if(~io_uio) has_cmd <= 0;
+	else
+	if(~old_strobe & io_strobe) begin
+		if(!has_cmd) begin
+			has_cmd <= 1;
+			cmd <= io_din[7:0];
+		end
+		else
+		if(cmd == 1) begin
+			cfg <= io_din;
+			cfg_ready <= 1;
+		end
+	end
+end
+
+
 ///////////////////////////  RESET  ///////////////////////////////////
 
 reg reset_req = 0;
@@ -427,10 +460,11 @@ pll_hdmi pll_hdmi
 hdmi_config hdmi_config
 (
 	.iCLK(FPGA_CLK1_50),
-	.iRST_N(~reset),
+	.iRST_N(cfg_ready),
 	.I2C_SCL(HDMI_I2C_SCL),
 	.I2C_SDA(HDMI_I2C_SDA),
 
+	.audio_48k(~audio_96k),
 	.iRES(4), // 720p
 	.iAR(1)   // Aspect Ratio
 );
@@ -453,8 +487,9 @@ osd hdmi_osd
 assign HDMI_MCLK = 0;
 i2s i2s
 (
-	.reset(reset),
-	.clk_sys(HDMI_TX_CLK),
+	.reset(~cfg_ready),
+	.clk_sys(FPGA_CLK1_50),
+	.half_rate(~audio_96k),
 
 	.sclk(HDMI_SCLK),
 	.lrclk(HDMI_LRCLK),
@@ -484,37 +519,26 @@ osd vga_osd
 );
 
 wire [23:0] vga_o;
-wire csync;
 
 vga_out vga_out
 (
-	.clk_sys(clk_sys),
-
-	.io_uio(io_uio),
-	.io_strobe(io_strobe),
-	.io_din(io_din),
-
 	.ypbpr_full(1),
+	.ypbpr_en(ypbpr_en),
 	.dout(vga_o),
 `ifdef LITE
-	.din(vga_q),
+	.din(vga_q)
 `else
-	.din(vga_scaler ? HDMI_TX_D : vga_q),
-	.scaler(vga_scaler),
+	.din(vga_scaler ? HDMI_TX_D : vga_q)
 `endif
-	.csync(csync)
 );
-
 
 `ifdef LITE
 	wire vs1 = vs;
 	wire hs1 = hs;
 `else
-	wire vga_scaler;
 	wire vs1 = vga_scaler ? HDMI_TX_VS : vs;
 	wire hs1 = vga_scaler ? HDMI_TX_HS : hs;
 `endif
-
 
 assign VGA_VS = VGA_EN ? 1'bZ      : csync ?     1'b1     : ~vs1;
 assign VGA_HS = VGA_EN ? 1'bZ      : csync ? ~(vs1 ^ hs1) : ~hs1;
@@ -527,7 +551,7 @@ assign VGA_B  = VGA_EN ? 6'bZZZZZZ : vga_o[7:2];
 
 sigma_delta_dac #(15) dac_l
 (
-	.CLK(FPGA_CLK2_50),
+	.CLK(FPGA_CLK3_50),
 	.RESET(reset),
 	.DACin({audio_l[15] ^ audio_s, audio_l[14:0]}),
 	.DACout(AUDIO_L)
@@ -535,7 +559,7 @@ sigma_delta_dac #(15) dac_l
 
 sigma_delta_dac #(15) dac_r
 (
-	.CLK(FPGA_CLK2_50),
+	.CLK(FPGA_CLK3_50),
 	.RESET(reset),
 	.DACin({audio_r[15] ^ audio_s, audio_r[14:0]}),
 	.DACout(AUDIO_R)
@@ -546,6 +570,8 @@ spdif toslink
 	.clk_i(FPGA_CLK3_50),
 
 	.rst_i(reset),
+	.half_rate(0),
+
 	.audio_l(audio_l >> !audio_s),
 	.audio_r(audio_r >> !audio_s),
 
