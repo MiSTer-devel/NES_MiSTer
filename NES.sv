@@ -89,6 +89,7 @@ assign CLK_VIDEO = clk85;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
 
 
+`include "build_id.v"
 parameter CONF_STR = {
 	"NES;;",
 	"-;",
@@ -103,7 +104,8 @@ parameter CONF_STR = {
 	"-;",
 	"O3,Invert mirroring,OFF,ON;",
 	"T6,Reset;",
-	"V,v0.81;"
+	"J,A,B,Select,Start;",
+	"V,v0.82.",`BUILD_DATE
 };
 
 wire [7:0] joyA;
