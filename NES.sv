@@ -13,7 +13,7 @@ module emu
 	input         RESET,
 
 	//Must be passed to hps_io module
-	inout  [37:0] HPS_BUS,
+	inout  [43:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
@@ -35,7 +35,7 @@ module emu
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
 
-	// b[1]: 0 - LED status is system status ORed with b[0]
+	// b[1]: 0 - LED status is system status OR'd with b[0]
 	//       1 - LED status is controled solely by b[0]
 	// hint: supply 2'b00 to let the system control the LED.
 	output  [1:0] LED_POWER,
@@ -44,7 +44,15 @@ module emu
 	output [15:0] AUDIO_L,
 	output [15:0] AUDIO_R,
 	output        AUDIO_S, // 1 - signed audio samples, 0 - unsigned
+	output  [1:0] AUDIO_MIX, // 0 - no mix, 1 - 25%, 2 - 50%, 3 - 100% (mono)
 	input         TAPE_IN,
+
+	// SD-SPI
+	output        SD_SCK,
+	output        SD_MOSI,
+	input         SD_MISO,
+	output        SD_CS,
+	input         SD_CD,
 
 	//High latency DDR3 RAM interface
 	//Use for non-critical time purposes
@@ -76,6 +84,7 @@ module emu
 assign AUDIO_S   = 0;
 assign AUDIO_L   = sample;
 assign AUDIO_R   = sample;
+assign AUDIO_MIX = 0;
 
 assign LED_USER  = downloading | (loader_fail & led_blink);
 assign LED_DISK  = 0;
@@ -87,6 +96,7 @@ assign VIDEO_ARY = status[8] ? 8'd9  : 8'd3;
 assign CLK_VIDEO = clk85;
 
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
+assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 
 `include "build_id.v"
@@ -105,7 +115,7 @@ parameter CONF_STR = {
 	"O3,Invert mirroring,OFF,ON;",
 	"T6,Reset;",
 	"J,A,B,Select,Start;",
-	"V,v0.82.",`BUILD_DATE
+	"V,v0.83.",`BUILD_DATE
 };
 
 wire [7:0] joyA;
@@ -123,6 +133,7 @@ wire joy_swap = status[9];
 
 wire forced_scandoubler;
 wire ps2_kbd_clk, ps2_kbd_data;
+wire [10:0] ps2_key;
 
 hps_io #(.STRLEN(($size(CONF_STR)>>3))) hps_io
 (
@@ -143,8 +154,7 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3))) hps_io
 	.ioctl_dout(loader_input),
 	.ioctl_wait(0),
 
-   .ps2_kbd_clk(ps2_kbd_clk),
-   .ps2_kbd_data(ps2_kbd_data),
+   .ps2_key(ps2_key),
 	
 	.ps2_kbd_led_use(0),
 	.ps2_kbd_led_status(0),
@@ -365,8 +375,8 @@ keyboard keyboard
 (
 	.clk(clk),
 	.reset(reset_nes),
-	.ps2_kbd_clk(ps2_kbd_clk),
-	.ps2_kbd_data(ps2_kbd_data),
+
+	.ps2_key(ps2_key),
 
 	.joystick_0(kbd_joy0),
 	.joystick_1(kbd_joy1),

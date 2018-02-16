@@ -30,10 +30,10 @@
 
 // WIDE=1 for 16 bit file I/O
 // VDNUM 1-4
-module hps_io #(parameter STRLEN=0, PS2DIV=1000, WIDE=0, VDNUM=1)
+module hps_io #(parameter STRLEN=0, PS2DIV=2000, WIDE=0, VDNUM=1, PS2WE=0)
 (
 	input             clk_sys,
-	inout      [37:0] HPS_BUS,
+	inout      [43:0] HPS_BUS,
 
 	// parameter STRLEN and the actual length of conf_str have to match
 	input [(8*STRLEN)-1:0] conf_str,
@@ -78,14 +78,33 @@ module hps_io #(parameter STRLEN=0, PS2DIV=1000, WIDE=0, VDNUM=1)
 	output reg [DW:0] ioctl_dout,
 	input             ioctl_wait,
 
+	// RTC MSM6242B layout
+	output reg [64:0] RTC,
+
+	// Seconds since 1970-01-01 00:00:00
+	output reg [32:0] TIMESTAMP,
+
 	// ps2 keyboard emulation
-	output            ps2_kbd_clk,
-	output reg        ps2_kbd_data,
+	output            ps2_kbd_clk_out,
+	output            ps2_kbd_data_out,
+	input             ps2_kbd_clk_in,
+	input             ps2_kbd_data_in,
+
 	input       [2:0] ps2_kbd_led_status,
 	input       [2:0] ps2_kbd_led_use,
 
-	output            ps2_mouse_clk,
-	output reg        ps2_mouse_data
+	output            ps2_mouse_clk_out,
+	output            ps2_mouse_data_out,
+	input             ps2_mouse_clk_in,
+	input             ps2_mouse_data_in,
+
+	// ps2 alternative interface.
+
+	// [8] - extended, [9] - pressed, [10] - toggles with every press/release
+	output reg [10:0] ps2_key = 0,
+	
+	// [24] - toggles with every event
+	output reg [24:0] ps2_mouse = 0
 );
 
 localparam DW = (WIDE) ? 15 : 7;
@@ -128,21 +147,120 @@ wire [15:0] sd_cmd =
 	sd_rd[0]
 };
 
+///////////////// calc video parameters //////////////////
+
+wire clk_100 = HPS_BUS[43];
+wire clk_vid = HPS_BUS[42];
+wire ce_pix  = HPS_BUS[41];
+wire de      = HPS_BUS[40];
+wire hs      = HPS_BUS[39];
+wire vs      = HPS_BUS[38];
+
+reg [31:0] vid_hcnt = 0;
+reg [31:0] vid_vcnt = 0;
+reg  [7:0] vid_nres = 0;
+integer hcnt;
+
+always @(posedge clk_vid) begin
+	integer vcnt;
+	reg old_vs= 0, old_de = 0;
+	reg calch = 0;
+
+	if(ce_pix) begin
+		old_vs <= vs;
+		old_de <= de;
+
+		if(~vs & ~old_de & de) vcnt <= vcnt + 1;
+		if(calch & de) hcnt <= hcnt + 1;
+		if(old_de & ~de) calch <= 0;
+
+		if(old_vs & ~vs) begin
+			if(hcnt && vcnt) begin
+				if(vid_hcnt != hcnt || vid_vcnt != vcnt) vid_nres <= vid_nres + 1'd1;
+				vid_hcnt <= hcnt;
+				vid_vcnt <= vcnt;
+			end
+			vcnt <= 0;
+			hcnt <= 0;
+			calch <= 1;
+		end
+	end
+end
+
+reg [31:0] vid_htime = 0;
+reg [31:0] vid_vtime = 0;
+reg [31:0] vid_pix = 0;
+
+always @(posedge clk_100) begin
+	integer vtime, htime, hcnt;
+	reg old_vs, old_hs, old_vs2, old_hs2, old_de, old_de2;
+	reg calch = 0;
+
+	old_vs <= vs;
+	old_hs <= hs;
+
+	old_vs2 <= old_vs;
+	old_hs2 <= old_hs;
+
+	vtime <= vtime + 1'd1;
+	htime <= htime + 1'd1;
+
+	if(~old_vs2 & old_vs) begin
+		vid_pix <= hcnt;
+		vid_vtime <= vtime;
+		vtime <= 0;
+		hcnt <= 0;
+	end
+
+	if(old_vs2 & ~old_vs) calch <= 1;
+
+	if(~old_hs2 & old_hs) begin
+		vid_htime <= htime;
+		htime <= 0;
+	end
+
+	old_de   <= de;
+	old_de2  <= old_de;
+
+	if(calch & old_de) hcnt <= hcnt + 1;
+	if(old_de2 & ~old_de) calch <= 0;
+end
+
+/////////////////////////////////////////////////////////
+
+reg [31:0] ps2_key_raw = 0;
+wire       pressed  = (ps2_key_raw[15:8] != 8'hf0);
+wire       extended = (~pressed ? (ps2_key_raw[23:16] == 8'he0) : (ps2_key_raw[15:8] == 8'he0));
+
 always@(posedge clk_sys) begin
 	reg [15:0] cmd;
 	reg  [9:0] byte_cnt;   // counts bytes
 	reg  [2:0] b_wr;
 	reg  [2:0] stick_idx;
+	reg        ps2skip = 0;
 
 	sd_buff_wr <= b_wr[0];
 	if(b_wr[2] && (~&sd_buff_addr)) sd_buff_addr <= sd_buff_addr + 1'b1;
 	b_wr <= (b_wr<<1);
 
+	{kbd_rd,kbd_we,mouse_rd,mouse_we} <= 0;
+	
 	if(~io_enable) begin
+		if(cmd == 4 && !ps2skip) ps2_mouse[24] <= ~ps2_mouse[24];
+		if(cmd == 5 && !ps2skip) begin
+			ps2_key <= {~ps2_key[10], pressed, extended, ps2_key_raw[7:0]};
+			if(ps2_key_raw == 'hE012E07C) ps2_key[9:0] <= 'h37C; // prnscr pressed
+			if(ps2_key_raw == 'h7CE0F012) ps2_key[9:0] <= 'h17C; // prnscr released
+			if(ps2_key_raw == 'hF014F077) ps2_key[9:0] <= 'h377; // pause  pressed
+		end
+		if(cmd == 'h22) RTC[64] <= ~RTC[64];
+		if(cmd == 'h24) TIMESTAMP[32] <= ~TIMESTAMP[32];
+		cmd <= 0;
 		byte_cnt <= 0;
 		sd_ack <= 0;
 		sd_ack_conf <= 0;
 		io_dout <= 0;
+		ps2skip <= 0;
 	end else begin
 		if(io_strobe) begin
 
@@ -160,6 +278,7 @@ always@(posedge clk_sys) begin
 
 				sd_buff_addr <= 0;
 				img_mounted <= 0;
+				if(io_din == 5) ps2_key_raw <= 0;
 			end else begin
 
 				case(cmd)
@@ -170,14 +289,24 @@ always@(posedge clk_sys) begin
 
 					// store incoming ps2 mouse bytes 
 					'h04: begin
-							ps2_mouse_fifo[ps2_mouse_wptr] <= io_din[7:0]; 
-							ps2_mouse_wptr <= ps2_mouse_wptr + 1'd1;
+							mouse_data <= io_din[7:0];
+							mouse_we   <= 1;
+							if(&io_din[15:8]) ps2skip <= 1;
+							if(~&io_din[15:8] & ~ps2skip) begin
+								case(byte_cnt)
+									1: ps2_mouse[7:0]   <= io_din[7:0];
+									2: ps2_mouse[15:8]  <= io_din[7:0];
+									3: ps2_mouse[23:16] <= io_din[7:0];
+								endcase
+							end
 						end
 
 					// store incoming ps2 keyboard bytes 
 					'h05: begin
-							ps2_kbd_fifo[ps2_kbd_wptr] <= io_din[7:0]; 
-							ps2_kbd_wptr <= ps2_kbd_wptr + 1'd1;
+							if(&io_din[15:8]) ps2skip <= 1;
+							if(~&io_din[15:8] & ~ps2skip) ps2_key_raw[31:0] <= {ps2_key_raw[23:0], io_din[7:0]};
+							kbd_data <= io_din[7:0];
+							kbd_we <= 1;
 						end
 
 					// reading config string
@@ -237,9 +366,42 @@ always@(posedge clk_sys) begin
 								else if(byte_cnt==2) status[31:16] <= io_din;
 
 					// reading keyboard LED status
-					'h1f: io_dout[7:0] <= { 2'b01, ps2_kbd_led_status[2], ps2_kbd_led_use[2], ps2_kbd_led_status[1], ps2_kbd_led_use[1], ps2_kbd_led_status[0], ps2_kbd_led_use[0]};
+					'h1f: io_dout <= {|PS2WE, 2'b01, ps2_kbd_led_status[2], ps2_kbd_led_use[2], ps2_kbd_led_status[1], ps2_kbd_led_use[1], ps2_kbd_led_status[0], ps2_kbd_led_use[0]};
 
-					default: ;
+					// reading ps2 keyboard/mouse control
+					'h21: begin
+							if(byte_cnt == 1) begin
+								io_dout <= kbd_data_host;
+								kbd_rd <= 1;
+							end
+
+							if(byte_cnt == 2) begin
+								io_dout <= mouse_data_host;
+								mouse_rd <= 1;
+							end
+						end
+					//RTC
+					'h22: RTC[(byte_cnt-6'd1)<<4 +:16] <= io_din;
+
+					//Video res.
+					'h23: begin
+								case(byte_cnt)
+									1: io_dout <= vid_nres;
+									2: io_dout <= vid_hcnt[15:0];
+									3: io_dout <= vid_hcnt[31:16];
+									4: io_dout <= vid_vcnt[15:0];
+									5: io_dout <= vid_vcnt[31:16];
+									6: io_dout <= vid_htime[15:0];
+									7: io_dout <= vid_htime[31:16];
+									8: io_dout <= vid_vtime[15:0];
+									9: io_dout <= vid_vtime[31:16];
+								  10: io_dout <= vid_pix[15:0];
+								  11: io_dout <= vid_pix[31:16];
+								endcase
+						end
+
+					//RTC
+					'h24: TIMESTAMP[(byte_cnt-6'd1)<<4 +:16] <= io_din;
 				endcase
 			end
 		end
@@ -248,9 +410,6 @@ end
 
 
 ///////////////////////////////   PS2   ///////////////////////////////
-// 16 byte fifos to store ps2 bytes
-localparam PS2_FIFO_BITS = 3;
-
 reg clk_ps2;
 always @(negedge clk_sys) begin
 	integer cnt;
@@ -261,131 +420,51 @@ always @(negedge clk_sys) begin
 	end
 end
 
-// keyboard
-(* ramstyle = "logic" *) reg [7:0] ps2_kbd_fifo[1<<PS2_FIFO_BITS];
-reg [PS2_FIFO_BITS-1:0] ps2_kbd_wptr;
-reg [PS2_FIFO_BITS-1:0] ps2_kbd_rptr;
+reg  [7:0] kbd_data;
+reg        kbd_we;
+wire [8:0] kbd_data_host;
+reg        kbd_rd;
 
-// ps2 transmitter state machine
-reg [3:0] ps2_kbd_tx_state;
-reg [7:0] ps2_kbd_tx_byte;
-reg ps2_kbd_parity;
+ps2_device keyboard
+(
+	.clk_sys(clk_sys),
 
-assign ps2_kbd_clk = clk_ps2 || (ps2_kbd_tx_state == 0);
+	.wdata(kbd_data),
+	.we(kbd_we),
 
-// ps2 transmitter
-// Takes a byte from the FIFO and sends it in a ps2 compliant serial format.
-reg ps2_kbd_r_inc;
-always@(posedge clk_sys) begin
-	reg old_clk;
-	old_clk <= clk_ps2;
-	if(~old_clk & clk_ps2) begin
-		ps2_kbd_r_inc <= 0;
+	.ps2_clk(clk_ps2),
+	.ps2_clk_out(ps2_kbd_clk_out),
+	.ps2_dat_out(ps2_kbd_data_out),
+	
+	.ps2_clk_in(ps2_kbd_clk_in  || !PS2WE),
+	.ps2_dat_in(ps2_kbd_data_in || !PS2WE),
 
-		if(ps2_kbd_r_inc) ps2_kbd_rptr <= ps2_kbd_rptr + 1'd1;
+	.rdata(kbd_data_host),
+	.rd(kbd_rd)
+);
 
-		// transmitter is idle?
-		if(ps2_kbd_tx_state == 0) begin
-			// data in fifo present?
-			if(ps2_kbd_wptr != ps2_kbd_rptr) begin
-				// load tx register from fifo
-				ps2_kbd_tx_byte <= ps2_kbd_fifo[ps2_kbd_rptr];
-				ps2_kbd_r_inc <= 1;
+reg  [7:0] mouse_data;
+reg        mouse_we;
+wire [8:0] mouse_data_host;
+reg        mouse_rd;
 
-				// reset parity
-				ps2_kbd_parity <= 1;
+ps2_device mouse
+(
+	.clk_sys(clk_sys),
 
-				// start transmitter
-				ps2_kbd_tx_state <= 1;
+	.wdata(mouse_data),
+	.we(mouse_we),
 
-				// put start bit on data line
-				ps2_kbd_data <= 0;			// start bit is 0
-			end
-		end else begin
+	.ps2_clk(clk_ps2),
+	.ps2_clk_out(ps2_mouse_clk_out),
+	.ps2_dat_out(ps2_mouse_data_out),
 
-			// transmission of 8 data bits
-			if((ps2_kbd_tx_state >= 1)&&(ps2_kbd_tx_state < 9)) begin
-				ps2_kbd_data <= ps2_kbd_tx_byte[0];	          // data bits
-				ps2_kbd_tx_byte[6:0] <= ps2_kbd_tx_byte[7:1]; // shift down
-				if(ps2_kbd_tx_byte[0]) 
-					ps2_kbd_parity <= !ps2_kbd_parity;
-			end
+	.ps2_clk_in(ps2_mouse_clk_in  || !PS2WE),
+	.ps2_dat_in(ps2_mouse_data_in || !PS2WE),
 
-			// transmission of parity
-			if(ps2_kbd_tx_state == 9) ps2_kbd_data <= ps2_kbd_parity;
-
-			// transmission of stop bit
-			if(ps2_kbd_tx_state == 10) ps2_kbd_data <= 1;    // stop bit is 1
-
-			// advance state machine
-			if(ps2_kbd_tx_state < 11) ps2_kbd_tx_state <= ps2_kbd_tx_state + 1'd1;
-				else ps2_kbd_tx_state <= 0;
-		end
-	end
-end
-
-// mouse
-(* ramstyle = "logic" *) reg [7:0] ps2_mouse_fifo[1<<PS2_FIFO_BITS];
-reg [PS2_FIFO_BITS-1:0] ps2_mouse_wptr;
-reg [PS2_FIFO_BITS-1:0] ps2_mouse_rptr;
-
-// ps2 transmitter state machine
-reg [3:0] ps2_mouse_tx_state;
-reg [7:0] ps2_mouse_tx_byte;
-reg ps2_mouse_parity;
-
-assign ps2_mouse_clk = clk_ps2 || (ps2_mouse_tx_state == 0);
-
-// ps2 transmitter
-// Takes a byte from the FIFO and sends it in a ps2 compliant serial format.
-reg ps2_mouse_r_inc;
-always@(posedge clk_sys) begin
-	reg old_clk;
-	old_clk <= clk_ps2;
-	if(~old_clk & clk_ps2) begin
-		ps2_mouse_r_inc <= 0;
-
-		if(ps2_mouse_r_inc) ps2_mouse_rptr <= ps2_mouse_rptr + 1'd1;
-
-		// transmitter is idle?
-		if(ps2_mouse_tx_state == 0) begin
-			// data in fifo present?
-			if(ps2_mouse_wptr != ps2_mouse_rptr) begin
-				// load tx register from fifo
-				ps2_mouse_tx_byte <= ps2_mouse_fifo[ps2_mouse_rptr];
-				ps2_mouse_r_inc <= 1;
-
-				// reset parity
-				ps2_mouse_parity <= 1;
-
-				// start transmitter
-				ps2_mouse_tx_state <= 1;
-
-				// put start bit on data line
-				ps2_mouse_data <= 0;			// start bit is 0
-			end
-		end else begin
-
-			// transmission of 8 data bits
-			if((ps2_mouse_tx_state >= 1)&&(ps2_mouse_tx_state < 9)) begin
-				ps2_mouse_data <= ps2_mouse_tx_byte[0];			  // data bits
-				ps2_mouse_tx_byte[6:0] <= ps2_mouse_tx_byte[7:1]; // shift down
-				if(ps2_mouse_tx_byte[0]) 
-					ps2_mouse_parity <= !ps2_mouse_parity;
-			end
-
-			// transmission of parity
-			if(ps2_mouse_tx_state == 9) ps2_mouse_data <= ps2_mouse_parity;
-
-			// transmission of stop bit
-			if(ps2_mouse_tx_state == 10) ps2_mouse_data <= 1;	  // stop bit is 1
-
-			// advance state machine
-			if(ps2_mouse_tx_state < 11) ps2_mouse_tx_state <= ps2_mouse_tx_state + 1'd1;
-				else ps2_mouse_tx_state <= 0;
-		end
-	end
-end
+	.rdata(mouse_data_host),
+	.rd(mouse_rd)
+);
 
 
 ///////////////////////////////   DOWNLOADING   ///////////////////////////////
@@ -440,6 +519,148 @@ always@(posedge clk_sys) begin
 			end
 		end
 	end
+end
+
+endmodule
+
+//////////////////////////////////////////////////////////////////////////////////
+
+
+module ps2_device #(parameter PS2_FIFO_BITS=5)
+(
+	input        clk_sys,
+
+	input  [7:0] wdata,
+	input        we,
+
+	input        ps2_clk,
+	output reg   ps2_clk_out,
+	output reg   ps2_dat_out,
+	output reg   tx_empty,
+
+	input        ps2_clk_in,
+	input        ps2_dat_in,
+	
+	output [8:0] rdata,
+	input        rd
+);
+
+
+(* ramstyle = "logic" *) reg [7:0] fifo[1<<PS2_FIFO_BITS];
+
+reg [PS2_FIFO_BITS-1:0] wptr;
+reg [PS2_FIFO_BITS-1:0] rptr;
+
+reg [2:0] rx_state = 0;
+reg [3:0] tx_state = 0;
+
+reg       has_data;
+reg [7:0] data;
+assign    rdata = {has_data, data};
+
+always@(posedge clk_sys) begin
+	reg [7:0] tx_byte;
+	reg parity;
+	reg r_inc;
+	reg old_clk;
+	reg [1:0] timeout;
+
+	reg [3:0] rx_cnt;
+
+	reg c1,c2,d1;
+
+	tx_empty <= ((wptr == rptr) && (tx_state == 0));
+
+	if(we) begin
+		fifo[wptr] <= wdata;
+		wptr <= wptr + 1'd1;
+	end
+
+	if(rd) has_data <= 0;
+
+	c1 <= ps2_clk_in;
+	c2 <= c1;
+	d1 <= ps2_dat_in;
+	if(!rx_state && !tx_state && ~c2 && c1 && ~d1) begin
+		rx_state <= rx_state + 1'b1;
+		ps2_dat_out <= 1;
+	end
+
+	old_clk <= ps2_clk;
+	if(~old_clk & ps2_clk) begin
+
+		if(rx_state) begin
+			case(rx_state)
+				1: begin
+						rx_state <= rx_state + 1'b1;
+						rx_cnt <= 0;
+					end
+					
+				2: begin
+						if(rx_cnt <= 7) data <= {d1, data[7:1]};
+						else rx_state <= rx_state + 1'b1;
+						rx_cnt <= rx_cnt + 1'b1;
+					end
+
+				3: if(d1) begin
+						rx_state <= rx_state + 1'b1;
+						ps2_dat_out <= 0;
+					end
+				
+				4: begin
+						ps2_dat_out <= 1;
+						has_data <= 1;
+						rx_state <= 0;
+					end
+			endcase
+		end else begin
+
+			// transmitter is idle?
+			if(tx_state == 0) begin
+				// data in fifo present?
+				if(c2 && c1 && d1 && wptr != rptr) begin
+
+					timeout <= timeout - 1'd1;
+					if(!timeout) begin
+						tx_byte <= fifo[rptr];
+						rptr <= rptr + 1'd1;
+
+						// reset parity
+						parity <= 1;
+
+						// start transmitter
+						tx_state <= 1;
+
+						// put start bit on data line
+						ps2_dat_out <= 0;			// start bit is 0
+					end
+				end
+			end else begin
+
+				// transmission of 8 data bits
+				if((tx_state >= 1)&&(tx_state < 9)) begin
+					ps2_dat_out <= tx_byte[0];	          // data bits
+					tx_byte[6:0] <= tx_byte[7:1]; // shift down
+					if(tx_byte[0]) 
+						parity <= !parity;
+				end
+
+				// transmission of parity
+				if(tx_state == 9) ps2_dat_out <= parity;
+
+				// transmission of stop bit
+				if(tx_state == 10) ps2_dat_out <= 1;    // stop bit is 1
+
+				// advance state machine
+				if(tx_state < 11) tx_state <= tx_state + 1'd1;
+					else tx_state <= 0;
+			end
+		end
+	end
+
+	if(~old_clk & ps2_clk) ps2_clk_out <= 1;
+	if(old_clk & ~ps2_clk) ps2_clk_out <= ((tx_state == 0) && (rx_state<2));
+
 end
 
 endmodule
