@@ -104,7 +104,7 @@ parameter CONF_STR = {
 	"NES;;",
 	"-;",
 	"F,NES;",
-	"-;",
+	"F,SAV;",
 	"O8,Aspect ratio,4:3,16:9;",
 	"O12,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
 	"O4,Hide overscan,OFF,ON;",
@@ -153,6 +153,7 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3))) hps_io
 	.ioctl_wr(loader_clk),
 	.ioctl_dout(loader_input),
 	.ioctl_wait(0),
+	.ioctl_index(loader_index),
 
    .ps2_key(ps2_key),
 	
@@ -255,12 +256,13 @@ wire loader_write;
 wire [31:0] loader_flags;
 reg [31:0] mapper_flags;
 wire loader_done, loader_fail;
+wire [7:0] loader_index;
 
 GameLoader loader
 (
 	clk, loader_reset, loader_input, loader_clk, mirroring_osd,
 	loader_addr, loader_write_data, loader_write,
-	loader_flags, loader_done, loader_fail
+	loader_flags, loader_done, loader_fail, loader_index
 );
 
 always @(posedge clk) begin
@@ -403,7 +405,8 @@ module GameLoader
 	output        mem_write,
 	output [31:0] mapper_flags,
 	output reg    done,
-	output reg    error
+	output reg    error,
+	input [7:0]   file_index
 );
 
 reg [1:0] state = 0;
@@ -455,10 +458,11 @@ assign mapper_flags = {15'b0, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirro
   
 always @(posedge clk) begin
 	if (reset) begin
-		state <= 0;
+		state <= file_index[0]?0:2;
 		done <= 0;
 		ctr <= 0;
-		mem_addr <= 0;  // Address for PRG
+		mem_addr <= file_index[0]?0:22'b11_1100_0000_0000_0000_0000;  // Address for RAM:PRG
+		bytes_left <= 16'h8000;
 	end else begin
 		case(state)
 		// Read 16 bytes of ines header
