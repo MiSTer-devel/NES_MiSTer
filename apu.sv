@@ -71,8 +71,9 @@ reg [2:0] SeqPos;
 wire [10:0] ShiftedPeriod = (Period >> SweepShift);
 wire [10:0] PeriodRhs = (SweepNegate ? (~ShiftedPeriod + {10'b0, sq2}) : ShiftedPeriod);
 wire [11:0] NewSweepPeriod = Period + PeriodRhs;
-wire ValidFreq = Period[10:3] >= 8 && (SweepNegate || !NewSweepPeriod[11]);
-
+wire ValidFreq = (|Period[10:3]) && (SweepNegate || !NewSweepPeriod[11]);
+ // |Period[10:3] is equivalent to Period >= 8
+ 
 always @(posedge clk) if (reset) begin
     LenCtr <= 0;
     Duty <= 0;
