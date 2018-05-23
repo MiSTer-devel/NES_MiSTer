@@ -113,7 +113,7 @@ parameter CONF_STR = {
 	"O9,Swap joysticks,NO,YES;",
 	"-;",
 	"O3,Invert mirroring,OFF,ON;",
-	"T6,Reset;",
+	"R0,Reset;",
 	"J,A,B,Select,Start;",
 	"V,v0.83.",`BUILD_DATE
 };
@@ -128,7 +128,6 @@ wire arm_reset = status[0];
 wire mirroring_osd = status[3];
 wire hide_overscan = status[4];
 wire palette2_osd = status[5];
-wire reset_osd = status[6];
 wire uploading = status[7];
 wire joy_swap = status[9];
 
@@ -330,7 +329,7 @@ always @(posedge clk) begin
 	end;
 end
  
-wire reset_nes = (init_reset || buttons[1] || arm_reset || reset_osd || download_reset || loader_fail);
+wire reset_nes = (init_reset || buttons[1] || arm_reset || download_reset || loader_fail);
 //wire run_nes = (!saving && (nes_ce == 3));	// keep running even when reset, so that the reset can actually do its job!
 wire run_nes = (nes_ce == 3);	// keep running even when reset, so that the reset can actually do its job!
 
