@@ -718,7 +718,7 @@ vga_out vga_out
 `ifdef LITE
 	.din(vga_q)
 `else
-	.din(vga_scaler ? HDMI_TX_D : vga_q)
+	.din(vga_scaler ? {24{HDMI_TX_DE}} & HDMI_TX_D : vga_q)
 `endif
 );
 
