@@ -99,6 +99,8 @@ assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DD
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 
+`define DEBUG_AUDIO
+
 `include "build_id.v"
 parameter CONF_STR1 = {
 	"NES;;",
@@ -123,7 +125,11 @@ parameter CONF_STR4 = {
 	"O4,Hide overscan,OFF,ON;",
 	"O5,Palette,FCEUX,Unsaturated-V6;",
 	"O9,Swap joysticks,NO,YES;",
+`ifdef DEBUG_AUDIO
+	"OUV,Audio Enable,Both,Internal,External,None;",
+`else
 	"-;",
+`endif
 	"O3,Invert mirroring,OFF,ON;",
 	"R0,Reset;",
 	"J,A,B,Select,Start;",
@@ -141,6 +147,14 @@ wire mirroring_osd = status[3];
 wire hide_overscan = status[4];
 wire palette2_osd = status[5];
 wire joy_swap = status[9];
+`ifdef DEBUG_AUDIO
+wire ext_audio = ~status[30];
+wire int_audio = ~status[31];
+`else
+wire ext_audio = 1;
+wire int_audio = 1;
+`endif
+
 
 wire forced_scandoubler;
 wire ps2_kbd_clk, ps2_kbd_data;
@@ -323,7 +337,8 @@ NES nes
 	memory_read_cpu, memory_din_cpu,
 	memory_read_ppu, memory_din_ppu,
 	memory_write, memory_dout,
-	cycle, scanline
+	cycle, scanline,
+	int_audio, ext_audio
 );
 
 assign SDRAM_CKE         = 1'b1;

@@ -1550,7 +1550,8 @@ module Mapper69(input clk, input ce, input reset,
                 output chr_allow,                             // Allow write
                 output reg vram_a10,                          // Value for A10 address line
                 output vram_ce,                               // True if the address should be routed to the internal 2kB VRAM.
-                output reg irq);
+                output reg irq,
+                output [15:0] audio);
   reg [7:0] chr_bank[0:7];
   reg [4:0] prg_bank[0:3];
   reg [1:0] mirroring;
@@ -1628,7 +1629,86 @@ module Mapper69(input clk, input ce, input reset,
   assign chr_allow = flags[15];
   assign chr_aout = {4'b10_00, chrout, chr_ain[9:0]};
   assign vram_ce = chr_ain[13];
+
+//Taken from Loopy's Power Pak mapper source
+//audio
+    wire [6:0] fme7_out;
+    FME7_sound snd0(clk, ce, reset, prg_write, prg_ain, prg_din, fme7_out);
+    //FME7_sound snd0(m2, reset, nesprg_we, prgain, nesprgdin, fme7_out);
+    //pdm #(7) pdm_mod(clk20, fme7_out, exp6);
+
+  //Need a better lookup table for this
+  //This is just the NES APU lookup table, which is designed for 2 4-bit square waves, not 3
+  ApuLookupTable lookup(clk, 
+                        {4'b0, fme7_out[5:1]}, //fme7_out range: 0-2D
+                        {8'b0},                //No triange, noise or DMC
+                        audio);
+	 
 endmodule
+
+//Taken from Loopy's Power Pak mapper source
+module FME7_sound(
+    input clk,
+    input ce,
+    input reset,
+    input wr,
+    input [15:0] ain,
+    input [7:0] din,
+    output [6:0] out
+);
+    reg [3:0] regC;
+    reg [11:0] freq0,freq1,freq2;
+    reg [2:0] en;
+    reg [3:0] vol0,vol1,vol2;
+    reg [11:0] count0,count1,count2;
+    reg [4:0] duty0,duty1,duty2;
+    always@(posedge clk, posedge reset) begin
+        if(reset) begin
+            en<=0;
+        end else if (ce) begin
+            if(wr) begin
+                if(ain[15:13]==3'b110)  //C000
+                    regC<=din;
+                if(ain[15:13]==3'b111)  //E000
+                case(regC)
+                    0:freq0[7:0]<=din;
+                    1:freq0[11:8]<=din;
+                    2:freq1[7:0]<=din;
+                    3:freq1[11:8]<=din;
+                    4:freq2[7:0]<=din;
+                    5:freq2[11:8]<=din;
+                    7:en<=din;
+                    8:vol0<=din;
+                    9:vol1<=din;
+                    10:vol2<=din;
+                endcase
+            end
+            if(count0==freq0) begin
+                count0<=0;
+                duty0<=duty0+1;
+            end else
+                count0<=count0+1;
+
+            if(count1==freq1) begin
+                count1<=0;
+                duty1<=duty1+1;
+            end else
+                count1<=count1+1;
+            if(count2==freq2) begin
+                count2<=0;
+                duty2<=duty2+1;
+            end else
+                count2<=count2+1;
+        end
+    end
+    
+    wire [3:0] ch0={4{~en[0] & duty0[4]}} & vol0;
+    wire [3:0] ch1={4{~en[1] & duty1[4]}} & vol1;
+    wire [3:0] ch2={4{~en[2] & duty2[4]}} & vol2;
+    assign out=ch0+ch1+ch2;
+    
+endmodule
+
 
 // #71,#232 - Camerica
 module Mapper71(input clk, input ce, input reset,
@@ -1985,7 +2065,8 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
                    output reg chr_allow,                            // CHR Allow write
                    output reg vram_a10,                             // CHR Value for A10 address line
                    output reg vram_ce,                              // CHR True if the address should be routed to the internal 2kB VRAM.
-                   output reg irq);
+                   output reg irq,
+                   output reg [15:0] audio);                        // External Audio
   wire mmc0_prg_allow, mmc0_vram_a10, mmc0_vram_ce, mmc0_chr_allow;
   wire [21:0] mmc0_prg_addr, mmc0_chr_addr;
   MMC0 mmc0(clk, ce, flags, prg_ain, mmc0_prg_addr, prg_read, prg_write, prg_din, mmc0_prg_allow,
@@ -2067,8 +2148,9 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 
   wire map69_prg_allow, map69_vram_a10, map69_vram_ce, map69_chr_allow, map69_irq;
   wire [21:0] map69_prg_addr, map69_chr_addr;
+  wire [15:0] map69_audio;
   Mapper69 map69(clk, ce, reset, flags, prg_ain, map69_prg_addr, prg_read, prg_write, prg_din, map69_prg_allow,
-                                        chr_ain, map69_chr_addr, map69_chr_allow, map69_vram_a10, map69_vram_ce, map69_irq);
+                                        chr_ain, map69_chr_addr, map69_chr_allow, map69_vram_a10, map69_vram_ce, map69_irq, map69_audio);
 
   wire map71_prg_allow, map71_vram_a10, map71_vram_ce, map71_chr_allow;
   wire [21:0] map71_prg_addr, map71_chr_addr;
@@ -2135,6 +2217,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     prg_dout = 8'hff;
     has_chr_dout = 0;
     chr_dout = mmc5_chr_dout;
+	 audio = 16'h0000;
 // 0 = Working
 // 1 = Working
 // 2 = Working
@@ -2203,7 +2286,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     11,
     66: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map66_prg_addr, map66_prg_allow, map66_chr_addr, map66_vram_a10, map66_vram_ce, map66_chr_allow};
     68: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map68_prg_addr, map68_prg_allow, map68_chr_addr, map68_vram_a10, map68_vram_ce, map68_chr_allow};
-    69: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq} = {map69_prg_addr, map69_prg_allow, map69_chr_addr, map69_vram_a10, map69_vram_ce, map69_chr_allow, map69_irq};
+    69: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq, audio} = {map69_prg_addr, map69_prg_allow, map69_chr_addr, map69_vram_a10, map69_vram_ce, map69_chr_allow, map69_irq, map69_audio};
 
     71,
     232: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map71_prg_addr, map71_prg_allow, map71_chr_addr, map71_vram_a10, map71_vram_ce, map71_chr_allow};
