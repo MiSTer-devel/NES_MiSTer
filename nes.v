@@ -130,6 +130,7 @@ module NES(input clk, input reset, input ce,
            output joypad_strobe,// Set to 1 to strobe joypads. Then set to zero to keep the value.
            output [1:0] joypad_clock, // Set to 1 for each joypad to clock it.
            input [3:0] joypad_data, // Data for each joypad + 1 powerpad.
+			  input fds_swap,
            input [4:0] audio_channels, // Enabled audio channels
 
            
@@ -271,7 +272,7 @@ module NES(input clk, input reset, input ce,
   MultiMapper multi_mapper(clk, cart_ce, ce, reset, mapper_ppu_flags, mapper_flags, 
                            prg_addr, prg_linaddr, prg_read, prg_write, prg_din, prg_dout_mapper, from_data_bus, prg_allow,
                            chr_read, chr_addr, chr_linaddr, chr_from_ppu_mapper, has_chr_from_ppu_mapper, chr_allow, vram_a10,
-									vram_ce, mapper_irq, sample_ext);
+									vram_ce, mapper_irq, sample_ext, fds_swap);
   assign chr_to_ppu = has_chr_from_ppu_mapper ? chr_from_ppu_mapper : memory_din_ppu;
                              
   // Mapper IRQ seems to be delayed by one PPU clock.   

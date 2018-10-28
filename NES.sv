@@ -132,6 +132,8 @@ parameter CONF_STR4 = {
 `endif
 	"O3,Invert mirroring,OFF,ON;",
 	"R0,Reset;",
+	"F,BIN,BIOS;",
+	"F,FDS;",
 	"J,A,B,Select,Start;",
 	"V,v0.85.",`BUILD_DATE
 };
@@ -171,6 +173,7 @@ wire        sd_buff_wr;
 wire        img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
+wire [7:0]  filetype;
 
 hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + 3)) hps_io
 (
@@ -190,6 +193,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.ioctl_wr(loader_clk),
 	.ioctl_dout(loader_input),
 	.ioctl_wait(0),
+	.ioctl_index(filetype),
 
 	.sd_lba(sd_lba),
 	.sd_rd(sd_rd),
@@ -259,6 +263,7 @@ wire  [7:0] memory_dout;
 reg   [7:0] joypad_bits, joypad_bits2;
 reg   [7:0] powerpad_d3, powerpad_d4;
 reg   [1:0] last_joypad_clock;
+wire fds_swap = joy_swap ? nes_joy_B[2] : nes_joy_A[2];
 
 reg [1:0] nes_ce;
 
@@ -301,7 +306,8 @@ wire loader_done, loader_fail;
 
 GameLoader loader
 (
-	clk, loader_reset, loader_input, loader_clk, mirroring_osd,
+	clk, loader_reset, downloading, filetype,
+	loader_input, loader_clk, mirroring_osd,
 	loader_addr, loader_write_data, loader_write,
 	loader_flags, loader_done, loader_fail
 );
@@ -332,6 +338,7 @@ NES nes
 	mapper_flags,
 	sample, color,
 	joypad_strobe, joypad_clock, {powerpad_d4[0],powerpad_d3[0],joypad_bits2[0],joypad_bits[0]},
+	fds_swap,
 	5'b11111,  // enable all channels
 	memory_addr,
 	memory_read_cpu, memory_din_cpu,
@@ -496,6 +503,8 @@ module GameLoader
 (
 	input         clk,
 	input         reset,
+	input         downloading,
+	input   [7:0] filetype,
 	input   [7:0] indata,
 	input         indata_clk,
 	input         invert_mirroring,
@@ -507,7 +516,7 @@ module GameLoader
 	output reg    error
 );
 
-reg [1:0] state = 0;
+reg [2:0] state = 0;
 reg [7:0] prgsize;
 reg [3:0] ctr;
 reg [7:0] ines[0:15]; // 16 bytes of iNES header
@@ -517,7 +526,7 @@ wire [7:0] prgrom = ines[4];	// Number of 16384 byte program ROM pages
 wire [7:0] chrrom = ines[5];	// Number of 8192 byte character ROM pages (0 indicates CHR RAM)
 wire has_chr_ram = (chrrom == 0);
 assign mem_data = indata;
-assign mem_write = (bytes_left != 0) && (state == 1 || state == 2) && indata_clk;
+assign mem_write = ((bytes_left != 0) && (state == 1 || state == 2) || (downloading && (state == 0 || state == 4))) && indata_clk;
   
 wire [2:0] prg_size = prgrom <= 1  ? 3'd0 :		// 16KB
                       prgrom <= 2  ? 3'd1 : 		// 32KB
@@ -559,18 +568,38 @@ always @(posedge clk) begin
 		state <= 0;
 		done <= 0;
 		ctr <= 0;
-		mem_addr <= 0;  // Address for PRG
+		mem_addr <= filetype == 8'h0B ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
 	end else begin
 		case(state)
 		// Read 16 bytes of ines header
 		0: if (indata_clk) begin
 			  error <= 0;
 			  ctr <= ctr + 1'd1;
+			  mem_addr <= mem_addr + 1'd1;
 			  ines[ctr] <= indata;
 			  bytes_left <= {prgrom, 14'b0};
-			  if (ctr == 4'b1111)
+			  if (ctr == 4'b1111) begin
 				 // Check the 'NES' header. Also, we don't support trainers.
-				 state <= (ines[0] == 8'h4E) && (ines[1] == 8'h45) && (ines[2] == 8'h53) && (ines[3] == 8'h1A) && !ines[6][2] ? 1 : 3;
+				 if ((ines[0] == 8'h4E) && (ines[1] == 8'h45) && (ines[2] == 8'h53) && (ines[3] == 8'h1A) && !ines[6][2]) begin
+					mem_addr <= 0;  // Address for PRG
+					state <= 1;
+				 //FDS
+				 end else if ((ines[0] == 8'h46) && (ines[1] == 8'h44) && (ines[2] == 8'h53) && (ines[3] == 8'h1A)) begin
+					mem_addr <= 22'b00_0100_0000_0000_0001_0000;  // Address for FDS skip Header
+					state <= 4;
+					bytes_left <= 21'b1;
+				 end else if (filetype[7:0]==8'h0A) begin // Bios
+					state <= 4;
+					mem_addr <= 22'b00_0000_0000_0000_0001_0000;  // Address for BIOS skip Header
+					bytes_left <= 21'b1;
+				 end else if (filetype[7:0]==8'h0B) begin // FDS
+					state <= 4;
+					mem_addr <= 22'b00_0100_0000_0000_0010_0000;  // Address for FDS no Header
+					bytes_left <= 21'b1;
+				 end else begin
+					state <= 3;
+				 end
+			  end
 			end
 		1, 2: begin // Read the next |bytes_left| bytes into |mem_addr|
 			 if (bytes_left != 0) begin
@@ -589,6 +618,26 @@ always @(posedge clk) begin
 		3: begin
 				done <= 1;
 				error <= 1;
+			end
+		4: begin // Read the next |bytes_left| bytes into |mem_addr|
+			 if (downloading) begin
+				if (indata_clk) begin
+				  mem_addr <= mem_addr + 1'd1;
+				end
+			 end else begin
+				done <= 1;
+				bytes_left <= 21'b0;
+				ines[6] <= 8'h40;
+				ines[7] <= 8'h10;
+				ines[8] <= 8'h00;
+				ines[9] <= 8'h00;
+				ines[10] <= 8'h00;
+				ines[11] <= 8'h00;
+				ines[12] <= 8'h00;
+				ines[13] <= 8'h00;
+				ines[14] <= 8'h00;
+				ines[15] <= 8'h00;
+			 end
 			end
 		endcase
 	end

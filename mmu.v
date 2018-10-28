@@ -1633,6 +1633,7 @@ module Mapper69(input clk, input ce, input reset,
 //Taken from Loopy's Power Pak mapper source
 //audio
     wire [6:0] fme7_out;
+	 wire [15:0] fme7_sample;
     FME7_sound snd0(clk, ce, reset, prg_write, prg_ain, prg_din, fme7_out);
     //FME7_sound snd0(m2, reset, nesprg_we, prgain, nesprgdin, fme7_out);
     //pdm #(7) pdm_mod(clk20, fme7_out, exp6);
@@ -1642,73 +1643,10 @@ module Mapper69(input clk, input ce, input reset,
   ApuLookupTable lookup(clk, 
                         {4'b0, fme7_out[5:1]}, //fme7_out range: 0-2D
                         {8'b0},                //No triange, noise or DMC
-                        audio);
+                        fme7_sample);
+  assign audio = {fme7_sample[14:0], 1'b0};    // Double.  Volume will be slightly higher, rather than slightly lower than expected
 	 
 endmodule
-
-//Taken from Loopy's Power Pak mapper source
-module FME7_sound(
-    input clk,
-    input ce,
-    input reset,
-    input wr,
-    input [15:0] ain,
-    input [7:0] din,
-    output [6:0] out
-);
-    reg [3:0] regC;
-    reg [11:0] freq0,freq1,freq2;
-    reg [2:0] en;
-    reg [3:0] vol0,vol1,vol2;
-    reg [11:0] count0,count1,count2;
-    reg [4:0] duty0,duty1,duty2;
-    always@(posedge clk, posedge reset) begin
-        if(reset) begin
-            en<=0;
-        end else if (ce) begin
-            if(wr) begin
-                if(ain[15:13]==3'b110)  //C000
-                    regC<=din;
-                if(ain[15:13]==3'b111)  //E000
-                case(regC)
-                    0:freq0[7:0]<=din;
-                    1:freq0[11:8]<=din;
-                    2:freq1[7:0]<=din;
-                    3:freq1[11:8]<=din;
-                    4:freq2[7:0]<=din;
-                    5:freq2[11:8]<=din;
-                    7:en<=din;
-                    8:vol0<=din;
-                    9:vol1<=din;
-                    10:vol2<=din;
-                endcase
-            end
-            if(count0==freq0) begin
-                count0<=0;
-                duty0<=duty0+1;
-            end else
-                count0<=count0+1;
-
-            if(count1==freq1) begin
-                count1<=0;
-                duty1<=duty1+1;
-            end else
-                count1<=count1+1;
-            if(count2==freq2) begin
-                count2<=0;
-                duty2<=duty2+1;
-            end else
-                count2<=count2+1;
-        end
-    end
-    
-    wire [3:0] ch0={4{~en[0] & duty0[4]}} & vol0;
-    wire [3:0] ch1={4{~en[1] & duty1[4]}} & vol1;
-    wire [3:0] ch2={4{~en[2] & duty2[4]}} & vol2;
-    assign out=ch0+ch1+ch2;
-    
-endmodule
-
 
 // #71,#232 - Camerica
 module Mapper71(input clk, input ce, input reset,
@@ -2050,6 +1988,167 @@ module Mapper234(input clk, input ce, input reset,
   assign vram_ce = chr_ain[13];
 endmodule
 
+module VRC6(input clk, input ce, input reset,
+            input [31:0] flags,
+            input [15:0] prg_ain, output [21:0] prg_aout,
+            input prg_read, prg_write,                   // Read / write signals
+            input [7:0] prg_din, output [7:0] prg_dout,
+            output prg_allow,                            // Enable access to memory for the specified operation.
+            input [13:0] chr_ain, output [21:0] chr_aout,
+            output chr_allow,                            // Allow write
+            output vram_a10,                             // Value for A10 address line
+            output vram_ce,                              // True if the address should be routed to the internal 2kB VRAM.
+            output irq,
+				output [15:0] audio);
+	 wire nesprg_oe;
+    wire [7:0] neschrdout;
+	 wire neschr_oe;
+	 wire wram_oe;
+	 wire wram_we;
+	 wire prgram_we;
+	 wire chrram_oe;
+	 wire prgram_oe;
+	 wire [18:13] ramprgaout;
+	 wire exp6;
+	 reg [7:0] m2;
+	 wire m2_n = 1;//~ce;  //m2_n not used as clk.  Invert m2 (ce).
+  always @(posedge clk) begin
+    m2[7:1] <= m2[6:0];
+	 m2[0] <= ce;
+  end
+//module MAPVRC6(              //signal descriptions in powerpak.v
+//    input m2, input m2_n, input clk20, input reset, input nesprg_we, output nesprg_oe, input neschr_rd,
+//    input neschr_wr, input [15:0] prgain, input [13:0] chrain, input [7:0] nesprgdin, input [7:0] ramprgdin, output reg [7:0] nesprgdout,
+//    output [7:0] neschrdout, output neschr_oe, output chrram_we, output chrram_oe, output wram_oe, output wram_we, output prgram_we,
+//    output prgram_oe, output [18:10] ramchraout, output [18:13] ramprgaout, output irq, output ciram_ce, output exp6,
+//    input cfg_boot, input [18:12] cfg_chrmask, input [18:13] cfg_prgmask, input cfg_vertical, input cfg_fourscreen, input cfg_chrram,
+//    input ce, output prg_allow, output [11:0] snd_level, input mapper26);
+    MAPVRC6 vrc6(m2[7], m2_n, clk, reset, prg_write, nesprg_oe, 0, 
+		1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
+		neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
+		prgram_oe, chr_aout[18:10], ramprgaout, irq, vram_ce, exp6, 
+		0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
+		ce, audio, flags[1]);
+
+    assign chr_aout[21:19] = 3'b100;
+    assign chr_aout[9:0] = chr_ain[9:0];
+	 assign vram_a10 = chr_aout[10];
+	 wire [21:13] prg_aout_tmp = {3'b00_0, ramprgaout};
+	 wire [21:13] prg_ram = {9'b11_1100_000};
+	 wire prg_is_ram = prg_ain >= 'h6000 && prg_ain < 'h8000;
+	 assign prg_aout[21:13] = prg_is_ram ? prg_ram : prg_aout_tmp;
+    assign prg_aout[12:0] = prg_ain[12:0];
+	 assign prg_allow = (prg_ain[15] && !prg_write) || prg_is_ram;
+
+endmodule
+
+module N106(input clk, input ce, input reset,
+            input [31:0] flags,
+            input [15:0] prg_ain, output [21:0] prg_aout,
+            input prg_read, prg_write,                   // Read / write signals
+            input [7:0] prg_din, output [7:0] prg_dout,
+            output prg_allow,                            // Enable access to memory for the specified operation.
+            input [13:0] chr_ain, output [21:0] chr_aout,
+            output chr_allow,                            // Allow write
+            output vram_a10,                             // Value for A10 address line
+            output vram_ce,                              // True if the address should be routed to the internal 2kB VRAM.
+            output irq,
+				output [15:0] audio);
+	 wire nesprg_oe;
+    wire [7:0] neschrdout;
+	 wire neschr_oe;
+	 wire wram_oe;
+	 wire wram_we;
+	 wire prgram_we;
+	 wire chrram_oe;
+	 wire prgram_oe;
+	 wire [18:13] ramprgaout;
+	 wire exp6;
+	 reg [7:0] m2;
+	 wire m2_n = 1;//~ce;  //m2_n not used as clk.  Invert m2 (ce).
+  always @(posedge clk) begin
+    m2[7:1] <= m2[6:0];
+	 m2[0] <= ce;
+  end
+//module MAPN106(              //signal descriptions in powerpak.v
+//    input m2, input m2_n, input clk20, input reset, input nesprg_we, output nesprg_oe, input neschr_rd,
+//    input neschr_wr, input [15:0] prgain, input [13:0] chrain, input [7:0] nesprgdin, input [7:0] ramprgdin, output reg [7:0] nesprgdout,
+//    output [7:0] neschrdout, output neschr_oe, output chrram_we, output chrram_oe, output wram_oe, output wram_we, output prgram_we,
+//    output prgram_oe, output [18:10] ramchraout, output [18:13] ramprgaout, output irq, output ciram_ce, output exp6,
+//    input cfg_boot, input [18:12] cfg_chrmask, input [18:13] cfg_prgmask, input cfg_vertical, input cfg_fourscreen, input cfg_chrram,
+//    input ce, output prg_allow, output [11:0] snd_level, input mapper26);
+    MAPN106 n106(m2[7], m2_n, clk, reset, prg_write, nesprg_oe, 0, 
+		1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
+		neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
+		prgram_oe, chr_aout[18:10], ramprgaout, irq, vram_ce, exp6, 
+		0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
+		ce, audio[15:5]);
+
+    assign chr_aout[21:19] = 3'b100;
+    assign chr_aout[9:0] = chr_ain[9:0];
+	 assign vram_a10 = chr_aout[10];
+	 wire [21:13] prg_aout_tmp = {3'b00_0, ramprgaout};
+	 wire [21:13] prg_ram = {9'b11_1100_000};
+	 wire prg_is_ram = prg_ain >= 'h6000 && prg_ain < 'h8000;
+	 assign prg_aout[21:13] = prg_is_ram ? prg_ram : prg_aout_tmp;
+    assign prg_aout[12:0] = prg_ain[12:0];
+	 assign prg_allow = (prg_ain[15] && !prg_write) || prg_is_ram;
+    assign audio[4:0] = 4'b0;
+
+endmodule
+
+//  - Famicom Disk System
+module MapperFDS(input clk, input ce, input reset,
+                 input [31:0] flags,
+                 input [15:0] prg_ain, output [21:0] prg_aout,
+                 input prg_read, prg_write,                   // Read / write signals
+                 input [7:0] prg_din, output [7:0] prg_dout,
+                 output prg_allow,                          // Enable access to memory for the specified operation.
+                 input [13:0] chr_ain, output [21:0] chr_aout,
+                 output chr_allow,                             // Allow write
+                 output vram_a10,                              // Value for A10 address line
+                 output vram_ce,                               // True if the address should be routed to the internal 2kB VRAM.
+                 output irq,
+                 output [15:0] audio,
+					  input fds_swap);
+	 wire nesprg_oe;
+    wire [7:0] neschrdout;
+	 wire neschr_oe;
+	 wire wram_oe;
+	 wire wram_we;
+	 wire prgram_we;
+	 wire chrram_oe;
+	 wire prgram_oe;
+	 wire exp6;
+	 reg [7:0] m2;
+	 wire m2_n = 1;//~ce;  //m2_n not used as clk.  Invert m2 (ce).
+  always @(posedge clk) begin
+    m2[7:1] <= m2[6:0];
+	 m2[0] <= ce;
+  end
+	 
+//module MAPFDS(              //signal descriptions in powerpak.v
+//    input m2, input m2_n, input clk20, input reset, input nesprg_we, output nesprg_oe, input neschr_rd,
+//    input neschr_wr, input [15:0] prgain, input [13:0] chrain, input [7:0] nesprgdin, input [7:0] ramprgdin, output reg [7:0] nesprgdout,
+//    output [7:0] neschrdout, output neschr_oe, output chrram_we, output chrram_oe, output wram_oe, output wram_we, output prgram_we,
+//    output prgram_oe, output [18:10] ramchraout, output [18:13] ramprgaout, output irq, output ciram_ce, output exp6,
+//    input cfg_boot, input [18:12] cfg_chrmask, input [18:13] cfg_prgmask, input cfg_vertical, input cfg_fourscreen, input cfg_chrram,
+//    input ce, output prg_allow, output [11:0] snd_level);
+    MAPFDS fds(m2[7], m2_n, clk, reset, prg_write, nesprg_oe, 0, 
+		1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
+		neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
+		prgram_oe, chr_aout[18:10], prg_aout[18:13], irq, vram_ce, exp6, 
+		0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
+		ce, fds_swap, prg_allow, audio[15:4]);
+    assign chr_aout[21:19] = 3'b100;
+    assign chr_aout[9:0] = chr_ain[9:0];
+	 assign vram_a10 = chr_aout[10];
+    assign prg_aout[21:19] = 3'b000;
+    assign prg_aout[12:0] = prg_ain[12:0];
+    assign audio[3:0] = 4'b0;
+
+endmodule
+
 module MultiMapper(input clk, input ce, input ppu_ce, input reset,
                    input [19:0] ppuflags,                           // Misc flags from PPU for MMC5 cheating
                    input [31:0] flags,                              // Misc flags from ines header {prg_size(3), chr_size(3), mapper(8)}
@@ -2066,7 +2165,8 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
                    output reg vram_a10,                             // CHR Value for A10 address line
                    output reg vram_ce,                              // CHR True if the address should be routed to the internal 2kB VRAM.
                    output reg irq,
-                   output reg [15:0] audio);                        // External Audio
+                   output reg [15:0] audio,                         // External Audio
+						 input fds_swap);                                 // FDS Disk Swap Pause
   wire mmc0_prg_allow, mmc0_vram_a10, mmc0_vram_ce, mmc0_chr_allow;
   wire [21:0] mmc0_prg_addr, mmc0_chr_addr;
   MMC0 mmc0(clk, ce, flags, prg_ain, mmc0_prg_addr, prg_read, prg_write, prg_din, mmc0_prg_allow,
@@ -2187,6 +2287,28 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   wire nesev_irq;
   NesEvent nesev(clk, ce, reset, prg_ain, nesev_prg_addr, chr_ain, nesev_chr_addr, mmc1_chr_addr[16:13], mmc1_prg_addr, nesev_irq);
   
+  wire vrc6_prg_allow, vrc6_vram_a10, vrc6_vram_ce, vrc6_chr_allow, vrc6_irq;
+  wire [21:0] vrc6_prg_addr, vrc6_chr_addr;
+  wire [15:0] vrc6_audio;
+  wire [7:0] vrc6_prg_dout;
+  VRC6 vrc6(clk, ce, reset, flags, prg_ain, vrc6_prg_addr, prg_read, prg_write, prg_din, vrc6_prg_dout, vrc6_prg_allow,
+                                   chr_ain, vrc6_chr_addr, vrc6_chr_allow, vrc6_vram_a10, vrc6_vram_ce, vrc6_irq, vrc6_audio);
+  
+  wire map19_prg_allow, map19_vram_a10, map19_vram_ce, map19_chr_allow, map19_irq;
+  wire [21:0] map19_prg_addr, map19_chr_addr;
+  wire [15:0] map19_audio;
+  wire [7:0] map19_prg_dout;
+  N106 n106(clk, ce, reset, flags, prg_ain, map19_prg_addr, prg_read, prg_write, prg_din, map19_prg_dout, map19_prg_allow,
+                                   chr_ain, map19_chr_addr, map19_chr_allow, map19_vram_a10, map19_vram_ce, map19_irq, map19_audio);
+
+  wire mapfds_prg_allow, mapfds_vram_a10, mapfds_vram_ce, mapfds_chr_allow, mapfds_irq;
+  wire [21:0] mapfds_prg_addr, mapfds_chr_addr;
+  wire [15:0] mapfds_audio;
+  wire [7:0] mapfds_chr_dout, mapfds_prg_dout;
+  MapperFDS mapfds(clk, ce, reset, flags, prg_ain, mapfds_prg_addr, prg_read, prg_write, prg_din, mapfds_prg_dout, mapfds_prg_allow,
+                                        chr_ain, mapfds_chr_addr, mapfds_chr_allow, mapfds_vram_a10, mapfds_vram_ce, mapfds_irq,
+													 mapfds_audio, fds_swap);
+
   // Mask 
   reg [5:0] prg_mask;
   reg [6:0] chr_mask;
@@ -2300,6 +2422,10 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 
     228: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map228_prg_addr, map228_prg_allow, map228_chr_addr, map228_vram_a10, map228_vram_ce, map228_chr_allow};
     234: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map234_prg_addr, map234_prg_allow, map234_chr_addr, map234_vram_a10, map234_vram_ce, map234_chr_allow};
+    20: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {mapfds_prg_addr, mapfds_prg_allow, mapfds_chr_addr, mapfds_vram_a10, mapfds_vram_ce, mapfds_chr_allow, mapfds_prg_dout, mapfds_irq, mapfds_audio};
+    24,
+    26: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {vrc6_prg_addr, vrc6_prg_allow, vrc6_chr_addr, vrc6_vram_a10, vrc6_vram_ce, vrc6_chr_allow, vrc6_prg_dout, vrc6_irq, vrc6_audio};
+    19: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {map19_prg_addr, map19_prg_allow, map19_chr_addr, map19_vram_a10, map19_vram_ce, map19_chr_allow, map19_prg_dout, map19_irq, map19_audio};
     default: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow} = {mmc0_prg_addr, mmc0_prg_allow, mmc0_chr_addr, mmc0_vram_a10, mmc0_vram_ce, mmc0_chr_allow};
     endcase
     if (prg_aout[21:20] == 2'b00)
