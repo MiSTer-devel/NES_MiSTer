@@ -728,7 +728,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
             match6: nesprgdout=audio_dout;
             default: nesprgdout=ramprgdin;
         endcase
-    assign prg_allow = !match0 & !match1 & !match2 & !match3 & !match4 & !match5 & !match6;
+    assign prg_allow = !match0 & !match1 & !match2 & !match3 & !match4 & !match5 & !match6 & (!nesprg_we | (ramprgaout[18:13]!=6'b0));
 
     reg write_en;
     reg vertical;
