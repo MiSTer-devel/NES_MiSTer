@@ -2137,14 +2137,14 @@ module MapperFDS(input clk, input ce, input reset,
     MAPFDS fds(m2[7], m2_n, clk, reset, prg_write, nesprg_oe, 0, 
 		1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
 		neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
-		prgram_oe, chr_aout[18:10], prg_aout[18:13], irq, vram_ce, exp6, 
+		prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6, 
 		0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
 		ce, fds_swap, prg_allow, audio[15:4]);
     assign chr_aout[21:19] = 3'b100;
     assign chr_aout[9:0] = chr_ain[9:0];
 	 assign vram_a10 = chr_aout[10];
     assign prg_aout[21:19] = 3'b000;
-    assign prg_aout[12:0] = prg_ain[12:0];
+    //assign prg_aout[12:0] = prg_ain[12:0];
     assign audio[3:0] = 4'b0;
 
 endmodule
@@ -2353,6 +2353,10 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 13 = Working
 // 15 = Working
 // 16 = Working minus EEPROM support
+// 19 = Needs testing
+// 20 = Needs testing
+// 24 = Needs testing
+// 26 = Needs testing
 // 28 = Working
 // 34 = Working
 // 41 = Working

@@ -24,19 +24,19 @@ module FME7_sound(
         end else if (ce) begin
             if(wr) begin
                 if(ain[15:13]==3'b110)  //C000
-                    regC<=din;
+                    regC<=din[3:0];
                 if(ain[15:13]==3'b111)  //E000
                 case(regC)
                     0:freq0[7:0]<=din;
-                    1:freq0[11:8]<=din;
+                    1:freq0[11:8]<=din[3:0];
                     2:freq1[7:0]<=din;
-                    3:freq1[11:8]<=din;
+                    3:freq1[11:8]<=din[3:0];
                     4:freq2[7:0]<=din;
-                    5:freq2[11:8]<=din;
-                    7:en<=din;
-                    8:vol0<=din;
-                    9:vol1<=din;
-                    10:vol2<=din;
+                    5:freq2[11:8]<=din[3:0];
+                    7:en<=din[2:0];
+                    8:vol0<=din[3:0];
+                    9:vol1<=din[3:0];
+                    10:vol2<=din[3:0];
                 endcase
             end
             if(count0==freq0) begin
@@ -124,8 +124,8 @@ module MAPVRC6(     //signal descriptions in powerpak.v
     always@(posedge clk20) begin
         if(ce && nesprg_we) begin
             casex({ain[15:12],ain[1:0]})
-                6'b1000xx:prgbank8<=nesprgdin;      //800x
-                6'b1100xx:prgbankC<=nesprgdin;      //C00x
+                6'b1000xx:prgbank8<=nesprgdin[4:0]; //800x
+                6'b1100xx:prgbankC<=nesprgdin[5:0]; //C00x
                 6'b101111:mirror<=nesprgdin[3:2];   //B003
                 6'b110100:chrbank0<=nesprgdin;      //D000
                 6'b110101:chrbank1<=nesprgdin;      //D001
@@ -408,9 +408,9 @@ module MAPN106(     //signal descriptions in powerpak.v
             5'b11001: chr11<=nesprgdin; 
             5'b11010: chr12<=nesprgdin;             //D000
             5'b11011: chr13<=nesprgdin;
-            5'b11100: {mirror,prg89}<=nesprgdin;    //E000
+            5'b11100: {mirror,prg89}<=nesprgdin[6:0];//E000
             5'b11101: {chr_en,prgAB}<=nesprgdin;    //E800
-            5'b11110: prgCD<=nesprgdin;             //F000
+            5'b11110: prgCD<=nesprgdin[5:0];        //F000
             //5'b11111:                             //F800 (sound)
         endcase
     end
@@ -903,8 +903,8 @@ module fds_sound(
                 else        vol_div<=vol_div-1;
             end
         end
-        if(wr & ain==16'h4080 & ~din[7]) vol_speed<=din;
-        if(wr & ain==16'h4080 & din[7]) vol<=din;
+        if(wr & ain==16'h4080 & ~din[7]) vol_speed<=din[5:0];
+        if(wr & ain==16'h4080 & din[7]) vol<=din[5:0];
         else if(vol_clock) begin
             if(vol_dir & ~vol[5]) vol<=vol+1;
             else if(~vol_dir & vol!=0) vol<=vol-1;
@@ -926,8 +926,8 @@ module fds_sound(
                 else sweep_div<=sweep_div-1;
             end
         end
-        if(wr & ain==16'h4084 & ~din[7]) sweep_speed<=din;
-        if(wr & ain==16'h4084 & din[7]) sweep<=din;
+        if(wr & ain==16'h4084 & ~din[7]) sweep_speed<=din[5:0];
+        if(wr & ain==16'h4084 & din[7]) sweep<=din[5:0];
         else if(sweep_clock) begin
             if(sweep_dir & ~sweep[5]) sweep<=sweep+1;
             else if(~sweep_dir & sweep!=0) sweep<=sweep-1;
@@ -971,7 +971,7 @@ module fds_sound(
         end
 
         //if(~mod_en)
-            mod_cnt<=mod_cnt_next;
+            mod_cnt<=mod_cnt_next[15:0];
 
         if(wr & ain==16'h4087 & din[7]) mod_ptr_out<=0;
         else if(/*~mod_en &*/ mod_cnt_next[16]) mod_ptr_out<=mod_ptr_out+1;
@@ -1008,7 +1008,7 @@ module fds_sound(
     always@(posedge clk) begin
 		if (m2) begin
         if(~wave_en)
-            wave_cnt<=wave_cnt_next;
+            wave_cnt<=wave_cnt_next[15:0];
         //if(wr & ain==16'h4083 & din[7])
         //  wave_ptr<=0;
         //else
@@ -1055,7 +1055,7 @@ module fds_sound(
     );
 
     reg [5:0] outA_buf;
-    always@(posedge m2) if(~wave_we & ~wave_en) outA_buf<=outA;
+    always@(posedge m2) if(~wave_we & ~wave_en) outA_buf<=outA[5:0];
     wire [10:0] mul_out=outA_buf*vol_clip;      //6x5 mult
 // 0.8 vol
     wire [6:0] out1=(mastervol!=3)?0:mul_out[10:4]; //{1100 1000 0110 0101} (approximates 1, 2/3, 1/2, 2/5.. try to match VRC6 output levels)
