@@ -780,13 +780,16 @@ module MMC5(input clk, input ce, input reset,
     5'b11_110: prgsel = {      prg_bank_2};                      // $C000-$DFFF mode 3, 8kB (prg_bank_2)
     5'b11_111: prgsel = {1'b1, prg_bank_3};                      // $E000-$FFFF mode 3, 8kB (prg_bank_3)
     endcase
-    prgsel[7] = !prgsel[7]; // 0 means RAM, doh.
+	 //Done below
+    //prgsel[7] = !prgsel[7]; // 0 means RAM, doh.
     
-    // Limit to 64k RAM.
     if (prgsel[7])
-      prgsel[6:3] = 0;
+      prgsel[7] = 0;  //ROM
+    else
+      // Limit to 64k RAM.
+      prgsel[7:3] = 5'b1_1100;  //RAM location for saves
   end
-  assign prg_aout = {1'b0, prgsel, prg_ain[12:0]};    // 8kB banks
+  assign prg_aout = {prgsel[7], prgsel, prg_ain[12:0]};    // 8kB banks
 
   // Registers $5120-$5127 apply to sprite graphics and $5128-$512B for background graphics, but ONLY when 8x16 sprites are enabled.
   // Otherwise, the last set of registers written to (either $5120-$5127 or $5128-$512B) will be used for all graphics.
