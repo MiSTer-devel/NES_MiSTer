@@ -765,7 +765,7 @@ module MMC5(input clk, input ce, input reset,
   reg [7:0] prgsel;
   always @* begin
     casez({prg_mode, prg_ain[15:13]})
-    5'b??_0??: prgsel = {5'b1xxxx, prg_ram_bank};                // $6000-$7FFF all modes
+    5'b??_0??: prgsel = {5'b0xxxx, prg_ram_bank};                // $6000-$7FFF all modes
     5'b00_1??: prgsel = {1'b1, prg_bank_3[6:2], prg_ain[14:13]}; // $8000-$FFFF mode 0, 32kB (prg_bank_3, skip 2 bits)
 
     5'b01_10?: prgsel = {      prg_bank_1[7:1], prg_ain[13]};    // $8000-$BFFF mode 1, 16kB (prg_bank_1, skip 1 bit)
