@@ -123,7 +123,7 @@ parameter CONF_STR4 = {
 	"O8,Aspect ratio,4:3,16:9;",
 	"O12,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
 	"O4,Hide overscan,OFF,ON;",
-	"OAC,Palette,Smooth,Unsaturated-V6,FCEUX,NES Classic,Composite Direct,PC-10,PVM,Wavebeam;",
+	"OCE,Palette,Smooth,Unsaturated-V6,FCEUX,NES Classic,Composite Direct,PC-10,PVM,Wavebeam;",
 	"O9,Swap joysticks,NO,YES;",
 `ifdef DEBUG_AUDIO
 	"OUV,Audio Enable,Both,Internal,External,None;",
@@ -147,7 +147,7 @@ wire [31:0] status;
 wire arm_reset = status[0];
 wire mirroring_osd = status[3];
 wire hide_overscan = status[4];
-wire [2:0] palette2_osd = status[12:10];
+wire [2:0] palette2_osd = status[14:12];
 wire joy_swap = status[9];
 `ifdef DEBUG_AUDIO
 wire ext_audio = ~status[30];
