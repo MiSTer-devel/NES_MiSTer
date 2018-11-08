@@ -658,7 +658,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
     output prgram_we,
     output prgram_oe,
     output [18:10] ramchraout,
-    output [18:13] ramprgaout,
+    output [18:0] ramprgaout,
     output irq,
     output ciram_ce,
     output exp6,
@@ -728,7 +728,8 @@ module MAPFDS(              //signal descriptions in powerpak.v
             match6: nesprgdout=audio_dout;
             default: nesprgdout=ramprgdin;
         endcase
-    assign prg_allow = !match0 & !match1 & !match2 & !match3 & !match4 & !match5 & !match6 & (!nesprg_we | (ramprgaout[18:13]!=6'b0));
+    assign prg_allow = (nesprg_we & (Wstate==2 | (prgain[15]^(&prgain[14:13]))))
+                     | (~nesprg_we & ((prgain[15] & !match3 & !match4) | prgain[15:13]==3));
 
     reg write_en;
     reg vertical;
@@ -831,7 +832,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
         else
             prgbank={4'b0001,prgain[14:13]};
     end
-    assign ramprgaout=prgbank;
+    assign ramprgaout={prgbank,prgain[12:0]};
 
     //mirroring
     assign ramchraout[18:11]={6'd0,chrain[12:11]};
