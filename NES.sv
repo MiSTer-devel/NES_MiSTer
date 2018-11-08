@@ -1,7 +1,7 @@
 // Copyright (c) 2012-2013 Ludvig Strigeus
 // This program is GPL Licensed. See COPYING for the full license.
 // 
-// MiSTer port: Copyright (C) 2017,2018 Sorgelig 
+// MiSTer port: Copyright (C) 2017,2018 Sorgelig
 
 module emu
 (
@@ -124,7 +124,7 @@ parameter CONF_STR4 = {
 	"O8,Aspect ratio,4:3,16:9;",
 	"O12,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
 	"O4,Hide overscan,OFF,ON;",
-	"O5,Palette,FCEUX,Unsaturated-V6;",
+	"OCE,Palette,Smooth,Unsaturated-V6,FCEUX,NES Classic,Composite Direct,PC-10,PVM,Wavebeam;",
 	"O9,Swap joysticks,NO,YES;",
 `ifdef DEBUG_AUDIO
 	"OUV,Audio Enable,Both,Internal,External,None;",
@@ -146,7 +146,7 @@ wire [31:0] status;
 wire arm_reset = status[0];
 wire mirroring_osd = status[3];
 wire hide_overscan = status[4];
-wire palette2_osd = status[5];
+wire [2:0] palette2_osd = status[14:12];
 wire joy_swap = status[9];
 `ifdef DEBUG_AUDIO
 wire ext_audio = ~status[30];
@@ -207,7 +207,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.img_size(img_size),
 
    .ps2_key(ps2_key),
-	
+
 	.ps2_kbd_led_use(0),
 	.ps2_kbd_led_status(0)
 );
@@ -546,7 +546,7 @@ wire [2:0] chr_size = chrrom <= 1  ? 3'd0 : 		// 8KB
 // detect iNES2.0 compliant header
 wire is_nes20 = (ines[7][3:2] == 2'b10);
 // differentiate dirty iNES1.0 headers from proper iNES2.0 ones
-wire is_dirty = !is_nes20 && ((ines[8]  != 0) 
+wire is_dirty = !is_nes20 && ((ines[8]  != 0)
 								  || (ines[9]  != 0)
 								  || (ines[10] != 0)
 								  || (ines[11] != 0)
@@ -554,7 +554,7 @@ wire is_dirty = !is_nes20 && ((ines[8]  != 0)
 								  || (ines[13] != 0)
 								  || (ines[14] != 0)
 								  || (ines[15] != 0));
-  
+
 // Read the mapper number
 wire [7:0] mapper = {is_dirty ? 4'b0000 : ines[7][7:4], ines[6][7:4]};
   
