@@ -1004,7 +1004,7 @@ module fds_sound(
     endcase
     wire [9:0] mod_sweep=(sweep_clip*bias)^10'h200;     //6x5 signed mul
     wire [21:0] mod_freq_mul; //=freq*mod_sweep;
-    mul10x12 mm(m2,freq,mod_sweep,mod_freq_mul);
+    mul10x12 mm(clk,m2,freq,mod_sweep,mod_freq_mul);
     wire [12:0] modulated_freq=mod_freq_mul[21:9];
 
     //waveform step
@@ -1062,7 +1062,7 @@ module fds_sound(
     );
 
     reg [5:0] outA_buf;
-    always@(posedge m2) if(~wave_we & ~wave_en) outA_buf<=outA[5:0];
+    always@(posedge clk) if(m2 & ~wave_we & ~wave_en) outA_buf<=outA[5:0];
     wire [10:0] mul_out=outA_buf*vol_clip;      //6x5 mult
 // 0.8 vol
     wire [6:0] out1=(mastervol!=3)?7'd0:mul_out[10:4]; //{1100 1000 0110 0101} (approximates 1, 2/3, 1/2, 2/5.. try to match VRC6 output levels)
@@ -1086,13 +1086,14 @@ module fds_sound(
 endmodule
 
 //10x12 unsigned multiplier
-module mul10x12(input clk, input [11:0] in12, input [9:0] in10, output reg [21:0] out);
+module mul10x12(input clk, input ce, input [11:0] in12, input [9:0] in10, output reg [21:0] out);
     reg [3:0] count;
     reg [11:0] sr1;
     reg [21:0] sr2;
     wire [10:0] sum=sr2[21:12]+(sr1[0]?in10:11'd0);
     wire [21:0] next={sum,sr2[11:1]};
     always@(posedge clk) begin
+		if(ce) begin
         count<=count+1'd1;
         if(count==0) begin
             sr1<=in12;
@@ -1103,5 +1104,6 @@ module mul10x12(input clk, input [11:0] in12, input [9:0] in10, output reg [21:0
         end
         if(count==12)
             out<=next;
+		end
     end
 endmodule
