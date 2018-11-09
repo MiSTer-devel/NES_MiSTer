@@ -106,7 +106,8 @@ parameter CONF_STR1 = {
 	"NES;;",
 	"-;",
 	"FS,NES;",
-	"-;"
+	"F,BIN,BIOS;",
+	"F,FDS;",
 };
 
 parameter CONF_STR2 = {
@@ -114,11 +115,11 @@ parameter CONF_STR2 = {
 };
 
 parameter CONF_STR3 = {
-	"6,Load state;"
+	"6,Load Backup RAM;"
 };
 
 parameter CONF_STR4 = {
-	"7,Save state;",
+	"7,Save Backup RAM;",
 	"-;",
 	"O8,Aspect ratio,4:3,16:9;",
 	"O12,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
@@ -132,8 +133,6 @@ parameter CONF_STR4 = {
 `endif
 	"O3,Invert mirroring,OFF,ON;",
 	"R0,Reset;",
-	"F,BIN,BIOS;",
-	"F,FDS;",
 	"J,A,B,Select,Start;",
 	"V,v0.85.",`BUILD_DATE
 };
@@ -568,7 +567,7 @@ always @(posedge clk) begin
 		state <= 0;
 		done <= 0;
 		ctr <= 0;
-		mem_addr <= filetype == 8'h0B ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
+		mem_addr <= filetype == 8'h03 ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
 	end else begin
 		case(state)
 		// Read 16 bytes of ines header
@@ -588,11 +587,11 @@ always @(posedge clk) begin
 					mem_addr <= 22'b00_0100_0000_0000_0001_0000;  // Address for FDS skip Header
 					state <= 4;
 					bytes_left <= 21'b1;
-				 end else if (filetype[7:0]==8'h0A) begin // Bios
+				 end else if (filetype[7:0]==8'h02) begin // Bios
 					state <= 4;
 					mem_addr <= 22'b00_0000_0000_0000_0001_0000;  // Address for BIOS skip Header
 					bytes_left <= 21'b1;
-				 end else if (filetype[7:0]==8'h0B) begin // FDS
+				 end else if (filetype[7:0]==8'h03) begin // FDS
 					state <= 4;
 					mem_addr <= 22'b00_0100_0000_0000_0010_0000;  // Address for FDS no Header
 					bytes_left <= 21'b1;
@@ -627,6 +626,8 @@ always @(posedge clk) begin
 			 end else begin
 				done <= 1;
 				bytes_left <= 21'b0;
+				ines[4] <= 8'hFF;//no masking
+				ines[5] <= 8'h00;//0x2000
 				ines[6] <= 8'h40;
 				ines[7] <= 8'h10;
 				ines[8] <= 8'h00;
