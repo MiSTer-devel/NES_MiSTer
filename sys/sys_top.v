@@ -435,7 +435,7 @@ wire vde, hde;
 wire vs_hdmi;
 wire hs_hdmi;
 
-/*
+`ifndef HDMI_LITE
 
 pattern_vg
 #(
@@ -458,7 +458,7 @@ pattern_vg
 	.b_in(0),
 	.vn_out(HDMI_TX_VS),
 	.hn_out(HDMI_TX_HS),
-	.den_out(HDMI_TX_DE),
+	.den_out(hdmi_de),
 	.r_out(hdmi_data[23:16]),
 	.g_out(hdmi_data[15:8]),
 	.b_out(hdmi_data[7:0]),
@@ -467,7 +467,8 @@ pattern_vg
 	.pattern(4),
 	.ramp_step(20'h0333)
 );
-*/
+
+`endif
 
 wire reset;
 sysmem_lite sysmem
@@ -505,8 +506,10 @@ sysmem_lite sysmem
 	.ram2_read(0),
 	.ram2_writedata(0),
 	.ram2_byteenable(0),
-	.ram2_write(0),
+	.ram2_write(0)
 
+`ifdef HDMI_LITE
+	,
 	// HDMI frame buffer
 	.vbuf_clk(clk_ctl),
 	.vbuf_address(vbuf_address),
@@ -518,6 +521,7 @@ sysmem_lite sysmem
 	.vbuf_readdata(vbuf_readdata),
 	.vbuf_readdatavalid(vbuf_readdatavalid),
 	.vbuf_read(vbuf_read)
+	
 );
 
 wire  [27:0] vbuf_address;
@@ -566,6 +570,9 @@ hdmi_lite hdmi_lite
 	.vbuf_readdata(vbuf_readdata),
 	.vbuf_readdatavalid(vbuf_readdatavalid),
 	.vbuf_read(vbuf_read)
+
+`endif
+
 );
 
 `endif

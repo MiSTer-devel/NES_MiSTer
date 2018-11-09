@@ -703,7 +703,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
   always @(posedge clk) if (ce) begin
     if (vram_read_delayed)
       vram_latch <= vram_din;
-    vram_read_delayed = vram_r;
+    vram_read_delayed <= vram_r;
   end
   
   // Value currently being written to video ram

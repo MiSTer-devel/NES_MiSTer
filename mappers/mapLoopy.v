@@ -41,20 +41,20 @@ module FME7_sound(
             end
             if(count0==freq0) begin
                 count0<=0;
-                duty0<=duty0+1;
+                duty0<=duty0+1'd1;
             end else
-                count0<=count0+1;
+                count0<=count0+1'd1;
 
             if(count1==freq1) begin
                 count1<=0;
-                duty1<=duty1+1;
+                duty1<=duty1+1'd1;
             end else
-                count1<=count1+1;
+                count1<=count1+1'd1;
             if(count2==freq2) begin
                 count2<=0;
-                duty2<=duty2+1;
+                duty2<=duty2+1'd1;
             end else
-                count2<=count2+1;
+                count2<=count2+1'd1;
         end
     end
     
@@ -177,14 +177,14 @@ module MAPVRC6(     //signal descriptions in powerpak.v
             irqcnt<=irqlatch;
         end else if(ce && irqE) begin
             if(scalar!=0)
-                scalar<=scalar-1;
+                scalar<=scalar-1'd1;
             else begin
-                scalar<=(~line[1])?113:112;
-                line<=line[1]?0:line+1;
+                scalar<=(~line[1])?7'd113:7'd112;
+                line<=line[1]?2'd0:line+1'd1;
             end
             if(irqclk) begin
                 if(irqcnt==255)     irqcnt<=irqlatch;
-                else            irqcnt<=irqcnt+1;
+                else            irqcnt<=irqcnt+1'd1;
             end
         end
     end
@@ -221,7 +221,7 @@ module MAPVRC6(     //signal descriptions in powerpak.v
     assign chrram_oe=neschr_rd & !chrain[13];
 
     assign neschr_oe=0;
-    assign neschrdout=8'bx;
+    assign neschrdout=0;
 
     assign wram_oe=m2_n & ~nesprg_we & prgain[15:13]=='b011;
     assign wram_we=m2_n &  nesprg_we & prgain[15:13]=='b011;
@@ -302,30 +302,30 @@ module vrc6sound(
             end
             if(en0) begin
                 if(div0!=0)
-                    div0<=div0-1;
+                    div0<=div0-1'd1;
                 else begin
                     div0<=freq0;
-                    duty0cnt<=duty0cnt+1;
+                    duty0cnt<=duty0cnt+1'd1;
                 end
             end
             if(en1) begin
                 if(div1!=0)
-                    div1<=div1-1;
+                    div1<=div1-1'd1;
                 else begin
                     div1<=freq1;
-                    duty1cnt<=duty1cnt+1;
+                    duty1cnt<=duty1cnt+1'd1;
                 end
             end
             if(en2) begin
                 if(div2!=0)
-                    div2<=div2-1;
+                    div2<=div2-1'd1;
                 else begin
                     div2<={freq2,1'b1};
                     if(duty2cnt==6) begin
                         duty2cnt<=0;
                         acc<=0;
                     end else begin
-                        duty2cnt<=duty2cnt+1;
+                        duty2cnt<=duty2cnt+1'd1;
                         acc<=acc+vol2;
                     end
                 end
@@ -335,9 +335,9 @@ module vrc6sound(
 
     wire [4:0] duty0pos=duty0cnt+{1'b1,~duty0};
     wire [4:0] duty1pos=duty1cnt+{1'b1,~duty1};
-    wire [3:0] ch0=((~duty0pos[4]|mode0)&en0)?vol0:0;
-    wire [3:0] ch1=((~duty1pos[4]|mode1)&en1)?vol1:0;
-    wire [4:0] ch2=en2?acc[7:3]:0;
+    wire [3:0] ch0=((~duty0pos[4]|mode0)&en0)?vol0:4'd0;
+    wire [3:0] ch1=((~duty1pos[4]|mode1)&en1)?vol1:4'd0;
+    wire [4:0] ch2=en2?acc[7:3]:5'd0;
 //    assign out=ch0+ch1+ch2;
     assign outSq1=ch0;
     assign outSq2=ch1;
@@ -389,6 +389,8 @@ module MAPN106(     //signal descriptions in powerpak.v
 	 output [15:0] snd_level
 );
 
+	assign exp6 = 0;
+
     reg [1:0] chr_en;
     reg [5:0] prg89,prgAB,prgCD;
     reg [7:0] chr0,chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr10,chr11,chr12,chr13;
@@ -417,7 +419,7 @@ module MAPN106(     //signal descriptions in powerpak.v
 
     //IRQ
     reg [15:0] count;
-    wire [15:0] count_next=count+1;
+    wire [15:0] count_next=count+1'd1;
     wire countup=count[15] & ~&count[14:0];
     reg timeout;
     assign irq=timeout;
@@ -545,7 +547,7 @@ module namco106_sound(
         if(wr & ain[15:11]==5'b11111)           //F800..FFFF
             {autoinc,ram_ain}<=din;
         else if(ain[15:11]==5'b01001 & autoinc) //4800..4FFF
-            ram_ain<=ram_ain+1;     
+            ram_ain<=ram_ain+1'd1;     
 		end
     end
 
@@ -562,29 +564,29 @@ module namco106_sound(
     reg [3:0] count45,cnt45;
     always@(posedge clk20)
 		if (m2) begin
-        count45<=(count45==14)?0:count45+1;
+        count45<=(count45==14)?4'd0:count45+1'd1;
 		end
     always@(posedge clk20) begin
         cnt45<=count45;
         if(cnt45[1:0]==0) cycle<=0;             // this gives 45 21.4M clocks per channel
-        else if(cycle!=7) cycle<=cycle+1;
+        else if(cycle!=7) cycle<=cycle+1'd1;
         case(cycle)
             1: {carry, cnt_L[ch]}<=cnt_L[ch][7:0]+ram_dout;
             2: {carry, cnt_M[ch]}<=cnt_M[ch][7:0]+ram_dout+carry;
             3: begin
                 cnt_H[ch]<=sum_H[1:0];
                 if(sum_H[2])
-                    sample_pos[ch]<=(sample_pos[ch]=={ram_dout[4:2]^3'b111,2'b11})?0:(sample_pos[ch]+1);
+                    sample_pos[ch]<=(sample_pos[ch]=={ram_dout[4:2]^3'b111,2'b11})?5'd0:(sample_pos[ch]+1'd1);
             end
             4: addr_lsb<=sample_addr[0];
             5: sample<=addr_lsb?ram_dout[7:4]:ram_dout[3:0];
             6: begin
                 if(ch==7) begin
-                    ch<=ram_dout[6:4]^7;
+                    ch<=~ram_dout[6:4];
                     out_acc<=0;
                     out<=sum;
                 end else begin
-                    ch<=ch+1;
+                    ch<=ch+1'd1;
                     out_acc<=sum;
                 end
             end
@@ -676,6 +678,10 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	 output [11:0] snd_level
 );
     localparam WRITE_LO=16'hF4CD, WRITE_HI=16'hF4CE, READ_LO=16'hF4D0, READ_HI=16'hF4D1;
+
+	 assign neschrdout = 0;
+	 assign neschr_oe = 0;
+	 assign exp6 = 0;
 
     wire disk_eject;
     reg timer_irq;
@@ -785,7 +791,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
         if((nesprg_we & prgain==16'h4022) | (timer_irq_trip & timer_irq_repeat))
             timer<=timerlatch;
         else if(timer_irq_en & timer!=0)
-            timer<=timer-1;
+            timer<=timer-1'd1;
 		end
 
 		if (m2) begin
@@ -800,7 +806,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
     always@(posedge clk20) begin
 		if (m2) begin
         if(diskreset)                   diskpos<=0;
-        else if(Rstate==2 & !diskend)   diskpos<=diskpos+1;
+        else if(Rstate==2 & !diskend)   diskpos<=diskpos+1'd1;
 		 end
     end
 
@@ -809,16 +815,16 @@ module MAPFDS(              //signal descriptions in powerpak.v
     //disk eject:   toggle flag continuously except when select button is held
     reg [2:0] control_cnt;
     reg [21:0] clkcount;
-    reg button;
+    //reg button;
     assign disk_eject=clkcount[21] | fds_swap;
 //    assign disk_eject=clkcount[21] | button;
     always@(posedge clk20) begin
 		if (ce) begin
-        clkcount<=clkcount+1;
+        clkcount<=clkcount+1'd1;
         if(prgain==16'h4016) begin
             if(nesprg_we)                           control_cnt<=0;
-            else if(~nesprg_we & control_cnt!=7)    control_cnt<=control_cnt+1;
-            if(~nesprg_we & control_cnt==2)          button<=|nesprgdin[1:0];
+            else if(~nesprg_we & control_cnt!=7)    control_cnt<=control_cnt+1'd1;
+            //if(~nesprg_we & control_cnt==2)          button<=|nesprgdin[1:0];
         end
 		end
     end
@@ -898,17 +904,17 @@ module fds_sound(
 		if (m2) begin
         if(~env_en) begin
             if(env_div==0)  env_div<={env_speed,3'b111};
-            else        env_div<=env_div-1;
+            else        env_div<=env_div-1'd1;
             if(env_div==8 & ~vol_en) begin
                 if(vol_div==0)  vol_div<=vol_speed;
-                else        vol_div<=vol_div-1;
+                else        vol_div<=vol_div-1'd1;
             end
         end
         if(wr & ain==16'h4080 & ~din[7]) vol_speed<=din[5:0];
         if(wr & ain==16'h4080 & din[7]) vol<=din[5:0];
         else if(vol_clock) begin
-            if(vol_dir & ~vol[5]) vol<=vol+1;
-            else if(~vol_dir & vol!=0) vol<=vol-1;
+            if(vol_dir & ~vol[5]) vol<=vol+1'd1;
+            else if(~vol_dir & vol!=0) vol<=vol-1'd1;
         end 
 		end
         
@@ -924,14 +930,14 @@ module fds_sound(
         if(~env_en) begin
             if(env_div==8 & ~sweep_en) begin
                 if(sweep_div==0) sweep_div<=sweep_speed;
-                else sweep_div<=sweep_div-1;
+                else sweep_div<=sweep_div-1'd1;
             end
         end
         if(wr & ain==16'h4084 & ~din[7]) sweep_speed<=din[5:0];
         if(wr & ain==16'h4084 & din[7]) sweep<=din[5:0];
         else if(sweep_clock) begin
-            if(sweep_dir & ~sweep[5]) sweep<=sweep+1;
-            else if(~sweep_dir & sweep!=0) sweep<=sweep-1;
+            if(sweep_dir & ~sweep[5]) sweep<=sweep+1'd1;
+            else if(~sweep_dir & sweep!=0) sweep<=sweep-1'd1;
         end 
 		end
     end
@@ -968,14 +974,14 @@ module fds_sound(
 		if (m2) begin
         if(wr) begin
             if(ain==16'h4087 & din[7])      mod_ptr_in<=0;
-            else if(ain==16'h4088 & mod_en)     mod_ptr_in<=mod_ptr_in+1;
+            else if(ain==16'h4088 & mod_en)     mod_ptr_in<=mod_ptr_in+1'd1;
         end
 
         //if(~mod_en)
             mod_cnt<=mod_cnt_next[15:0];
 
         if(wr & ain==16'h4087 & din[7]) mod_ptr_out<=0;
-        else if(/*~mod_en &*/ mod_cnt_next[16]) mod_ptr_out<=mod_ptr_out+1;
+        else if(/*~mod_en &*/ mod_cnt_next[16]) mod_ptr_out<=mod_ptr_out+1'd1;
 
         if(wr & (ain==16'h4085 | ain==16'h4087) & din[7])
             bias<=0;
@@ -992,13 +998,13 @@ module fds_sound(
         2:bias_inc=2;
         3:bias_inc=4;
         4:bias_inc=0;
-        5:bias_inc=64-4;
-        6:bias_inc=64-2;
-        7:bias_inc=64-1;
+        5:bias_inc=-6'd4;
+        6:bias_inc=-6'd2;
+        7:bias_inc=-6'd1;
     endcase
     wire [9:0] mod_sweep=(sweep_clip*bias)^10'h200;     //6x5 signed mul
     wire [21:0] mod_freq_mul; //=freq*mod_sweep;
-    mul10x12 mm(m2,freq,mod_sweep,mod_freq_mul);
+    mul10x12 mm(clk,m2,freq,mod_sweep,mod_freq_mul);
     wire [12:0] modulated_freq=mod_freq_mul[21:9];
 
     //waveform step
@@ -1014,7 +1020,7 @@ module fds_sound(
         //  wave_ptr<=0;
         //else
         if(~wave_en & wave_cnt_next[16])
-            wave_ptr<=wave_ptr+1;
+            wave_ptr<=wave_ptr+1'd1;
 		end
     end
 
@@ -1056,13 +1062,13 @@ module fds_sound(
     );
 
     reg [5:0] outA_buf;
-    always@(posedge m2) if(~wave_we & ~wave_en) outA_buf<=outA[5:0];
+    always@(posedge clk) if(m2 & ~wave_we & ~wave_en) outA_buf<=outA[5:0];
     wire [10:0] mul_out=outA_buf*vol_clip;      //6x5 mult
 // 0.8 vol
-    wire [6:0] out1=(mastervol!=3)?0:mul_out[10:4]; //{1100 1000 0110 0101} (approximates 1, 2/3, 1/2, 2/5.. try to match VRC6 output levels)
-    wire [8:0] out2=out1+((mastervol!=2)?0:mul_out[10:3]);
-    wire [9:0] out4=out2+((mastervol==1)?0:mul_out[10:2]);
-    assign sndout=out4+((mastervol[1])?0:mul_out[10:1]);
+    wire [6:0] out1=(mastervol!=3)?7'd0:mul_out[10:4]; //{1100 1000 0110 0101} (approximates 1, 2/3, 1/2, 2/5.. try to match VRC6 output levels)
+    wire [8:0] out2=out1+((mastervol!=2)?9'd0:mul_out[10:3]);
+    wire [9:0] out4=out2+((mastervol==1)?10'd0:mul_out[10:2]);
+    assign sndout=out4+((mastervol[1])?12'd0:mul_out[10:1]);
 /*
 // 2/3 vol
     wire [6:0] out1=(~^mastervol)?0:mul_out[10:4];  //{1010 0111 0101 0100} (approximates 1, 2/3, 1/2, 2/5.. try to match VRC6 output levels)
@@ -1080,14 +1086,15 @@ module fds_sound(
 endmodule
 
 //10x12 unsigned multiplier
-module mul10x12(input clk, input [11:0] in12, input [9:0] in10, output reg [21:0] out);
+module mul10x12(input clk, input ce, input [11:0] in12, input [9:0] in10, output reg [21:0] out);
     reg [3:0] count;
     reg [11:0] sr1;
     reg [21:0] sr2;
-    wire [10:0] sum=sr2[21:12]+(sr1[0]?in10:0);
+    wire [10:0] sum=sr2[21:12]+(sr1[0]?in10:11'd0);
     wire [21:0] next={sum,sr2[11:1]};
     always@(posedge clk) begin
-        count<=count+1;
+		if(ce) begin
+        count<=count+1'd1;
         if(count==0) begin
             sr1<=in12;
             sr2<=0;
@@ -1097,5 +1104,6 @@ module mul10x12(input clk, input [11:0] in12, input [9:0] in10, output reg [21:0
         end
         if(count==12)
             out<=next;
+		end
     end
 endmodule
