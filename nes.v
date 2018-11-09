@@ -324,7 +324,7 @@ module NES(input clk, input reset, input ce,
 
   always @* begin
     if (reset)
-		from_data_bus <= 0;
+		from_data_bus = 0;
     else if (apu_cs) begin
       if (joypad1_cs)
         from_data_bus = {7'b0100000, joypad_data[0]};

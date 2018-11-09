@@ -221,7 +221,7 @@ module MAPVRC6(     //signal descriptions in powerpak.v
     assign chrram_oe=neschr_rd & !chrain[13];
 
     assign neschr_oe=0;
-    assign neschrdout=8'bx;
+    assign neschrdout=0;
 
     assign wram_oe=m2_n & ~nesprg_we & prgain[15:13]=='b011;
     assign wram_we=m2_n &  nesprg_we & prgain[15:13]=='b011;

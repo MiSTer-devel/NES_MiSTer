@@ -617,7 +617,7 @@ module MMC5(input clk, input ce, input reset,
         10'h12a: chr_bank_a  <= {upper_chr_bank_bits, prg_din};
         10'h12b: chr_bank_b  <= {upper_chr_bank_bits, prg_din};
         10'h130: upper_chr_bank_bits <= prg_din[1:0];
-        10'h200: {vsplit_enable, vsplit_side, vsplit_startstop} = {prg_din[7:6], prg_din[4:0]};
+        10'h200: {vsplit_enable, vsplit_side, vsplit_startstop} <= {prg_din[7:6], prg_din[4:0]};
         10'h201: vsplit_scroll <= prg_din;
         10'h202: vsplit_bank <= prg_din;
         10'h203: irq_scanline <= prg_din;
@@ -883,8 +883,6 @@ module Rambo1(input clk, input ce, input reset,
   // Mapper has vram_a10 wired to CHR A17
   wire mapper64 = (flags[7:0] == 64);
 
-  reg is_interrupt;  // Not a reg!
-  
   // This code detects rising edges on a12.
   reg old_a12_edge;
   reg [1:0] a12_ctr;
@@ -943,8 +941,8 @@ module Rambo1(input clk, input ce, input reset,
       3'b11_1: irq_enable <= 1;                           // IRQ enable ($E001-$FFFF, odd)
       endcase
     end
-    is_interrupt = irq_cycle_mode ? (cycle_counter == 3) : a12_edge;
-    if (is_interrupt) begin
+
+    if (irq_cycle_mode ? (cycle_counter == 3) : a12_edge) begin
       if (irq_reload || counter == 0) begin
         counter <= irq_latch;
         want_irq <= irq_reload;
