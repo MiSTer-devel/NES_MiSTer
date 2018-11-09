@@ -129,15 +129,22 @@ library IEEE;
 
 entity T65 is
   port(
-    Mode    : in  std_logic_vector(1 downto 0);      -- "00" => 6502, "01" => 65C02, "10" => 65C816
+    Mode    : in  std_logic_vector(1 downto 0); -- "00" => 6502, "01" => 65C02, "10" => 65C816
+    BCD_en  : in  std_logic := '1';
+
     Res_n   : in  std_logic;
-    Enable  : in  std_logic;
     Clk     : in  std_logic;
-    Rdy     : in  std_logic;
-    Abort_n : in  std_logic;
-    IRQ_n   : in  std_logic;
-    NMI_n   : in  std_logic;
-    SO_n    : in  std_logic;
+    Enable  : in  std_logic := '1';
+
+    A       : out std_logic_vector(23 downto 0);
+    DI      : in  std_logic_vector(7 downto 0);
+    DO      : out std_logic_vector(7 downto 0);
+
+    Rdy     : in  std_logic := '1';
+    Abort_n : in  std_logic := '1';
+    IRQ_n   : in  std_logic := '1';
+    NMI_n   : in  std_logic := '1';
+    SO_n    : in  std_logic := '1';
     R_W_n   : out std_logic;
     Sync    : out std_logic;
     EF      : out std_logic;
@@ -147,11 +154,9 @@ entity T65 is
     VP_n    : out std_logic;
     VDA     : out std_logic;
     VPA     : out std_logic;
-    A       : out std_logic_vector(23 downto 0);
-    DI      : in  std_logic_vector(7 downto 0);
-    DO      : out std_logic_vector(7 downto 0);
+
     DEBUG   : out T_t65_dbg;
-	 NMI_ack : out std_logic
+    NMI_ack : out std_logic
   );
 end T65;
 
@@ -175,6 +180,7 @@ architecture rtl of T65 is
   signal MCycle             : std_logic_vector(2 downto 0);
 
   signal Mode_r             : std_logic_vector(1 downto 0);
+  signal BCD_en_r           : std_logic;
   signal ALU_Op_r           : T_ALU_Op;
   signal Write_Data_r       : T_Write_Data;
   signal Set_Addr_To_r      : T_Set_Addr_To;
@@ -295,6 +301,7 @@ begin
   alu : entity work.T65_ALU
     port map(
       Mode => Mode_r,
+      BCD_en => BCD_en_r,
       Op => ALU_Op_r,
       BusA => BusA_r,
       BusB => BusB,
@@ -326,6 +333,7 @@ begin
       DBR <= (others => '0');
 
       Mode_r <= (others => '0');
+      BCD_en_r <= '1';
       ALU_Op_r <= ALU_OP_BIT;
       Write_Data_r <= Write_Data_DL;
       Set_Addr_To_r <= Set_Addr_To_PBR;
@@ -348,6 +356,7 @@ begin
 
           if MCycle  = "000" then
             Mode_r <= Mode;
+            BCD_en_r <= BCD_en;
 
             if IRQCycle = '0' and NMICycle = '0' then
               PC <= PC + 1;

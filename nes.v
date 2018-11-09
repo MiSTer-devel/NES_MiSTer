@@ -177,17 +177,17 @@ module NES(input clk, input reset, input ce,
   wire apu_ce = ce && (cpu_cycle_counter == 2);
 
   // -- CPU
-  wire [23:0] cpu_addr;
+  wire [15:0] cpu_addr;
   wire cpu_rnw;
-  wire cpu_mr = cpu_rnw, cpu_mw = ~cpu_rnw;
   wire pause_cpu;
   reg apu_irq_delayed;
   reg mapper_irq_delayed;
-  //CPU cpu(clk, apu_ce && !pause_cpu, reset, from_data_bus, apu_irq_delayed | mapper_irq_delayed, nmi_active, cpu_dout, cpu_addr, cpu_mr, cpu_mw);
   
 	T65 cpu
 	(
 		.mode(0),
+		.BCD_en(0),
+
 		.res_n(~reset),
 		.clk(clk),
 		.enable(apu_ce && !pause_cpu),
@@ -198,13 +198,9 @@ module NES(input clk, input reset, input ce,
 
 		.A(cpu_addr),
 		.DI(cpu_rnw ? from_data_bus : cpu_dout),
-		.DO(cpu_dout),
-		
-		.rdy(1),
-		.abort_n(1),
-		.SO_n(1)
+		.DO(cpu_dout)
 	);
-  
+
 
   // -- DMA
   wire [15:0] dma_aout;
@@ -215,16 +211,16 @@ module NES(input clk, input reset, input ce,
   wire [15:0] apu_dma_addr;
 
   // Determine the values on the bus outgoing from the CPU chip (after DMA / APU)
-  wire [15:0] addr = dma_aout_enable ? dma_aout : cpu_addr[15:0];
+  wire [15:0] addr = dma_aout_enable ? dma_aout : cpu_addr;
   wire [7:0]  dbus = dma_aout_enable ? dma_data_to_ram : cpu_dout;
-  wire mr_int      = dma_aout_enable ? dma_read : cpu_mr;
-  wire mw_int      = dma_aout_enable ? !dma_read : cpu_mw;
+  wire mr_int      = dma_aout_enable ? dma_read : cpu_rnw;
+  wire mw_int      = dma_aout_enable ? !dma_read : !cpu_rnw;
 
   DmaController dma(clk, apu_ce, reset, 
                     odd_or_even,                    // Even or odd cycle
                     (addr == 'h4014 && mw_int),     // Sprite trigger
                     apu_dma_request,                // DMC Trigger
-                    cpu_mr,                         // CPU in a read cycle?
+                    cpu_rnw,                        // CPU in a read cycle?
                     cpu_dout,                       // Data from cpu
                     from_data_bus,                  // Data from RAM etc.
                     apu_dma_addr,                   // DMC addr
