@@ -173,6 +173,7 @@ wire        img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
 wire [7:0]  filetype;
+wire [24:0] ioctl_addr;
 
 hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + 3)) hps_io
 (
@@ -189,6 +190,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
    .status(status),
 
 	.ioctl_download(downloading),
+	.ioctl_addr(ioctl_addr),
 	.ioctl_wr(loader_clk),
 	.ioctl_dout(loader_input),
 	.ioctl_wait(0),
@@ -349,6 +351,15 @@ NES nes
 
 assign SDRAM_CKE         = 1'b1;
 
+wire [7:0] xor_data;
+dpram #("fdspatch.mif", 13) biospatch
+(
+	.clock_a(clk),
+	.clock_b(clk),
+	.address_a(ioctl_addr[12:0]),
+	.q_a(xor_data)
+);
+
 // loader_write -> clock when data available
 reg loader_write_mem;
 reg [7:0] loader_write_data_mem;
@@ -360,7 +371,7 @@ always @(posedge clk) begin
 	if(loader_write) begin
 		loader_write_triggered <= 1'b1;
 		loader_addr_mem <= loader_addr;
-		loader_write_data_mem <= loader_write_data;
+		loader_write_data_mem <= (filetype == 2) ? loader_write_data ^ xor_data : loader_write_data;
 	end
 
 	if(nes_ce == 3) begin
@@ -561,7 +572,7 @@ wire [7:0] mapper = {is_dirty ? 4'b0000 : ines[7][7:4], ines[6][7:4]};
 // ines[6][0] is mirroring
 // ines[6][3] is 4 screen mode
 assign mapper_flags = {15'b0, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
-  
+
 always @(posedge clk) begin
 	if (reset) begin
 		state <= 0;
