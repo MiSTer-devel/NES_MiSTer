@@ -174,15 +174,37 @@ module NES(input clk, input reset, input ce,
       nmi_active <= nmi;
   end
 
-  wire apu_ce =        ce && (cpu_cycle_counter == 2);
+  wire apu_ce = ce && (cpu_cycle_counter == 2);
 
   // -- CPU
-  wire [15:0] cpu_addr;
-  wire cpu_mr, cpu_mw;
+  wire [23:0] cpu_addr;
+  wire cpu_rnw;
+  wire cpu_mr = cpu_rnw, cpu_mw = ~cpu_rnw;
   wire pause_cpu;
   reg apu_irq_delayed;
   reg mapper_irq_delayed;
-  CPU cpu(clk, apu_ce && !pause_cpu, reset, from_data_bus, apu_irq_delayed | mapper_irq_delayed, nmi_active, cpu_dout, cpu_addr, cpu_mr, cpu_mw);
+  //CPU cpu(clk, apu_ce && !pause_cpu, reset, from_data_bus, apu_irq_delayed | mapper_irq_delayed, nmi_active, cpu_dout, cpu_addr, cpu_mr, cpu_mw);
+  
+	T65 cpu
+	(
+		.mode(0),
+		.res_n(~reset),
+		.clk(clk),
+		.enable(apu_ce && !pause_cpu),
+
+		.IRQ_n(~(apu_irq_delayed | mapper_irq_delayed)),
+		.NMI_n(~nmi_active),
+		.R_W_n(cpu_rnw),
+
+		.A(cpu_addr),
+		.DI(cpu_rnw ? from_data_bus : cpu_dout),
+		.DO(cpu_dout),
+		
+		.rdy(1),
+		.abort_n(1),
+		.SO_n(1)
+	);
+  
 
   // -- DMA
   wire [15:0] dma_aout;
@@ -193,7 +215,7 @@ module NES(input clk, input reset, input ce,
   wire [15:0] apu_dma_addr;
 
   // Determine the values on the bus outgoing from the CPU chip (after DMA / APU)
-  wire [15:0] addr = dma_aout_enable ? dma_aout : cpu_addr;
+  wire [15:0] addr = dma_aout_enable ? dma_aout : cpu_addr[15:0];
   wire [7:0]  dbus = dma_aout_enable ? dma_data_to_ram : cpu_dout;
   wire mr_int      = dma_aout_enable ? dma_read : cpu_mr;
   wire mw_int      = dma_aout_enable ? !dma_read : cpu_mw;
