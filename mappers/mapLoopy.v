@@ -119,8 +119,11 @@ module MAPVRC6(     //signal descriptions in powerpak.v
     reg [5:0] prgbankC;
     reg [7:0] chrbank0, chrbank1, chrbank2, chrbank3, chrbank4, chrbank5, chrbank6, chrbank7;
     reg [1:0] mirror;
-    reg [7:0] irqlatch;
-    reg irqM,irqE,irqA;
+    //reg [7:0] irqlatch;
+    //reg irqM,irqE,irqA;
+	 wire irql = {ain[15:12],ain[1:0]}==6'b111100;
+	 wire irqc = {ain[15:12],ain[1:0]}==6'b111101;
+	 wire irqa = {ain[15:12],ain[1:0]}==6'b111110;
     always@(posedge clk20) begin
         if(ce && nesprg_we) begin
             casex({ain[15:12],ain[1:0]})
@@ -135,8 +138,8 @@ module MAPVRC6(     //signal descriptions in powerpak.v
                 6'b111001:chrbank5<=nesprgdin;      //E001
                 6'b111010:chrbank6<=nesprgdin;      //E002
                 6'b111011:chrbank7<=nesprgdin;      //E003
-                6'b111100:irqlatch<=nesprgdin;      //F000
-                6'b111101:{irqM,irqA}<={nesprgdin[2],nesprgdin[0]}; //F001
+                //6'b111100:irqlatch<=nesprgdin;      //F000
+                //6'b111101:{irqM,irqA}<={nesprgdin[2],nesprgdin[0]}; //F001
             endcase
         end
     end
@@ -163,50 +166,8 @@ module MAPVRC6(     //signal descriptions in powerpak.v
         endcase
     end
 
-    //IRQ
-    reg [7:0] irqcnt;
-    reg timeout;
-    reg [6:0] scalar;
-    reg [1:0] line;
-    wire irqclk=irqM|(scalar==0);
-    wire setE=nesprg_we & {ain[15:12],ain[1:0]}==6'b111101 & nesprgdin[1];
-    always@(posedge clk20) begin
-        if(setE) begin
-            scalar<=113;
-            line<=0;
-            irqcnt<=irqlatch;
-        end else if(ce && irqE) begin
-            if(scalar!=0)
-                scalar<=scalar-1'd1;
-            else begin
-                scalar<=(~line[1])?7'd113:7'd112;
-                line<=line[1]?2'd0:line+1'd1;
-            end
-            if(irqclk) begin
-                if(irqcnt==255)     irqcnt<=irqlatch;
-                else            irqcnt<=irqcnt+1'd1;
-            end
-        end
-    end
-    always@(posedge clk20) begin
-        if(reset) begin
-            irqE<=0;
-            timeout<=0;
-        end else if (ce) begin
-            if(nesprg_we & ain[15:12]==15 & ^ain[1:0]) //write Fxx1 or Fxx2
-                timeout<=0;
-            else if(irqclk & irqcnt==255)
-                timeout<=1;
-
-            if(nesprg_we & {ain[15:12],ain[1:0]}==6'b111101) //write Fxx1
-                irqE<=nesprgdin[1];
-            else if(nesprg_we & {ain[15:12],ain[1:0]}==6'b111110) //write Fxx2
-                irqE<=irqA;
-        end
-    end
-
-    assign irq=timeout & irqE;
-
+	 vrcIRQ vrc6irq(clk20,reset,nesprg_we,irql,irqc,irqa,nesprgdin,irq,ce);
+	 
 //mirroring
     assign ramchraout[10]=!chrain[13] ? chrbank[10] : ((mirror==0 & chrain[10]) | (mirror==1 & chrain[11]) | (mirror==3));
     assign ramchraout[11]=chrbank[11];
@@ -250,6 +211,73 @@ ApuLookupTable lookup(clk20,
 							 {3'b0, vrc6saw_out},
                       snd_level);
 
+endmodule
+
+module vrcIRQ(
+    input clk20,
+    input reset,
+    input nesprg_we,
+	 input irql,
+	 input irqc,
+	 input irqa,
+    input [7:0] nesprgdin,
+    output irq,
+	 input ce
+);
+    reg [7:0] irqlatch;
+    reg irqM,irqE,irqA;
+    always@(posedge clk20) begin
+        if(ce && nesprg_we) begin
+            if (irql)
+				    irqlatch<=nesprgdin;      //F000
+				else if (irqc)
+                {irqM,irqA}<={nesprgdin[2],nesprgdin[0]}; //F001
+        end
+    end
+
+    //IRQ
+    reg [7:0] irqcnt;
+    reg timeout;
+    reg [6:0] scalar;
+    reg [1:0] line;
+    wire irqclk=irqM|(scalar==0);
+    wire setE=nesprg_we & irqc & nesprgdin[1];
+    always@(posedge clk20) begin
+        if(setE) begin
+            scalar<=113;
+            line<=0;
+            irqcnt<=irqlatch;
+        end else if(ce && irqE) begin
+            if(scalar!=0)
+                scalar<=scalar-1'd1;
+            else begin
+                scalar<=(~line[1])?7'd113:7'd112;
+                line<=line[1]?2'd0:line+1'd1;
+            end
+            if(irqclk) begin
+                if(irqcnt==255)     irqcnt<=irqlatch;
+                else            irqcnt<=irqcnt+1'd1;
+            end
+        end
+    end
+    always@(posedge clk20) begin
+        if(reset) begin
+            irqE<=0;
+            timeout<=0;
+        end else if (ce) begin
+            if(nesprg_we & (irqc | irqa)) //write Fxx1 or Fxx2
+                timeout<=0;
+            else if(irqclk & irqcnt==255)
+                timeout<=1;
+
+            if(nesprg_we & irqc) //write Fxx1
+                irqE<=nesprgdin[1];
+            else if(nesprg_we & irqa) //write Fxx2
+                irqE<=irqA;
+        end
+    end
+
+    assign irq=timeout & irqE;
 endmodule
 
 

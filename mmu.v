@@ -2043,6 +2043,94 @@ module VRC6(input clk, input ce, input reset,
 
 endmodule
 
+module VRC7(input clk, input ce, input reset,
+            input [31:0] flags,
+            input [15:0] prg_ain, output [21:0] prg_aout,
+            input prg_read, prg_write,                   // Read / write signals
+            input [7:0] prg_din, output [7:0] prg_dout,
+            output prg_allow,                            // Enable access to memory for the specified operation.
+            input [13:0] chr_ain, output [21:0] chr_aout,
+            output chr_allow,                            // Allow write
+            output vram_a10,                             // Value for A10 address line
+            output vram_ce,                              // True if the address should be routed to the internal 2kB VRAM.
+            output irq,
+				output [15:0] audio);
+				
+    assign chr_aout[21:18] = 4'b1000;
+    assign chr_aout[9:0] = chr_ain[9:0];
+	 assign chr_aout[17:11] = chrbank[17:11];
+    assign chr_aout[10]=!chr_ain[13] ? chrbank[10] : ((mirror==0 & chr_ain[10]) | (mirror==1 & chr_ain[11]) | (mirror==3));
+    assign vram_ce=chr_ain[13];
+	 assign vram_a10=chr_aout[10];
+	 assign chr_allow=!chr_ain[13] & flags[15];
+	 
+	 wire [21:13] prg_aout_tmp = {3'b00_0, prgbankin};
+	 wire [21:13] prg_ram = {9'b11_1100_000};
+	 wire prg_is_ram = prg_ain >= 'h6000 && prg_ain < 'h8000;
+	 assign prg_aout[21:13] = prg_is_ram ? prg_ram : prg_aout_tmp;
+    assign prg_aout[12:0] = prg_ain[12:0];
+	 assign prg_allow = (prg_ain[15] && !prg_write) || prg_is_ram;
+
+    reg [7:0] chrbank0, chrbank1, chrbank2, chrbank3, chrbank4, chrbank5, chrbank6, chrbank7;
+    reg [1:0] mirror;
+    reg [5:0] prgbank8;
+    reg [5:0] prgbankA;
+    reg [5:0] prgbankC;
+	 wire prg_ain43 = prg_ain[4] ^ prg_ain[3];
+	 reg ramw, soff;
+
+    always@(posedge clk) begin
+        if(ce && prg_write) begin
+            casex({prg_ain[15:12],prg_ain43})
+                5'b10000:prgbank8<=prg_din[5:0]; //8000
+                5'b10001:prgbankA<=prg_din[5:0]; //8008/10
+                5'b1001x:prgbankC<=prg_din[5:0]; //9000
+                5'b10100:chrbank0<=prg_din;      //A000
+                5'b10101:chrbank1<=prg_din;      //A008/10
+                5'b10110:chrbank2<=prg_din;      //B000
+                5'b10111:chrbank3<=prg_din;      //B008/10
+                5'b11000:chrbank4<=prg_din;      //C000
+                5'b11001:chrbank5<=prg_din;      //C008/10
+                5'b11010:chrbank6<=prg_din;      //D000
+                5'b11011:chrbank7<=prg_din;      //D008/10
+                5'b11100:{ramw,soff,mirror}<={prg_din[7:6],prg_din[1:0]};   //E000
+                //5'b11101:irqlatch<=nesprgdin;      //E008/10
+                //5'b11110:{irqM,irqA}<={nesprgdin[2],nesprgdin[0]}; //F000
+            endcase
+        end
+    end
+
+    reg [18:13] prgbankin;
+    reg [17:10] chrbank;
+    always@* begin
+        casex(prg_ain[15:13])
+            3'b100:prgbankin=prgbank8;                  //89
+            3'b101:prgbankin=prgbankA;                  //AB
+            3'b110:prgbankin=prgbankC;                  //CD
+            default:prgbankin=6'b111111;                //EF
+        endcase
+        case(chr_ain[12:10])
+            0:chrbank=chrbank0;
+            1:chrbank=chrbank1;
+            2:chrbank=chrbank2;
+            3:chrbank=chrbank3;
+            4:chrbank=chrbank4;
+            5:chrbank=chrbank5;
+            6:chrbank=chrbank6;
+            7:chrbank=chrbank7;
+        endcase
+    end
+	 
+	 wire irql = {prg_ain[15:12],prg_ain43}==5'b11101; // 0xE008 or 0xE010
+	 wire irqc = {prg_ain[15:12],prg_ain43}==5'b11110; // 0xF000
+	 wire irqa = {prg_ain[15:12],prg_ain43}==5'b11111; // 0xF008 or 0xF010
+	 
+	 vrcIRQ vrc7irq(clk,reset,prg_write,irql,irqc,irqa,prg_din,irq,ce);
+	 
+	 assign audio = 0;//TODO
+
+endmodule
+
 module N106(input clk, input ce, input reset,
             input [31:0] flags,
             input [15:0] prg_ain, output [21:0] prg_aout,
@@ -2295,6 +2383,13 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   VRC6 vrc6(clk, ce, reset, flags, prg_ain, vrc6_prg_addr, prg_read, prg_write, prg_din, vrc6_prg_dout, vrc6_prg_allow,
                                    chr_ain, vrc6_chr_addr, vrc6_chr_allow, vrc6_vram_a10, vrc6_vram_ce, vrc6_irq, vrc6_audio);
   
+  wire vrc7_prg_allow, vrc7_vram_a10, vrc7_vram_ce, vrc7_chr_allow, vrc7_irq;
+  wire [21:0] vrc7_prg_addr, vrc7_chr_addr;
+  wire [15:0] vrc7_audio;
+  wire [7:0] vrc7_prg_dout;
+  VRC7 vrc7(clk, ce, reset, flags, prg_ain, vrc7_prg_addr, prg_read, prg_write, prg_din, vrc7_prg_dout, vrc7_prg_allow,
+                                   chr_ain, vrc7_chr_addr, vrc7_chr_allow, vrc7_vram_a10, vrc7_vram_ce, vrc7_irq, vrc7_audio);
+  
   wire map19_prg_allow, map19_vram_a10, map19_vram_ce, map19_chr_allow, map19_irq;
   wire [21:0] map19_prg_addr, map19_chr_addr;
   wire [15:0] map19_audio;
@@ -2369,6 +2464,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 69 = Working
 // 71 = Working
 // 79 = Working
+// 85 = Needs testing/No sound
 // 105 = Working
 // 113 = Working
 // 118 = Working
@@ -2430,6 +2526,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     20: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {mapfds_prg_addr, mapfds_prg_allow, mapfds_chr_addr, mapfds_vram_a10, mapfds_vram_ce, mapfds_chr_allow, mapfds_prg_dout, mapfds_irq, mapfds_audio};
     24,
     26: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {vrc6_prg_addr, vrc6_prg_allow, vrc6_chr_addr, vrc6_vram_a10, vrc6_vram_ce, vrc6_chr_allow, vrc6_prg_dout, vrc6_irq, vrc6_audio};
+    85: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {vrc7_prg_addr, vrc7_prg_allow, vrc7_chr_addr, vrc7_vram_a10, vrc7_vram_ce, vrc7_chr_allow, vrc7_prg_dout, vrc7_irq, vrc7_audio};
     19: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {map19_prg_addr, map19_prg_allow, map19_chr_addr, map19_vram_a10, map19_vram_ce, map19_chr_allow, map19_prg_dout, map19_irq, map19_audio};
     default: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow} = {mmc0_prg_addr, mmc0_prg_allow, mmc0_chr_addr, mmc0_vram_a10, mmc0_vram_ce, mmc0_chr_allow};
     endcase
