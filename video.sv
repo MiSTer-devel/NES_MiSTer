@@ -8,7 +8,7 @@ module video
 	input  [8:0] count_h,
 	input  [8:0] count_v,
 	input        forced_scandoubler,
-	input  [1:0] scale,
+	input  [2:0] scale,
 	input        hide_overscan,
 	input  [2:0] palette,
 
@@ -202,7 +202,7 @@ video_mixer #(.LINE_LENGTH(350), .HALF_DEPTH(0)) video_mixer
 	.ce_pix(pix_ce),
 	.ce_pix_out(ce_pix),
 
-	.scanlines({scale==3, scale==2}),
+	.scanlines(0),
 	.hq2x(scale==1),
 	.scandoubler(scale || forced_scandoubler),
 	.mono(0),
