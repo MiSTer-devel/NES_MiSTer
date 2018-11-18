@@ -568,10 +568,11 @@ wire is_dirty = !is_nes20 && ((ines[8]  != 0)
 
 // Read the mapper number
 wire [7:0] mapper = {is_dirty ? 4'b0000 : ines[7][7:4], ines[6][7:4]};
+wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
   
 // ines[6][0] is mirroring
 // ines[6][3] is 4 screen mode
-assign mapper_flags = {15'b0, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
+assign mapper_flags = {7'b0, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
 
 always @(posedge clk) begin
 	if (reset) begin

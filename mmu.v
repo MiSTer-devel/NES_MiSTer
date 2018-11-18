@@ -1695,6 +1695,48 @@ module Mapper71(input clk, input ce, input reset,
   assign vram_a10 = flags[14] ? chr_ain[10] : ciram_select;
 endmodule
 
+// #78-IREM-HOLYDIVER/JALECO-JF-16
+module Mapper78(input clk, input ce, input reset,
+                input [31:0] flags,
+                input [15:0] prg_ain, output [21:0] prg_aout,
+                input prg_read, prg_write,                   // Read / write signals
+                input [7:0] prg_din,
+                output prg_allow,                            // Enable access to memory for the specified operation.
+                input [13:0] chr_ain, output [21:0] chr_aout,
+                output chr_allow,                      // Allow write
+                output vram_a10,                             // Value for A10 address line
+                output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
+  reg [2:0] prg_bank;
+  reg [3:0] chr_bank;
+  reg mirroring;  // See vram_a10_t
+  wire submapper1 = (flags[22:21] == 1); // default (0 or 3) Holy Diver submapper; (1) JALECO-JF-16
+  always @(posedge clk) if (reset) begin
+    prg_bank <= 0;
+    chr_bank <= 0;
+    mirroring <= 0;
+  end else if (ce) begin
+    if (prg_ain[15] == 1'b1 && prg_write)
+      {chr_bank, mirroring, prg_bank} <= prg_din;
+  end
+  assign prg_aout = {5'b00_000, (prg_ain[14] ? 3'b111 : prg_bank), prg_ain[13:0]};
+  assign prg_allow = prg_ain[15] && !prg_write;
+  assign chr_allow = flags[15];
+  assign chr_aout = {5'b10_000, chr_bank, chr_ain[12:0]};
+  assign vram_ce = chr_ain[13];
+
+  // The a10 VRAM address line. (Used for mirroring)
+  reg vram_a10_t;
+  always begin
+    case({submapper1, mirroring})
+    2'b00: vram_a10_t = chr_ain[11];   // One screen, horizontal
+    2'b01: vram_a10_t = chr_ain[10];   // One screen, vertical
+    2'b10: vram_a10_t = 0;             // One screen, lower bank
+    2'b11: vram_a10_t = 1;             // One screen, upper bank
+    endcase
+  end
+  assign vram_a10 = vram_a10_t;
+endmodule
+
 // #79,#113 - NINA-03 / NINA-06
 module Mapper79(input clk, input ce, input reset,
                 input [31:0] flags,
@@ -2346,6 +2388,11 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   Mapper71 map71(clk, ce, reset, flags, prg_ain, map71_prg_addr, prg_read, prg_write, prg_din, map71_prg_allow,
                                         chr_ain, map71_chr_addr, map71_chr_allow, map71_vram_a10, map71_vram_ce);
 
+  wire map78_prg_allow, map78_vram_a10, map78_vram_ce, map78_chr_allow;
+  wire [21:0] map78_prg_addr, map78_chr_addr;
+  Mapper78 map78(clk, ce, reset, flags, prg_ain, map78_prg_addr, prg_read, prg_write, prg_din, map78_prg_allow,
+                                        chr_ain, map78_chr_addr, map78_chr_allow, map78_vram_a10, map78_vram_ce);
+
   wire map79_prg_allow, map79_vram_a10, map79_vram_ce, map79_chr_allow;
   wire [21:0] map79_prg_addr, map79_chr_addr;
   Mapper79 map79(clk, ce, reset, flags, prg_ain, map79_prg_addr, prg_read, prg_write, prg_din, map79_prg_allow,
@@ -2463,6 +2510,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 68 = Working
 // 69 = Working
 // 71 = Working
+// 78 = Submapper 1 Requires NES 2.0/Needs testing overall
 // 79 = Working
 // 85 = Needs testing/No sound
 // 105 = Working
@@ -2513,6 +2561,8 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 
     71,
     232: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map71_prg_addr, map71_prg_allow, map71_chr_addr, map71_vram_a10, map71_vram_ce, map71_chr_allow};
+
+    78: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map78_prg_addr, map78_prg_allow, map78_chr_addr, map78_vram_a10, map78_vram_ce, map78_chr_allow};
 
     79,
     113: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map79_prg_addr, map79_prg_allow, map79_chr_addr, map79_vram_a10, map79_vram_ce, map79_chr_allow};
