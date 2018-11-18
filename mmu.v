@@ -548,7 +548,8 @@ module MMC5(input clk, input ce, input reset,
             output chr_allow,                            // Allow write
             output vram_a10,                             // Value for A10 address line
             output vram_ce,                              // True if the address should be routed to the internal 2kB VRAM.
-            output irq);
+            output irq,
+				output [15:0] audio);
   reg [1:0] prg_mode, chr_mode;
   reg prg_protect_1, prg_protect_2;
   reg [1:0] extended_ram_mode;
@@ -851,6 +852,25 @@ module MMC5(input clk, input ce, input reset,
   
   // MMC5 boards typically have no CHR RAM.
   assign chr_allow = flags[15];
+
+  wire [7:0] apu_dout;
+  wire apu_cs = (prg_ain[15:5]==11'b0101_0000_000) && (prg_ain[3]==0);
+  wire DmaReq;      // 1 when DMC wants DMA
+  wire [15:0] DmaAddr;  // Address DMC wants to read
+  wire odd_or_even;
+  wire apu_IRQ;       // IRQ asserted
+  APU mmc5apu(1, clk, ce, reset,
+          prg_ain[4:0], prg_din, apu_dout, 
+          prg_write && apu_cs, prg_read && apu_cs,
+          5'b10011,
+          audio,
+          DmaReq,
+          1,
+          DmaAddr,
+          0,
+          odd_or_even,
+          apu_irq);
+  
 endmodule
 
 // iNES mapper 64 and 158 - Tengen's version of MMC3
@@ -2332,9 +2352,10 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   wire [21:0] mmc5_prg_addr, mmc5_chr_addr;
   wire [7:0] mmc5_chr_dout, mmc5_prg_dout;
   wire mmc5_has_chr_dout;
+  wire [15:0] mmc5_audio;
   MMC5 mmc5(clk, ppu_ce, reset, flags, ppuflags, prg_ain, mmc5_prg_addr, prg_read, prg_write, prg_din, mmc5_prg_dout, mmc5_prg_allow,
                                    chr_ain, mmc5_chr_addr, mmc5_chr_dout, mmc5_has_chr_dout, 
-                                   mmc5_chr_allow, mmc5_vram_a10, mmc5_vram_ce, mmc5_irq);
+                                   mmc5_chr_allow, mmc5_vram_a10, mmc5_vram_ce, mmc5_irq, mmc5_audio);
 
   wire map13_prg_allow, map13_vram_a10, map13_vram_ce, map13_chr_allow;
   wire [21:0] map13_prg_addr, map13_chr_addr;
@@ -2533,7 +2554,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 
     10: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {mmc4_prg_addr, mmc4_prg_allow, mmc4_chr_addr, mmc4_vram_a10, mmc4_vram_ce, mmc4_chr_allow};
 	 
-    5:  {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, has_chr_dout, prg_dout, irq} = {mmc5_prg_addr, mmc5_prg_allow, mmc5_chr_addr, mmc5_vram_a10, mmc5_vram_ce, mmc5_chr_allow, mmc5_has_chr_dout, mmc5_prg_dout, mmc5_irq};
+    5:  {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, has_chr_dout, prg_dout, irq, audio} = {mmc5_prg_addr, mmc5_prg_allow, mmc5_chr_addr, mmc5_vram_a10, mmc5_vram_ce, mmc5_chr_allow, mmc5_has_chr_dout, mmc5_prg_dout, mmc5_irq, mmc5_audio};
 
     0,
     2,

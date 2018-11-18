@@ -236,7 +236,7 @@ module NES(input clk, input reset, input ce,
   wire [7:0] apu_dout;
   wire apu_irq;
   wire [15:0] sample_apu;
-  APU apu(clk, apu_ce, reset,
+  APU apu(0, clk, apu_ce, reset,
           addr[4:0], dbus, apu_dout, 
           mw_int && apu_cs, mr_int && apu_cs,
           audio_channels,
