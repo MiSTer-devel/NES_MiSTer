@@ -32,6 +32,8 @@ module emu
 	output        VGA_HS,
 	output        VGA_VS,
 	output        VGA_DE,    // = ~(VBlank | HBlank)
+	output        VGA_F1,
+	output  [1:0] VGA_SL,
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
 
@@ -78,7 +80,14 @@ module emu
 	output        SDRAM_nCS,
 	output        SDRAM_nCAS,
 	output        SDRAM_nRAS,
-	output        SDRAM_nWE
+	output        SDRAM_nWE,
+
+	input         UART_CTS,
+	output        UART_RTS,
+	input         UART_RXD,
+	output        UART_TXD,
+	output        UART_DTR,
+	input         UART_DSR
 );
 
 assign AUDIO_S   = 0;
@@ -95,6 +104,8 @@ assign VIDEO_ARY = status[8] ? 8'd9  : 8'd3;
 
 assign CLK_VIDEO = clk85;
 
+assign VGA_F1 = 0;
+assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
@@ -122,7 +133,7 @@ parameter CONF_STR4 = {
 	"7,Save Backup RAM;",
 	"-;",
 	"O8,Aspect ratio,4:3,16:9;",
-	"O12,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
+	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O4,Hide overscan,OFF,ON;",
 	"OCE,Palette,Smooth,Unsaturated-V6,FCEUX,NES Classic,Composite Direct,PC-10,PVM,Wavebeam;",
 	"O9,Swap joysticks,NO,YES;",
@@ -131,7 +142,7 @@ parameter CONF_STR4 = {
 `else
 	"-;",
 `endif
-	"O3,Invert mirroring,OFF,ON;",
+	"O5,Invert mirroring,OFF,ON;",
 	"R0,Reset;",
 	"J,A,B,Select,Start;",
 	"V,v0.85.",`BUILD_DATE
@@ -144,7 +155,7 @@ wire [1:0] buttons;
 wire [31:0] status;
 
 wire arm_reset = status[0];
-wire mirroring_osd = status[3];
+wire mirroring_osd = status[5];
 wire hide_overscan = status[4];
 wire [2:0] palette2_osd = status[14:12];
 wire joy_swap = status[9];
@@ -419,6 +430,10 @@ sdram sdram
 
 wire downloading;
 
+wire [2:0] scale = status[3:1];
+wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
+assign VGA_SL = sl[1:0];
+
 video video
 (
 	.*,
@@ -427,7 +442,7 @@ video video
 	.count_v(scanline),
 	.count_h(cycle),
 	.forced_scandoubler(forced_scandoubler),
-	.scale(status[2:1]),
+	.scale(scale),
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
 
