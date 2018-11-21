@@ -2142,6 +2142,8 @@ module VRC7(input clk, input ce, input reset,
 	 reg ramw, soff;
 
     always@(posedge clk) begin
+        if (reset)
+		      soff <= 1'b1;
         if(ce && prg_write) begin
             casex({prg_ain[15:12],prg_ain43})
                 5'b10000:prgbank8<=prg_din[5:0]; //8000
@@ -2188,8 +2190,21 @@ module VRC7(input clk, input ce, input reset,
 	 wire irqa = {prg_ain[15:12],prg_ain43}==5'b11111; // 0xF008 or 0xF010
 	 
 	 vrcIRQ vrc7irq(clk,reset,prg_write,irql,irqc,irqa,prg_din,irq,ce);
-	 
-	 assign audio = 0;//TODO
+
+	 reg [3:0] ce_count;
+    always@(posedge clk) begin
+		if (ce)
+			ce_count <= 0;
+		else
+			ce_count <= ce_count + 1;
+	 end
+	 wire ack;
+	 wire ce_ym2143 = ce | (ce_count==4'd5);
+	 wire [13:0] ym2143audio;
+	 wire [12:0] ym2143audiounsigned = ym2143audio ^ 13'b1_0000_0000_0000; // 10 bits * 6 channels = Max 13 bits
+	 wire wr_audio = prg_write && (prg_ain[15:6]==10'b1001_0000_00) && (prg_ain[4:0]==5'b1_0000); //0x9010 or 0x9030
+	 eseopll ym2143vrc7 (clk,reset, ce_ym2143,wr_audio,ce_ym2143,ack,wr_audio,{15'b0,prg_ain[5]},prg_din,ym2143audio);
+	 assign audio[15:0] = soff ? 16'h8000 : {ym2143audiounsigned, 3'b0};
 
 endmodule
 
@@ -2509,7 +2524,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 2 = Working
 // 3 = Working
 // 4 = Working
-// 5 = Working
+// 5 = Working/Audio needs testing/Some games graphics corruption (Just Breed)
 // 7 = Working
 // 9 = Working
 // 10 = Working
