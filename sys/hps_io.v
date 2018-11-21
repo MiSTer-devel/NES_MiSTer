@@ -47,7 +47,9 @@ module hps_io #(parameter STRLEN=0, PS2DIV=2000, WIDE=0, VDNUM=1, PS2WE=0)
 	output            forced_scandoubler,
 
 	output reg [31:0] status,
-	
+	input      [31:0] status_in,
+	input             status_set,
+
 	//toggle to force notify of video mode change
 	input             new_vmode,
 
@@ -61,7 +63,7 @@ module hps_io #(parameter STRLEN=0, PS2DIV=2000, WIDE=0, VDNUM=1, PS2WE=0)
 	input      [VD:0] sd_rd,       // only single sd_rd can be active at any given time
 	input      [VD:0] sd_wr,       // only single sd_wr can be active at any given time
 	output reg        sd_ack,
-	
+
 	// do not use in new projects.
 	// CID and CSD are fake except CSD image size field.
 	input             sd_conf,
@@ -88,6 +90,9 @@ module hps_io #(parameter STRLEN=0, PS2DIV=2000, WIDE=0, VDNUM=1, PS2WE=0)
 	// Seconds since 1970-01-01 00:00:00
 	output reg [32:0] TIMESTAMP,
 
+	// UART flags
+	input      [15:0] uart_mode,
+
 	// ps2 keyboard emulation
 	output            ps2_kbd_clk_out,
 	output            ps2_kbd_data_out,
@@ -106,7 +111,7 @@ module hps_io #(parameter STRLEN=0, PS2DIV=2000, WIDE=0, VDNUM=1, PS2WE=0)
 
 	// [8] - extended, [9] - pressed, [10] - toggles with every press/release
 	output reg [10:0] ps2_key = 0,
-	
+
 	// [24] - toggles with every event
 	output reg [24:0] ps2_mouse = 0
 );
@@ -135,7 +140,7 @@ assign forced_scandoubler = cfg[4];
 //cfg[5] - ypbpr handled in sys_top
 
 // command byte read by the io controller
-wire [15:0] sd_cmd = 
+wire [15:0] sd_cmd =
 {
 	2'b00,
 	(VDNUM>=4) ? sd_wr[3] : 1'b0,
@@ -145,7 +150,7 @@ wire [15:0] sd_cmd =
 	(VDNUM>=4) ? sd_rd[3] : 1'b0,
 	(VDNUM>=3) ? sd_rd[2] : 1'b0,
 	(VDNUM>=2) ? sd_rd[1] : 1'b0,
-	
+
 	4'h5, sd_conf, 1'b1,
 	sd_wr[0],
 	sd_rd[0]
@@ -261,13 +266,22 @@ always@(posedge clk_sys) begin
 	reg  [2:0] b_wr;
 	reg  [2:0] stick_idx;
 	reg        ps2skip = 0;
+	reg  [3:0] stflg = 0;
+	reg [31:0] status_req;
+	reg        old_status_set = 0;
+
+	old_status_set <= status_set;
+	if(~old_status_set & status_set) begin
+		stflg <= stflg + 1'd1;
+		status_req <= status_in;
+	end
 
 	sd_buff_wr <= b_wr[0];
 	if(b_wr[2] && (~&sd_buff_addr)) sd_buff_addr <= sd_buff_addr + 1'b1;
 	b_wr <= (b_wr<<1);
 
 	{kbd_rd,kbd_we,mouse_rd,mouse_we} <= 0;
-	
+
 	if(~io_enable) begin
 		if(cmd == 4 && !ps2skip) ps2_mouse[24] <= ~ps2_mouse[24];
 		if(cmd == 5 && !ps2skip) begin
@@ -297,6 +311,8 @@ always@(posedge clk_sys) begin
 					'h19: sd_ack_conf <= 1;
 					'h17,
 					'h18: sd_ack <= 1;
+					'h29: io_dout <= {4'hA, stflg};
+					'h2B: io_dout <= 1;
 				endcase
 
 				sd_buff_addr <= 0;
@@ -306,11 +322,11 @@ always@(posedge clk_sys) begin
 
 				case(cmd)
 					// buttons and switches
-					'h01: cfg        <= io_din[7:0]; 
+					'h01: cfg        <= io_din[7:0];
 					'h02: joystick_0 <= io_din;
 					'h03: joystick_1 <= io_din;
 
-					// store incoming ps2 mouse bytes 
+					// store incoming ps2 mouse bytes
 					'h04: begin
 							mouse_data <= io_din[7:0];
 							mouse_we   <= 1;
@@ -324,7 +340,7 @@ always@(posedge clk_sys) begin
 							end
 						end
 
-					// store incoming ps2 keyboard bytes 
+					// store incoming ps2 keyboard bytes
 					'h05: begin
 							if(&io_din[15:8]) ps2skip <= 1;
 							if(~&io_din[15:8] & ~ps2skip) ps2_key_raw[31:0] <= {ps2_key_raw[23:0], io_din[7:0]};
@@ -332,20 +348,15 @@ always@(posedge clk_sys) begin
 							kbd_we <= 1;
 						end
 
-					// reading config string
-					'h14: begin
-							// returning a byte from string
-							if(byte_cnt < STRLEN + 1) io_dout[7:0] <= conf_str[(STRLEN - byte_cnt)<<3 +:8];
-						end
+					// reading config string, returning a byte from string
+					'h14: if(byte_cnt < STRLEN + 1) io_dout[7:0] <= conf_str[(STRLEN - byte_cnt)<<3 +:8];
 
 					// reading sd card status
-					'h16: begin
-							case(byte_cnt)
+					'h16: case(byte_cnt)
 								1: io_dout <= sd_cmd;
 								2: io_dout <= sd_lba[15:0];
 								3: io_dout <= sd_lba[31:16];
 							endcase
-						end
 
 					// send SD config IO -> FPGA
 					// flag that download begins
@@ -366,14 +377,11 @@ always@(posedge clk_sys) begin
 						end
 
 					// joystick analog
-					'h1a: begin
-							// first byte is joystick index
-							if(byte_cnt == 1) stick_idx <= io_din[2:0];
-							if(byte_cnt == 2) begin
-								if(stick_idx == 0) joystick_analog_0 <= io_din;
-								if(stick_idx == 1) joystick_analog_1 <= io_din;
-							end
-						end
+					'h1a: case(byte_cnt)
+								1: stick_idx <= io_din[2:0]; // first byte is joystick index
+								2: if(stick_idx == 0) joystick_analog_0 <= io_din;
+									else if(stick_idx == 1) joystick_analog_1 <= io_din;
+							endcase
 
 					// notify image selection
 					'h1c: begin
@@ -392,41 +400,46 @@ always@(posedge clk_sys) begin
 					'h1f: io_dout <= {|PS2WE, 2'b01, ps2_kbd_led_status[2], ps2_kbd_led_use[2], ps2_kbd_led_status[1], ps2_kbd_led_use[1], ps2_kbd_led_status[0], ps2_kbd_led_use[0]};
 
 					// reading ps2 keyboard/mouse control
-					'h21: begin
-							if(byte_cnt == 1) begin
+					'h21: if(byte_cnt == 1) begin
 								io_dout <= kbd_data_host;
 								kbd_rd <= 1;
 							end
-
+							else
 							if(byte_cnt == 2) begin
 								io_dout <= mouse_data_host;
 								mouse_rd <= 1;
 							end
-						end
 					//RTC
 					'h22: RTC[(byte_cnt-6'd1)<<4 +:16] <= io_din;
 
 					//Video res.
-					'h23: begin
-								case(byte_cnt)
-									1: io_dout <= vid_nres;
-									2: io_dout <= vid_hcnt[15:0];
-									3: io_dout <= vid_hcnt[31:16];
-									4: io_dout <= vid_vcnt[15:0];
-									5: io_dout <= vid_vcnt[31:16];
-									6: io_dout <= vid_htime[15:0];
-									7: io_dout <= vid_htime[31:16];
-									8: io_dout <= vid_vtime[15:0];
-									9: io_dout <= vid_vtime[31:16];
-								  10: io_dout <= vid_pix[15:0];
-								  11: io_dout <= vid_pix[31:16];
-								  12: io_dout <= vid_vtime_hdmi[15:0];
-								  13: io_dout <= vid_vtime_hdmi[31:16];
-								endcase
-						end
+					'h23: case(byte_cnt)
+								1: io_dout <= vid_nres;
+								2: io_dout <= vid_hcnt[15:0];
+								3: io_dout <= vid_hcnt[31:16];
+								4: io_dout <= vid_vcnt[15:0];
+								5: io_dout <= vid_vcnt[31:16];
+								6: io_dout <= vid_htime[15:0];
+								7: io_dout <= vid_htime[31:16];
+								8: io_dout <= vid_vtime[15:0];
+								9: io_dout <= vid_vtime[31:16];
+							  10: io_dout <= vid_pix[15:0];
+							  11: io_dout <= vid_pix[31:16];
+							  12: io_dout <= vid_vtime_hdmi[15:0];
+							  13: io_dout <= vid_vtime_hdmi[31:16];
+							endcase
 
 					//RTC
 					'h24: TIMESTAMP[(byte_cnt-6'd1)<<4 +:16] <= io_din;
+
+					//UART flags
+					'h28: io_dout <= uart_mode;
+
+					//status set
+					'h29: case(byte_cnt)
+								1: io_dout <= status_req[15:0];
+								2: io_dout <= status_req[31:16];
+							endcase
 				endcase
 			end
 		end
@@ -460,7 +473,7 @@ ps2_device keyboard
 	.ps2_clk(clk_ps2),
 	.ps2_clk_out(ps2_kbd_clk_out),
 	.ps2_dat_out(ps2_kbd_data_out),
-	
+
 	.ps2_clk_in(ps2_kbd_clk_in  || !PS2WE),
 	.ps2_dat_in(ps2_kbd_data_in || !PS2WE),
 
@@ -538,7 +551,7 @@ always@(posedge clk_sys) begin
 						begin
 							if(io_din[7:0]) begin
 								addr <= 0;
-								ioctl_download <= 1; 
+								ioctl_download <= 1;
 							end else begin
 								ioctl_addr <= addr;
 								ioctl_download <= 0;
@@ -577,7 +590,7 @@ module ps2_device #(parameter PS2_FIFO_BITS=5)
 
 	input        ps2_clk_in,
 	input        ps2_dat_in,
-	
+
 	output [8:0] rdata,
 	input        rd
 );
@@ -632,7 +645,7 @@ always@(posedge clk_sys) begin
 						rx_state <= rx_state + 1'b1;
 						rx_cnt <= 0;
 					end
-					
+
 				2: begin
 						if(rx_cnt <= 7) data <= {d1, data[7:1]};
 						else rx_state <= rx_state + 1'b1;
@@ -643,7 +656,7 @@ always@(posedge clk_sys) begin
 						rx_state <= rx_state + 1'b1;
 						ps2_dat_out <= 0;
 					end
-				
+
 				4: begin
 						ps2_dat_out <= 1;
 						has_data <= 1;
@@ -678,7 +691,7 @@ always@(posedge clk_sys) begin
 				if((tx_state >= 1)&&(tx_state < 9)) begin
 					ps2_dat_out <= tx_byte[0];	          // data bits
 					tx_byte[6:0] <= tx_byte[7:1]; // shift down
-					if(tx_byte[0]) 
+					if(tx_byte[0])
 						parity <= !parity;
 				end
 
