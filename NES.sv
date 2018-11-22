@@ -227,9 +227,9 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 
 
 wire [7:0] nes_joy_A = (reset_nes) ? 8'd0 : 
-							  { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], joyB[4] } | kbd_joy0;
+							  { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], joyA[4] } | kbd_joy0;
 wire [7:0] nes_joy_B = (reset_nes) ? 8'd0 : 
-							  { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], joyA[4] } | kbd_joy1;
+							  { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], joyB[4] } | kbd_joy1;
  
 wire clock_locked;
 wire clk85;
@@ -583,10 +583,11 @@ wire is_dirty = !is_nes20 && ((ines[8]  != 0)
 
 // Read the mapper number
 wire [7:0] mapper = {is_dirty ? 4'b0000 : ines[7][7:4], ines[6][7:4]};
+wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
   
 // ines[6][0] is mirroring
 // ines[6][3] is 4 screen mode
-assign mapper_flags = {15'b0, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
+assign mapper_flags = {7'b0, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
 
 always @(posedge clk) begin
 	if (reset) begin
