@@ -858,7 +858,7 @@ module MMC5(input clk, input ce, input reset,
   wire DmaReq;      // 1 when DMC wants DMA
   wire [15:0] DmaAddr;  // Address DMC wants to read
   wire odd_or_even;
-  wire apu_IRQ;       // IRQ asserted
+  wire apu_irq;       // IRQ asserted
   APU mmc5apu(1, clk, ce, reset,
           prg_ain[4:0], prg_din, apu_dout, 
           prg_write && apu_cs, prg_read && apu_cs,
@@ -2143,12 +2143,12 @@ module VRC7(input clk, input ce, input reset,
 
     always@(posedge clk) begin
         if (reset)
-		      soff <= 1'b1;
+		      soff <= 1'b0;
         if(ce && prg_write) begin
             casex({prg_ain[15:12],prg_ain43})
                 5'b10000:prgbank8<=prg_din[5:0]; //8000
                 5'b10001:prgbankA<=prg_din[5:0]; //8008/10
-                5'b1001x:prgbankC<=prg_din[5:0]; //9000
+                5'b10010:prgbankC<=prg_din[5:0]; //9000
                 5'b10100:chrbank0<=prg_din;      //A000
                 5'b10101:chrbank1<=prg_din;      //A008/10
                 5'b10110:chrbank2<=prg_din;      //B000
@@ -2201,10 +2201,14 @@ module VRC7(input clk, input ce, input reset,
 	 wire ack;
 	 wire ce_ym2143 = ce | (ce_count==4'd5);
 	 wire [13:0] ym2143audio;
-	 wire [12:0] ym2143audiounsigned = ym2143audio ^ 13'b1_0000_0000_0000; // 10 bits * 6 channels = Max 13 bits
 	 wire wr_audio = prg_write && (prg_ain[15:6]==10'b1001_0000_00) && (prg_ain[4:0]==5'b1_0000); //0x9010 or 0x9030
 	 eseopll ym2143vrc7 (clk,reset, ce_ym2143,wr_audio,ce_ym2143,ack,wr_audio,{15'b0,prg_ain[5]},prg_din,ym2143audio);
-	 assign audio[15:0] = soff ? 16'h8000 : {ym2143audiounsigned, 3'b0};
+	 //No clipping. Lower volume.
+	 //wire [12:0] ym2143audiounsigned = ym2143audio[12:0] ^ 13'b1_0000_0000_0000; // 10 bits * 6 channels = Max 13 bits.
+	 //assign audio[15:0] = soff ? 16'h8000 : {ym2143audiounsigned, 3'b0};
+	 //Clipping possible.  Higher volume.
+	 wire [11:0] ym2143audiounsigned = ym2143audio[13:12]==3'b10 ? 12'h000 : ym2143audio[13:11]==3'b01 ? 12'hFFF : ym2143audio[11:0] ^ 12'b1000_0000_0000; // Cheat one bit (some clipping)
+	 assign audio[15:0] = soff ? 16'h8000 : {ym2143audiounsigned, 4'b0};
 
 endmodule
 
