@@ -1336,11 +1336,11 @@ module Mapper30(input clk, input ce, input reset,
     always begin
       // mirroring mode
       casez({mirror[2:1],chr_ain[13]})
-      3'b000   :   vram_a10 = {chr_ain[10]};    // pattern table
       3'b001   :   vram_a10 = {chr_ain[11]};    // horizontal
       3'b011   :   vram_a10 = {chr_ain[10]};    // vertical
-      3'b011   :   vram_a10 = {mirror[0]};      // 1 screen
+      3'b101   :   vram_a10 = {mirror[0]};      // 1 screen
       3'b111   :   vram_a10 = {chr_ain[10]};    // 4 screen
+      default  :   vram_a10 = {chr_ain[10]};    // pattern table
       endcase
     end
 
