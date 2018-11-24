@@ -446,7 +446,7 @@ module DmcChan(input MMC5,
   reg DmcEnabled;
   reg [1:0] ActivationDelay;
   assign DmaAddr = {1'b1, Address};
-  assign Sample = Dac;
+  assign Sample = Dac[6:0];
   assign Irq = IrqActive;
   assign IsDmcActive = DmcEnabled;
   
@@ -659,8 +659,8 @@ assign odd_or_even = InternalClock;
 
 
 // Generate each channel
-SquareChan	 Sq1(MMC5, clk, ce, reset, 0, ADDR[1:0], DIN, ApuMW0, ClkL, ClkE, Enabled[0], LenCtr_In, Sq1Sample, Sq1NonZero);
-SquareChan   Sq2(MMC5, clk, ce, reset, 1, ADDR[1:0], DIN, ApuMW1, ClkL, ClkE, Enabled[1], LenCtr_In, Sq2Sample, Sq2NonZero);
+SquareChan	 Sq1(MMC5, clk, ce, reset, 1'b0, ADDR[1:0], DIN, ApuMW0, ClkL, ClkE, Enabled[0], LenCtr_In, Sq1Sample, Sq1NonZero);
+SquareChan   Sq2(MMC5, clk, ce, reset, 1'b1, ADDR[1:0], DIN, ApuMW1, ClkL, ClkE, Enabled[1], LenCtr_In, Sq2Sample, Sq2NonZero);
 TriangleChan Tri(clk, ce, reset, ADDR[1:0], DIN, ApuMW2, ClkL, ClkE, Enabled[2], LenCtr_In, TriSample, TriNonZero);
 NoiseChan    Noi(clk, ce, reset, ADDR[1:0], DIN, ApuMW3, ClkL, ClkE, Enabled[3], LenCtr_In, NoiSample, NoiNonZero);
 DmcChan      Dmc(MMC5, clk, ce, reset, odd_or_even, ADDR[2:0], DIN, ApuMW4, DmcSample, DmaReq, DmaAck, DmaAddr, DmaData, DmcIrq, IsDmcActive);

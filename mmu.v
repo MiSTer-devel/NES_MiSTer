@@ -579,6 +579,7 @@ module MMC5(input clk, input ce, input reset,
   
   reg [7:0] expansion_ram[0:1023]; // Block RAM, otherwise we need to time multiplex..
   reg [7:0] last_read_ram;
+  reg [7:0] last_read_exattr;
   
   // unpack ppu flags
   wire ppu_in_frame = ppuflags[0];
@@ -731,11 +732,11 @@ module MMC5(input clk, input ce, input reset,
   wire insplit = in_split_area && vsplit_enable;
 
   // Currently reading the attribute byte?
-  wire exattr_read = (extended_ram_mode == 1) && ppu_cycle[1];
+  wire exattr_read = (extended_ram_mode == 1) && (ppu_cycle[2:1]==1);
   
   // If the current chr read should be redirected from |chr_dout| instead.
   assign has_chr_dout = chr_ain[13] && (mirrbits[1] || insplit || exattr_read);
-  wire [1:0] override_attr = insplit ? split_attr : (extended_ram_mode == 1) ? last_read_ram[7:6] : fill_attr;
+  wire [1:0] override_attr = insplit ? split_attr : (extended_ram_mode == 1) ? last_read_exattr[7:6] : fill_attr;
   always @* begin
     if (ppu_cycle[1] == 0) begin
       // Name table fetch
@@ -743,6 +744,9 @@ module MMC5(input clk, input ce, input reset,
       else begin
         //$write("Inserting filltile!\n");
         chr_dout = fill_tile;
+      end
+      if (ppu_cycle[2] == 0) begin
+        last_read_exattr <= last_read_ram;
       end
     end else begin
       // Attribute table fetch
@@ -834,10 +838,10 @@ module MMC5(input clk, input ce, input reset,
     if (insplit) begin
       //$write("In vertical split!\n");
       chr_aout = {2'b10, vsplit_bank, chr_ain[11:3], vscroll[2:0]};
-    end else if (extended_ram_mode == 1 && is_bg_fetch) begin
+    end else if (extended_ram_mode == 1 && is_bg_fetch && (ppu_cycle[2:1]!=0)) begin 
       //$write("In exram thingy!\n");
       // Extended attribute mode. Replace the page with the page from exram.
-      chr_aout = {2'b10, upper_chr_bank_bits, last_read_ram[5:0], chr_ain[11:0]};
+      chr_aout = {2'b10, upper_chr_bank_bits, last_read_exattr[5:0], chr_ain[11:0]};
     end
       
   end
@@ -2152,7 +2156,7 @@ module VRC7(input clk, input ce, input reset,
             input [31:0] flags,
             input [15:0] prg_ain, output [21:0] prg_aout,
             input prg_read, prg_write,                   // Read / write signals
-            input [7:0] prg_din, output [7:0] prg_dout,
+            input [7:0] prg_din,
             output prg_allow,                            // Enable access to memory for the specified operation.
             input [13:0] chr_ain, output [21:0] chr_aout,
             output chr_allow,                            // Allow write
@@ -2174,7 +2178,7 @@ module VRC7(input clk, input ce, input reset,
 	 wire prg_is_ram = prg_ain >= 'h6000 && prg_ain < 'h8000;
 	 assign prg_aout[21:13] = prg_is_ram ? prg_ram : prg_aout_tmp;
     assign prg_aout[12:0] = prg_ain[12:0];
-	 assign prg_allow = (prg_ain[15] && !prg_write) || prg_is_ram;
+	 assign prg_allow = (prg_ain[15] && !prg_write) || (prg_is_ram && (!prg_write || ramw));
 
     reg [7:0] chrbank0, chrbank1, chrbank2, chrbank3, chrbank4, chrbank5, chrbank6, chrbank7;
     reg [1:0] mirror;
@@ -2521,8 +2525,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   wire vrc7_prg_allow, vrc7_vram_a10, vrc7_vram_ce, vrc7_chr_allow, vrc7_irq;
   wire [21:0] vrc7_prg_addr, vrc7_chr_addr;
   wire [15:0] vrc7_audio;
-  wire [7:0] vrc7_prg_dout;
-  VRC7 vrc7(clk, ce, reset, flags, prg_ain, vrc7_prg_addr, prg_read, prg_write, prg_din, vrc7_prg_dout, vrc7_prg_allow,
+  VRC7 vrc7(clk, ce, reset, flags, prg_ain, vrc7_prg_addr, prg_read, prg_write, prg_din, vrc7_prg_allow,
                                    chr_ain, vrc7_chr_addr, vrc7_chr_allow, vrc7_vram_a10, vrc7_vram_ce, vrc7_irq, vrc7_audio);
   
   wire map19_prg_allow, map19_vram_a10, map19_vram_ce, map19_chr_allow, map19_irq;
@@ -2667,7 +2670,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     20: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {mapfds_prg_addr, mapfds_prg_allow, mapfds_chr_addr, mapfds_vram_a10, mapfds_vram_ce, mapfds_chr_allow, mapfds_prg_dout, mapfds_irq, mapfds_audio};
     24,
     26: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {vrc6_prg_addr, vrc6_prg_allow, vrc6_chr_addr, vrc6_vram_a10, vrc6_vram_ce, vrc6_chr_allow, vrc6_prg_dout, vrc6_irq, vrc6_audio};
-    85: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {vrc7_prg_addr, vrc7_prg_allow, vrc7_chr_addr, vrc7_vram_a10, vrc7_vram_ce, vrc7_chr_allow, vrc7_prg_dout, vrc7_irq, vrc7_audio};
+    85: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq, audio} = {vrc7_prg_addr, vrc7_prg_allow, vrc7_chr_addr, vrc7_vram_a10, vrc7_vram_ce, vrc7_chr_allow, vrc7_irq, vrc7_audio};
     19: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {map19_prg_addr, map19_prg_allow, map19_chr_addr, map19_vram_a10, map19_vram_ce, map19_chr_allow, map19_prg_dout, map19_irq, map19_audio};
     default: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow} = {mmc0_prg_addr, mmc0_prg_allow, mmc0_chr_addr, mmc0_vram_a10, mmc0_vram_ce, mmc0_chr_allow};
     endcase
