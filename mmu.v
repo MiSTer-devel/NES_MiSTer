@@ -1355,6 +1355,91 @@ module Mapper30(input clk, input ce, input reset,
   assign vram_ce = chr_ain[13] && !four_screen;
 endmodule
 
+// 32 - IREM
+module Mapper32(input clk, input ce, input reset,
+                input [31:0] flags,
+                input [15:0] prg_ain, output [21:0] prg_aout,
+                input prg_read, prg_write,                   // Read / write signals
+                input [7:0] prg_din,
+                output prg_allow,                            // Enable access to memory for the specified operation.
+                input [13:0] chr_ain, output [21:0] chr_aout,
+                output chr_allow,                      // Allow write
+                output reg vram_a10,                         // Value for A10 address line
+                output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
+    reg [4:0] prgreg0;
+    reg [4:0] prgreg1;
+    reg [7:0] chrreg0;
+    reg [7:0] chrreg1;
+    reg [7:0] chrreg2;
+    reg [7:0] chrreg3;
+    reg [7:0] chrreg4;
+    reg [7:0] chrreg5;
+    reg [7:0] chrreg6;
+    reg [7:0] chrreg7;
+	 reg prgmode;
+	 reg mirror;
+	 wire submapper1 = (flags[21] == 1); // default (0) default submapper; (1) Major League
+	 reg [4:0] prgsel;
+	 reg [7:0] chrsel;
+
+    always @(posedge clk) if (reset) begin
+      prgmode <= 1'b0;
+    end else if (ce) begin
+      if ((prg_ain[15:14] == 2'b10) & prg_write) begin
+        casez ({prg_ain[13:12], submapper1, prg_ain[2:0]})
+        6'b00_?_???:  prgreg0            <= prg_din[4:0];
+        6'b01_0_???:  {prgmode, mirror}  <= prg_din[1:0];
+        6'b10_0_???:  prgreg1            <= prg_din[4:0];
+        6'b11_?_000:  chrreg0            <= prg_din;
+        6'b11_?_001:  chrreg1            <= prg_din;
+        6'b11_?_010:  chrreg2            <= prg_din;
+        6'b11_?_011:  chrreg3            <= prg_din;
+        6'b11_?_100:  chrreg4            <= prg_din;
+        6'b11_?_101:  chrreg5            <= prg_din;
+        6'b11_?_110:  chrreg6            <= prg_din;
+        6'b11_?_111:  chrreg7            <= prg_din;
+        endcase
+      end
+    end
+    
+    always begin
+      // mirroring mode
+      casez({submapper1, mirror})
+      2'b00   :   vram_a10 = {chr_ain[10]};    // vertical
+      2'b01   :   vram_a10 = {chr_ain[11]};    // horizontal
+      2'b1?   :   vram_a10 = {1'b1};           // 1 screen lower
+      endcase
+
+      // PRG ROM bank size select
+      casez({prg_ain[14:13], prgmode})
+      3'b000  :  prgsel = prgreg0;
+      3'b001  :  prgsel = {5'b11110};
+      3'b01?  :  prgsel = prgreg1;
+      3'b100  :  prgsel = {5'b11110};
+      3'b101  :  prgsel = prgreg0;
+      3'b11?  :  prgsel = {5'b11111};
+		endcase
+
+      // CHR ROM bank size select
+      casez({chr_ain[12:10]})
+      3'b000  :  chrsel = chrreg0;
+      3'b001  :  chrsel = chrreg1;
+      3'b010  :  chrsel = chrreg2;
+      3'b011  :  chrsel = chrreg3;
+      3'b100  :  chrsel = chrreg4;
+      3'b101  :  chrsel = chrreg5;
+      3'b110  :  chrsel = chrreg6;
+      3'b111  :  chrsel = chrreg7;
+      endcase
+    end
+
+  assign vram_ce = chr_ain[13];
+  assign prg_aout = {4'b00_00, prgsel, prg_ain[12:0]};
+  assign prg_allow = prg_ain[15] && !prg_write;
+  assign chr_allow = flags[15];
+  assign chr_aout = {4'b10_00, chrsel, chr_ain[9:0]};
+endmodule
+
 // Mapper 42, used for hacked FDS games converted to cartridge form
 module Mapper42(input clk, input ce, input reset,
             input [31:0] flags,
@@ -2404,6 +2489,11 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   Mapper30 map30(clk, ce, reset, flags, prg_ain, map30_prg_addr, prg_read, prg_write, prg_din, map30_prg_allow,
                                         chr_ain, map30_chr_addr, map30_chr_allow, map30_vram_a10, map30_vram_ce);
 
+  wire map32_prg_allow, map32_vram_a10, map32_vram_ce, map32_chr_allow;
+  wire [21:0] map32_prg_addr, map32_chr_addr;
+  Mapper32 map32(clk, ce, reset, flags, prg_ain, map32_prg_addr, prg_read, prg_write, prg_din, map32_prg_allow,
+                                        chr_ain, map32_chr_addr, map32_chr_allow, map32_vram_a10, map32_vram_ce);
+
   wire mmc2_prg_allow, mmc2_vram_a10, mmc2_vram_ce, mmc2_chr_allow;
   wire [21:0] mmc2_prg_addr, mmc2_chr_addr;
   MMC2 mmc2(clk, ppu_ce, reset, flags, prg_ain, mmc2_prg_addr, prg_read, prg_write, prg_din, mmc2_prg_allow,
@@ -2593,6 +2683,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 26 = Needs testing
 // 28 = Working
 // 30 = No Self Flashing/Needs testing
+// 32 = Needs testing
 // 34 = Working
 // 41 = Working
 // 42 = Working
@@ -2634,6 +2725,8 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     28: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map28_prg_addr, map28_prg_allow, map28_chr_addr, map28_vram_a10, map28_vram_ce, map28_chr_allow};
 
     30: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map30_prg_addr, map30_prg_allow, map30_chr_addr, map30_vram_a10, map30_vram_ce, map30_chr_allow};
+
+    32: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map32_prg_addr, map32_prg_allow, map32_chr_addr, map32_vram_a10, map32_vram_ce, map32_chr_allow};
 
     13: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map13_prg_addr, map13_prg_allow, map13_chr_addr, map13_vram_a10, map13_vram_ce, map13_chr_allow};
     15: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map15_prg_addr, map15_prg_allow, map15_chr_addr, map15_vram_a10, map15_vram_ce, map15_chr_allow};
