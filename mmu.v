@@ -299,9 +299,11 @@ module MMC3(input clk, input ce, input reset,
   wire DxROM = (flags[7:0] == 206);
   wire mapper48 = (flags[7:0] == 48);     // Taito's TC0690
   wire mapper33 = (flags[7:0] == 33);     // Taito's TC0190 (TC0690-like. No IRQ. Different Mirroring bit)
+  wire mapper37 = (flags[7:0] == 37);     // European Triple Cart (Super Mario, Tetris, Nintendo World Cup)
   
   wire four_screen_mirroring = flags[16] | DxROM;
   reg mapper47_multicart;
+  reg [2:0] mapper37_multicart;
   wire [7:0] new_counter = (counter == 0 || irq_reload) ? irq_latch : counter - 1'd1;
   reg [3:0] a12_ctr; 
    
@@ -318,6 +320,7 @@ module MMC3(input clk, input ce, input reset,
     {chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5} <= 0;
     {prg_bank_0, prg_bank_1} <= 0;
     a12_ctr <= 0;
+	 mapper37_multicart <= 3'b000;
   end else if (ce) begin
     irq_reg[4:1] <= irq_reg[3:0];  // 4 cycle delay
     if (prg_write && prg_ain[15]) begin
@@ -366,6 +369,11 @@ module MMC3(input clk, input ce, input reset,
     if (prg_write && prg_is_ram)
       mapper47_multicart <= prg_din[0];
         
+    // For Mapper 37
+    // $6000-7FFF:  [.... .QBB]  Block select
+    if (prg_write && prg_is_ram)
+      mapper37_multicart <= prg_din[2:0];
+        
     // Trigger IRQ counter on rising edge of chr_ain[12]
     // All MMC3A's and non-Sharp MMC3B's will generate only a single IRQ when $C000 is $00.
     // This is because this version of the MMC3 generates IRQs when the scanline counter is decremented to 0.
@@ -398,6 +406,13 @@ module MMC3(input clk, input ce, input reset,
     endcase
     // mapper47 is limited to 128k PRG, the top bits are controlled by mapper47_multicart instead.
     if (mapper47) prgsel[5:4] = {1'b0, mapper47_multicart};
+    if (mapper37) begin
+      prgsel[5:4] = {1'b0, mapper37_multicart[2]};
+		if (mapper37_multicart[1:0] == 3'd3)
+        prgsel[3] = 1'b1;
+		else if (mapper37_multicart[2] == 1'b0)
+        prgsel[3] = 1'b0;
+    end
   end
 
   // The CHR bank to load. Each increment here is 1kb. So valid values are 0..255.
@@ -413,6 +428,7 @@ module MMC3(input clk, input ce, input reset,
     endcase
     // mapper47 is limited to 128k CHR, the top bit is controlled by mapper47_multicart instead.
     if (mapper47) chrsel[7] = mapper47_multicart;
+    if (mapper37) chrsel[7] = mapper37_multicart[2];
   end
 
   wire [21:0] prg_aout_tmp = {3'b00_0,  prgsel, prg_ain[12:0]};
@@ -2709,6 +2725,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 32 = Needs testing
 // 33 = Needs testing
 // 34 = Working
+// 37 = Needs testing
 // 41 = Working
 // 42 = Working
 // 47 = Working
@@ -2739,6 +2756,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 	 206, // MMC3 w/o IRQ or WRAM support
 	 48,  // MMC3-like with delayed IRQ
 	 33,  // Mapper 48 without IRQ and different mirroring location
+	 37,  // European Triple Cart (Super Mario, Tetris, Nintendo World Cup)
     4:  {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq} = {mmc3_prg_addr, mmc3_prg_allow, mmc3_chr_addr, mmc3_vram_a10, mmc3_vram_ce, mmc3_chr_allow, mmc3_irq};
 
     10: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {mmc4_prg_addr, mmc4_prg_allow, mmc4_chr_addr, mmc4_vram_a10, mmc4_vram_ce, mmc4_chr_allow};
