@@ -1552,6 +1552,7 @@ module Mapper42(input clk, input ce, input reset,
 endmodule
 
 // 11 - Color Dreams
+// 38 - Bit Corps
 // 66 - GxROM
 module Mapper66(input clk, input ce, input reset,
                 input [31:0] flags,
@@ -1566,6 +1567,7 @@ module Mapper66(input clk, input ce, input reset,
   reg [1:0] prg_bank;
   reg [3:0] chr_bank;
   wire GXROM = (flags[7:0] == 66);
+  wire BitCorps = (flags[7:0] == 38);
   always @(posedge clk) if (reset) begin
     prg_bank <= 0;
     chr_bank <= 0;
@@ -1575,6 +1577,9 @@ module Mapper66(input clk, input ce, input reset,
         {prg_bank, chr_bank} <= {prg_din[5:4], 2'b0, prg_din[1:0]};
       else // Color Dreams
         {chr_bank, prg_bank} <= {prg_din[7:4], prg_din[1:0]};
+    end
+    if ((prg_ain[15:12]==4'h7) & prg_write & BitCorps) begin
+      {chr_bank, prg_bank} <= {prg_din[3:0]};
     end
   end
   assign prg_aout = {5'b00_000, prg_bank, prg_ain[14:0]};
@@ -2726,6 +2731,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 33 = Needs testing
 // 34 = Working
 // 37 = Needs testing
+// 38 = Needs testing
 // 41 = Working
 // 42 = Working
 // 47 = Working
@@ -2787,6 +2793,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 	 42: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq} = {map42_prg_addr, map42_prg_allow, map42_chr_addr, map42_vram_a10, map42_vram_ce, map42_chr_allow, map42_irq};
 
     11,
+    38,
     66: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map66_prg_addr, map66_prg_allow, map66_chr_addr, map66_vram_a10, map66_vram_ce, map66_chr_allow};
     68: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map68_prg_addr, map68_prg_allow, map68_chr_addr, map68_vram_a10, map68_vram_ce, map68_chr_allow};
     69: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq, audio} = {map69_prg_addr, map69_prg_allow, map69_chr_addr, map69_vram_a10, map69_vram_ce, map69_chr_allow, map69_irq, map69_audio};
