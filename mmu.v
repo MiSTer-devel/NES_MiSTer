@@ -1965,6 +1965,77 @@ module Mapper79(input clk, input ce, input reset,
   assign vram_a10 = mirrconfig ? chr_ain[10] : chr_ain[11]; // 0: horiz, 1: vert
 endmodule
 
+
+// #89,#93,#184 - Sunsoft mappers
+module Mapper89(input clk, input ce, input reset,
+                input [31:0] flags,
+                input [15:0] prg_ain, output [21:0] prg_aout,
+                input prg_read, prg_write,                   // Read / write signals
+                input [7:0] prg_din,
+                output prg_allow,                            // Enable access to memory for the specified operation.
+                input [13:0] chr_ain, output [21:0] chr_aout,
+                output chr_allow,                      // Allow write
+                output reg vram_a10,                         // Value for A10 address line
+                output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
+    reg [2:0] prgsel;
+    reg [3:0] chrsel0;
+    reg [3:0] chrsel1;
+	 reg [2:0] prg_temp;
+	 reg [4:0] chr_temp;
+   
+    reg mirror;
+    
+    // Allow writes to 0x5000 only when launching through the proper mapper ID.
+    wire [7:0] mapper = flags[7:0];
+    wire mapper89 = (mapper == 8'd89); 
+    wire mapper93 = (mapper == 8'd93); 
+    wire mapper184 = (mapper == 8'd184); 
+
+    always @(posedge clk) if (reset) begin
+        prgsel <= 3'b110;
+        chrsel0 <= 4'b1111;
+        chrsel1 <= 4'b1111;
+    end else if (ce) begin
+      if (prg_ain[15] & prg_write & mapper89) begin
+        {chrsel0[3], prgsel, mirror, chrsel0[2:0]}  <= prg_din;
+      end else if (prg_ain[15] & prg_write & mapper93) begin
+        prgsel  <= prg_din[6:4];
+		  // chrrameanble <= prg_din[0];
+      end else if ((prg_ain[15:13]==3'b011) & prg_write & mapper184) begin
+        {chrsel1[3:0], chrsel0[3:0]}  <= {2'b01,prg_din[5:4],1'b0,prg_din[2:0]};
+		end
+    end
+    
+    always begin
+      // mirroring mode
+      casez({mapper89,flags[14]})
+      2'b00   :   vram_a10 = {chr_ain[11]};    // horizontal
+      2'b01   :   vram_a10 = {chr_ain[10]};    // vertical
+      2'b1?   :   vram_a10 = {mirror};         // 1 screen
+      endcase
+
+      // PRG ROM bank size select
+      casez({mapper184, prg_ain[14]})
+      2'b00 :  prg_temp = {prgsel};            // 16K banks
+      2'b01 :  prg_temp = {3'b111};            // 16K banks last
+      2'b1? :  prg_temp = {2'b0,prg_ain[14]};  // 32K banks pass thru
+      endcase
+
+      // CHR ROM bank size select
+      casez({mapper184, chr_ain[12]})
+      2'b0? :  chr_temp = {chrsel0, chr_ain[12]};// 8K Bank
+      2'b10 :  chr_temp = {1'b0,chrsel0};  // 4K Bank
+      2'b11 :  chr_temp = {1'b0,chrsel1};  // 4K Bank
+      endcase
+    end
+
+  assign vram_ce = chr_ain[13];
+  assign prg_aout = {5'b0, prg_temp, prg_ain[13:0]};
+  assign prg_allow = prg_ain[15] && !prg_write;
+  assign chr_allow = flags[15];
+  assign chr_aout = {5'b10_000, chr_temp, chr_ain[11:0]};
+endmodule
+
 // #105 - NES-EVENT. Retrofits an MMC3 with lots of extra logic.
 module NesEvent(input clk, input ce, input reset,
                 input [15:0] prg_ain, output reg [21:0] prg_aout,
@@ -2624,6 +2695,11 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   Mapper79 map79(clk, ce, reset, flags, prg_ain, map79_prg_addr, prg_read, prg_write, prg_din, map79_prg_allow,
                                         chr_ain, map79_chr_addr, map79_chr_allow, map79_vram_a10, map79_vram_ce);
 
+  wire map89_prg_allow, map89_vram_a10, map89_vram_ce, map89_chr_allow;
+  wire [21:0] map89_prg_addr, map89_chr_addr;
+  Mapper89 map89(clk, ce, reset, flags, prg_ain, map89_prg_addr, prg_read, prg_write, prg_din, map89_prg_allow,
+                                        chr_ain, map89_chr_addr, map89_chr_allow, map89_vram_a10, map89_vram_ce);
+
   wire map165_prg_allow, map165_vram_a10, map165_vram_ce, map165_chr_allow, map165_irq;
   wire [21:0] map165_prg_addr, map165_chr_addr;
   Mapper165 map165(clk, ppu_ce, reset, flags, prg_ain, map165_prg_addr, prg_read, prg_write, prg_din, map165_prg_allow,
@@ -2744,13 +2820,16 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 78 = Submapper 1 Requires NES 2.0/Needs testing overall
 // 79 = Working
 // 85 = Needs testing/Audio needs testing
+// 89 = Needs testing
+// 93 = Needs testing
 // 105 = Working
 // 113 = Working
 // 118 = Working
 // 119 = Working
 // 158 = Tons of GFX bugs
 // 165 = GFX corrupted
-// 209 = Not Tested
+// 184 = Needs testing
+// 206 = Not Tested
 // 228 = Working
 // 234 = Not Tested        
     case(flags[7:0])
@@ -2774,6 +2853,10 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     3,
     7,
     28: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map28_prg_addr, map28_prg_allow, map28_chr_addr, map28_vram_a10, map28_vram_ce, map28_chr_allow};
+
+    89,
+    93,
+    184: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map89_prg_addr, map89_prg_allow, map89_chr_addr, map89_vram_a10, map89_vram_ce, map89_chr_allow};
 
     30: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map30_prg_addr, map30_prg_allow, map30_chr_addr, map30_vram_a10, map30_vram_ce, map30_chr_allow};
 
