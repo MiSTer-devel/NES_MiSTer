@@ -264,7 +264,7 @@ module MMC2(input clk, input ce, input reset,
   assign chr_allow = flags[15];
 endmodule
 
-// This mapper also handles mapper 33,47,48,118,119 and 206.
+// This mapper also handles mapper 33,47,48,95,118,119 and 206.
 module MMC3(input clk, input ce, input reset,
             input [31:0] flags,
             input [15:0] prg_ain, output [21:0] prg_aout,
@@ -300,6 +300,7 @@ module MMC3(input clk, input ce, input reset,
   wire mapper48 = (flags[7:0] == 48);     // Taito's TC0690
   wire mapper33 = (flags[7:0] == 33);     // Taito's TC0190 (TC0690-like. No IRQ. Different Mirroring bit)
   wire mapper37 = (flags[7:0] == 37);     // European Triple Cart (Super Mario, Tetris, Nintendo World Cup)
+  wire mapper95 = (flags[7:0] == 95);
   
   wire four_screen_mirroring = flags[16] | DxROM;
   reg mapper47_multicart;
@@ -418,7 +419,7 @@ module MMC3(input clk, input ce, input reset,
   // The CHR bank to load. Each increment here is 1kb. So valid values are 0..255.
   reg [8:0] chrsel;
   always @* begin
-    casez({chr_ain[12] ^ chr_a12_invert, chr_ain[11], chr_ain[10]})
+    casez({chr_ain[12] ^ (chr_a12_invert && !mapper95), chr_ain[11], chr_ain[10]})
     3'b00?: chrsel = {chr_bank_0, chr_ain[10]};
     3'b01?: chrsel = {chr_bank_1, chr_ain[10]};
     3'b100: chrsel = {1'b0, chr_bank_2};
@@ -441,9 +442,10 @@ module MMC3(input clk, input ce, input reset,
   assign prg_is_ram = prg_ain >= 'h6000 && prg_ain < 'h8000 && ram_enable && !(ram_protect && prg_write);
   assign prg_allow = prg_ain[15] && !prg_write || prg_is_ram && !mapper47;
   wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]};
-  assign prg_aout = prg_is_ram  && !mapper47 && !DxROM ? prg_ram : prg_aout_tmp;
-  assign vram_a10 = !TxSROM ? (mirroring ? chr_ain[11] : chr_ain[10]) :	// TxSROM do not support mirroring
-                                    chrsel[7];
+  assign prg_aout = prg_is_ram  && !mapper47 && !DxROM && !mapper95 ? prg_ram : prg_aout_tmp;
+  assign vram_a10 = TxSROM ? chrsel[7] :      // TxSROM do not support mirroring
+                    mapper95 ? chrsel[5] :    // mapper95 does not support mirroring
+                    (mirroring ? chr_ain[11] : chr_ain[10]);
   assign vram_ce = chr_ain[13] && !four_screen_mirroring;
 endmodule
 
@@ -2838,6 +2840,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 87 = Needs testing
 // 89 = Needs testing
 // 93 = Needs testing
+// 95 = Needs testing
 // 101 = Needs testing
 // 105 = Working
 // 113 = Working
@@ -2857,6 +2860,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     119, // TQROM  uses the Nintendo MMC3 like other TxROM boards but uses the CHR bank number specially.
     47,  // Mapper 047 is a MMC3 multicart
 	 206, // MMC3 w/o IRQ or WRAM support
+	 95,  // NAMCOT-3425 is mapper 206-like, but connects A16 to CIRAM A10.
 	 48,  // MMC3-like with delayed IRQ
 	 33,  // Mapper 48 without IRQ and different mirroring location
 	 37,  // European Triple Cart (Super Mario, Tetris, Nintendo World Cup)
