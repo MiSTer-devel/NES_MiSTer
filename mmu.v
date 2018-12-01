@@ -1929,6 +1929,7 @@ module Mapper71(input clk, input ce, input reset,
 endmodule
 
 // #78-IREM-HOLYDIVER/JALECO-JF-16
+// #70,#152-Bandai
 module Mapper78(input clk, input ce, input reset,
                 input [31:0] flags,
                 input [15:0] prg_ain, output [21:0] prg_aout,
@@ -1939,19 +1940,27 @@ module Mapper78(input clk, input ce, input reset,
                 output chr_allow,                      // Allow write
                 output vram_a10,                             // Value for A10 address line
                 output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
-  reg [2:0] prg_bank;
+  reg [3:0] prg_bank;
   reg [3:0] chr_bank;
   reg mirroring;  // See vram_a10_t
-  wire submapper1 = (flags[22:21] == 1); // default (0 or 3) Holy Diver submapper; (1) JALECO-JF-16
+  wire mapper70 = (flags[7:0] == 70);
+  wire mapper152 = (flags[7:0] == 152);
+  wire onescreen = (flags[22:21] == 1) | mapper152; // default (0 or 3) Holy Diver submapper; (1) JALECO-JF-16
   always @(posedge clk) if (reset) begin
     prg_bank <= 0;
     chr_bank <= 0;
-    mirroring <= 0;
+    mirroring <= flags[14];
   end else if (ce) begin
-    if (prg_ain[15] == 1'b1 && prg_write)
-      {chr_bank, mirroring, prg_bank} <= prg_din;
+    if (prg_ain[15] == 1'b1 && prg_write) begin
+      if (mapper70)
+        {prg_bank, chr_bank} <= prg_din;
+      else if (mapper152)
+        {mirroring, prg_bank[2:0], chr_bank} <= prg_din;
+      else
+        {chr_bank, mirroring, prg_bank[2:0]} <= prg_din;
+    end
   end
-  assign prg_aout = {5'b00_000, (prg_ain[14] ? 3'b111 : prg_bank), prg_ain[13:0]};
+  assign prg_aout = {4'b00_00, (prg_ain[14] ? 4'b1111 : prg_bank), prg_ain[13:0]};
   assign prg_allow = prg_ain[15] && !prg_write;
   assign chr_allow = flags[15];
   assign chr_aout = {5'b10_000, chr_bank, chr_ain[12:0]};
@@ -1960,7 +1969,7 @@ module Mapper78(input clk, input ce, input reset,
   // The a10 VRAM address line. (Used for mirroring)
   reg vram_a10_t;
   always begin
-    case({submapper1, mirroring})
+    case({onescreen, mirroring})
     2'b00: vram_a10_t = chr_ain[11];   // One screen, horizontal
     2'b01: vram_a10_t = chr_ain[10];   // One screen, vertical
     2'b10: vram_a10_t = 0;             // One screen, lower bank
@@ -2852,6 +2861,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 66 = Working
 // 68 = Working
 // 69 = Working
+// 70 = Needs testing
 // 71 = Working
 // 76 = Needs testing
 // 78 = Submapper 1 Requires NES 2.0/Needs testing overall
@@ -2868,6 +2878,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 118 = Working
 // 119 = Working
 // 140 = Needs testing
+// 152 = Needs testing
 // 154 = Needs testing
 // 158 = Tons of GFX bugs
 // 165 = GFX corrupted
@@ -2934,6 +2945,8 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     71,
     232: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map71_prg_addr, map71_prg_allow, map71_chr_addr, map71_vram_a10, map71_vram_ce, map71_chr_allow};
 
+    152,
+    70,
     78: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map78_prg_addr, map78_prg_allow, map78_chr_addr, map78_vram_a10, map78_vram_ce, map78_chr_allow};
 
     79,
