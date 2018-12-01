@@ -1553,6 +1553,9 @@ endmodule
 
 // 11 - Color Dreams
 // 38 - Bit Corps
+// 87 - Jaleco JF-11,JF-14
+// 101 - Jaleco JF-11,JF-14
+// 140 - Jaleco JF-11,JF-14
 // 66 - GxROM
 module Mapper66(input clk, input ce, input reset,
                 input [31:0] flags,
@@ -1566,8 +1569,12 @@ module Mapper66(input clk, input ce, input reset,
                 output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
   reg [1:0] prg_bank;
   reg [3:0] chr_bank;
-  wire GXROM = (flags[7:0] == 66);
-  wire BitCorps = (flags[7:0] == 38);
+  wire [7:0] mapper = flags[7:0];
+  wire GXROM = (mapper == 66);
+  wire BitCorps = (mapper == 38);
+  wire Mapper140 = (mapper == 140);
+  wire Mapper101 = (mapper == 101);
+  wire Mapper87 = (mapper == 87);
   always @(posedge clk) if (reset) begin
     prg_bank <= 0;
     chr_bank <= 0;
@@ -1578,8 +1585,17 @@ module Mapper66(input clk, input ce, input reset,
       else // Color Dreams
         {chr_bank, prg_bank} <= {prg_din[7:4], prg_din[1:0]};
     end
-    if ((prg_ain[15:12]==4'h7) & prg_write & BitCorps) begin
+    else if ((prg_ain[15:12]==4'h7) & prg_write & BitCorps) begin
       {chr_bank, prg_bank} <= {prg_din[3:0]};
+    end
+    else if ((prg_ain[15:12]==4'h6) & prg_write) begin
+       if (Mapper140) begin
+         {prg_bank, chr_bank} <= {prg_din[5:4], prg_din[3:0]};
+       end else if (Mapper101) begin
+        {chr_bank} <= {prg_din[3:0]}; // All 8 bits instead?
+       end else if (Mapper87) begin
+        {chr_bank} <= {2'b00, prg_din[0], prg_din[1]};
+       end
     end
   end
   assign prg_aout = {5'b00_000, prg_bank, prg_ain[14:0]};
@@ -1985,7 +2001,6 @@ module Mapper89(input clk, input ce, input reset,
    
     reg mirror;
     
-    // Allow writes to 0x5000 only when launching through the proper mapper ID.
     wire [7:0] mapper = flags[7:0];
     wire mapper89 = (mapper == 8'd89); 
     wire mapper93 = (mapper == 8'd93); 
@@ -2820,12 +2835,15 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 78 = Submapper 1 Requires NES 2.0/Needs testing overall
 // 79 = Working
 // 85 = Needs testing/Audio needs testing
+// 87 = Needs testing
 // 89 = Needs testing
 // 93 = Needs testing
+// 101 = Needs testing
 // 105 = Working
 // 113 = Working
 // 118 = Working
 // 119 = Working
+// 140 = Needs testing
 // 158 = Tons of GFX bugs
 // 165 = GFX corrupted
 // 184 = Needs testing
@@ -2877,6 +2895,9 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 
     11,
     38,
+    87,
+    101,
+    140,
     66: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map66_prg_addr, map66_prg_allow, map66_chr_addr, map66_vram_a10, map66_vram_ce, map66_chr_allow};
     68: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map68_prg_addr, map68_prg_allow, map68_chr_addr, map68_vram_a10, map68_vram_ce, map68_chr_allow};
     69: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq, audio} = {map69_prg_addr, map69_prg_allow, map69_chr_addr, map69_vram_a10, map69_vram_ce, map69_chr_allow, map69_irq, map69_audio};
