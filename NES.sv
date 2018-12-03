@@ -541,7 +541,7 @@ module GameLoader
 	output reg    error
 );
 
-reg [2:0] state = 0;
+reg [2:0] state;
 reg [7:0] prgsize;
 reg [3:0] ctr;
 reg [7:0] ines[0:15]; // 16 bytes of iNES header

@@ -472,7 +472,7 @@ begin
             tmpP(Flag_I) := '1';
           end if;
           if RstCycle = '1' then
-            tmpP(Flag_I) := '0';
+            tmpP(Flag_I) := '1';
             tmpP(Flag_D) := '0';
           end if;
           tmpP(Flag_1) := '1';
