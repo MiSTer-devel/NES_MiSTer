@@ -264,7 +264,7 @@ module MMC2(input clk, input ce, input reset,
   assign chr_allow = flags[15];
 endmodule
 
-// This mapper also handles mapper 33,47,48,76,80,82,88,95,118,119,154,206 and 207.
+// This mapper also handles mapper 33,47,48,74,76,80,82,88,95,118,119,154,191,192,194,195,206 and 207.
 module MMC3(input clk, input ce, input reset,
             input [31:0] flags,
             input [15:0] prg_ain, output [21:0] prg_aout,
@@ -293,20 +293,25 @@ module MMC3(input clk, input ce, input reset,
   // The alternative behavior has slightly different IRQ counter semantics.
   wire mmc3_alt_behavior = 0;
   
-  wire TQROM = (flags[7:0] == 119); 		// TQROM maps 8kB CHR RAM
-  wire TxSROM = (flags[7:0] == 118); 		// Connects CHR A17 to CIRAM A10
-  wire mapper47 = (flags[7:0] == 47);		// Mapper 47 is a multicart that has 128k for each game. It has no RAM.
-  wire mapper37 = (flags[7:0] == 37);     // European Triple Cart (Super Mario, Tetris, Nintendo World Cup)
-  wire DxROM = (flags[7:0] == 206);
-  wire mapper48 = (flags[7:0] == 48);     // Taito's TC0690
-  wire mapper33 = (flags[7:0] == 33);     // Taito's TC0190 (TC0690-like. No IRQ. Different Mirroring bit)
-  wire mapper95 = (flags[7:0] == 95);     // NAMCOT-3425
-  wire mapper88 = (flags[7:0] == 88);     // NAMCOT-3433
+  wire TQROM =     (flags[7:0] == 119); 	// TQROM maps 8kB CHR RAM
+  wire TxSROM =    (flags[7:0] == 118); 	// Connects CHR A17 to CIRAM A10
+  wire mapper47 =  (flags[7:0] == 47);		// Mapper 47 is a multicart that has 128k for each game. It has no RAM.
+  wire mapper37 =  (flags[7:0] == 37);    // European Triple Cart (Super Mario, Tetris, Nintendo World Cup)
+  wire DxROM =     (flags[7:0] == 206);
+  wire mapper48 =  (flags[7:0] == 48);    // Taito's TC0690
+  wire mapper33 =  (flags[7:0] == 33);    // Taito's TC0190 (TC0690-like. No IRQ. Different Mirroring bit)
+  wire mapper95 =  (flags[7:0] == 95);    // NAMCOT-3425
+  wire mapper88 =  (flags[7:0] == 88);    // NAMCOT-3433
   wire mapper154 = (flags[7:0] == 154);   // NAMCOT-3453
-  wire mapper76 = (flags[7:0] == 76);     // NAMCOT-3446
-  wire mapper80 = (flags[7:0] == 80);     // Taito's X1-005
-  wire mapper82 = (flags[7:0] == 82);     // Taito's X1-017
-  wire mapper207 = (flags[7:0] == 207);     // Taito's X1-017
+  wire mapper76 =  (flags[7:0] == 76);    // NAMCOT-3446
+  wire mapper80 =  (flags[7:0] == 80);    // Taito's X1-005
+  wire mapper82 =  (flags[7:0] == 82);    // Taito's X1-017
+  wire mapper207 = (flags[7:0] == 207);   // Taito's X1-017
+  wire mapper74 =  (flags[7:0] == 74);    // Has 2KB CHR RAM
+  wire mapper191 = (flags[7:0] == 191);   // Has 2KB CHR RAM
+  wire mapper192 = (flags[7:0] == 192);   // Has 4KB CHR RAM
+  wire mapper194 = (flags[7:0] == 194);   // Has 2KB CHR RAM
+  wire mapper195 = (flags[7:0] == 195);   // Has 4KB CHR RAM
   
   wire four_screen_mirroring = flags[16] | DxROM;
   reg mapper47_multicart;
@@ -490,8 +495,13 @@ module MMC3(input clk, input ce, input reset,
                       || (ram_protect[3] && prg_ain[12:11] == 2'b11);
 
   assign {chr_allow, chr_aout} = 
-      (TQROM && chrsel[6])   ? {1'b1,    9'b11_1111_111, chrsel[2:0], chr_ain[9:0]} :   // TQROM 8kb CHR-RAM
-      (four_screen_mirroring && chr_ain[13]) ? {1'b1,    9'b11_1111_111, chr_ain[13], chr_ain[11:0]} :  // DxROM 8kb CHR-RAM
+      (TQROM && chrsel[6])                    ? {1'b1, 9'b11_1111_111,    chrsel[2:0], chr_ain[9:0]} :   // TQROM 8kb CHR-RAM
+      (mapper74 && chrsel[7:1]==7'b0000100)   ? {1'b1, 11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
+      (mapper191 && chrsel[7])                ? {1'b1, 11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
+      (mapper192 && chrsel[7:2]==6'b000010)   ? {1'b1, 10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
+      (mapper194 && chrsel[7:1]==7'b0000000)  ? {1'b1, 11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
+      (mapper195 && chrsel[7:2]==6'b000000)   ? {1'b1, 10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
+      (four_screen_mirroring && chr_ain[13])  ? {1'b1, 9'b11_1111_111,   chr_ain[13], chr_ain[11:0]} :   // DxROM 8kb CHR-RAM
                              {flags[15], 3'b10_0, chrsel, chr_ain[9:0]};               // Standard MMC3
 
   assign prg_is_ram = (prg_ain[15:13] == 3'b011) && ((prg_ain[12:8] == 5'b1_1111) | ~internal_128) //(>= 'h6000 && < 'h8000) && (==7Fxx or external_ram)
@@ -3131,6 +3141,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 69 = Working
 // 70 = Needs testing
 // 71 = Working
+// 74 = Needs testing
 // 75 = Needs testing
 // 76 = Needs testing
 // 78 = Submapper 1 Requires NES 2.0/Needs testing overall
@@ -3154,6 +3165,10 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 158 = Tons of GFX bugs
 // 165 = GFX corrupted
 // 184 = Needs testing
+// 191 = Not Tested
+// 192 = Not Tested
+// 194 = Not Tested
+// 195 = Not Tested
 // 206 = Not Tested
 // 207 = Needs testing
 // 228 = Working
@@ -3175,6 +3190,11 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 	 48,  // MMC3-like with delayed IRQ
 	 33,  // Mapper 48 without IRQ and different mirroring location
 	 37,  // European Triple Cart (Super Mario, Tetris, Nintendo World Cup)
+    74,  // MMC3 like but uses the CHR RAM.
+    191, // MMC3 like but uses the CHR RAM.
+    192, // MMC3 like but uses the CHR RAM.
+    194, // MMC3 like but uses the CHR RAM.
+    195, // MMC3 like but uses the CHR RAM.
     4:  {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq} = {mmc3_prg_addr, mmc3_prg_allow, mmc3_chr_addr, mmc3_vram_a10, mmc3_vram_ce, mmc3_chr_allow, mmc3_irq};
 
     10: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {mmc4_prg_addr, mmc4_prg_allow, mmc4_chr_addr, mmc4_vram_a10, mmc4_vram_ce, mmc4_chr_allow};
