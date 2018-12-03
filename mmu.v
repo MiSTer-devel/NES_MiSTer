@@ -264,7 +264,7 @@ module MMC2(input clk, input ce, input reset,
   assign chr_allow = flags[15];
 endmodule
 
-// This mapper also handles mapper 33,47,48,76,88,95,118,119,154 and 206.
+// This mapper also handles mapper 33,47,48,76,80,82,88,95,118,119,154,206 and 207.
 module MMC3(input clk, input ce, input reset,
             input [31:0] flags,
             input [15:0] prg_ain, output [21:0] prg_aout,
@@ -282,10 +282,10 @@ module MMC3(input clk, input ce, input reset,
   reg mirroring;                     // 0 = vertical, 1 = horizontal
   reg irq_enable, irq_reload;        // IRQ enabled, and IRQ reload requested
   reg [7:0] irq_latch, counter;      // IRQ latch value and current counter
-  reg ram_enable, ram_protect;       // RAM protection bits
+  reg [3:0] ram_enable, ram_protect;       // RAM protection bits
   reg [7:0] chr_bank_0, chr_bank_1;  // Selected CHR banks
   reg [7:0] chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5;
-  reg [5:0] prg_bank_0, prg_bank_1;  // Selected PRG banks
+  reg [5:0] prg_bank_0, prg_bank_1, prg_bank_2;  // Selected PRG banks
   wire prg_is_ram;
   reg [4:0] irq_reg;
   assign irq = mapper48 ? irq_reg[4] : irq_reg[0];
@@ -304,14 +304,20 @@ module MMC3(input clk, input ce, input reset,
   wire mapper88 = (flags[7:0] == 88);     // NAMCOT-3433
   wire mapper154 = (flags[7:0] == 154);   // NAMCOT-3453
   wire mapper76 = (flags[7:0] == 76);     // NAMCOT-3446
+  wire mapper80 = (flags[7:0] == 80);     // Taito's X1-005
+  wire mapper82 = (flags[7:0] == 82);     // Taito's X1-017
+  wire mapper207 = (flags[7:0] == 207);     // Taito's X1-017
   
   wire four_screen_mirroring = flags[16] | DxROM;
   reg mapper47_multicart;
   reg [2:0] mapper37_multicart;
   wire [7:0] new_counter = (counter == 0 || irq_reload) ? irq_latch : counter - 1'd1;
   reg [3:0] a12_ctr; 
-  wire irq_support = !DxROM && !mapper33 && !mapper95 && !mapper88 && !mapper154 && !mapper76;
-  wire invert_support = irq_support && !mapper48;
+  wire irq_support = !DxROM && !mapper33 && !mapper95 && !mapper88 && !mapper154 && !mapper76 && !mapper80 && !mapper82  && !mapper207; //82,207 not needed
+  wire prg_invert_support = (irq_support && !mapper48);
+  wire chr_invert_support = (irq_support && !mapper48) || mapper82;
+  wire regs_7e = mapper80 || mapper82 || mapper207;
+  wire internal_128 = mapper80 || mapper207;
    
   always @(posedge clk) if (reset) begin
     irq_reg <= 5'b00000;
@@ -325,11 +331,12 @@ module MMC3(input clk, input ce, input reset,
     {chr_bank_0, chr_bank_1} <= 0;
     {chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5} <= 0;
     {prg_bank_0, prg_bank_1} <= 0;
+	 prg_bank_2 <= 6'b111110;
     a12_ctr <= 0;
 	 mapper37_multicart <= 3'b000;
   end else if (ce) begin
     irq_reg[4:1] <= irq_reg[3:0];  // 4 cycle delay
-    if (prg_write && prg_ain[15]) begin
+    if (!regs_7e && prg_write && prg_ain[15]) begin
       casez({prg_ain[14:13], prg_ain[1:0], mapper33 | mapper48, mapper48})
       6'b00_?0_00: {chr_a12_invert, prg_rom_bank_mode, bank_select} <= {prg_din[7], prg_din[6], prg_din[2:0]}; // Bank select ($8000-$9FFE, even)
       6'b00_?1_00: begin // Bank data ($8001-$9FFF, odd)
@@ -345,7 +352,7 @@ module MMC3(input clk, input ce, input reset,
         endcase
       end
       6'b01_?0_00: mirroring <= !prg_din[0];                   // Mirroring ($A000-$BFFE, even)
-      6'b01_?1_00: {ram_enable, ram_protect} <= prg_din[7:6]; // PRG RAM protect ($A001-$BFFF, odd)
+      6'b01_?1_00: {ram_enable, ram_protect} <= {{4{prg_din[7]}},{4{prg_din[6]}}}; // PRG RAM protect ($A001-$BFFF, odd)
       6'b10_?0_00: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
       6'b10_?1_00: irq_reload <= 1;                           // IRQ reload ($C001-$DFFF, odd)
       6'b11_?0_00: begin irq_enable <= 0; irq_reg[0] <= 0; end// IRQ disable ($E000-$FFFE, even)
@@ -372,6 +379,28 @@ module MMC3(input clk, input ce, input reset,
         mirroring <= !prg_din[6];
 		end
     end
+    else if (regs_7e && prg_write && prg_ain[15:4]==12'h7EF) begin
+      casez({prg_ain[3:0], mapper82})
+      5'b0000_?: chr_bank_0 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0000-$07FF
+      5'b0001_?: chr_bank_1 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0800-$0FFF
+      5'b0010_?: chr_bank_2 <= prg_din;  // Select 1 KB CHR bank at PPU $1000-$13FF
+      5'b0011_?: chr_bank_3 <= prg_din;  // Select 1 KB CHR bank at PPU $1800-$1BFF
+      5'b0100_?: chr_bank_4 <= prg_din;  // Select 1 KB CHR bank at PPU $1800-$1BFF
+      5'b0101_?: chr_bank_5 <= prg_din;  // Select 1 KB CHR bank at PPU $1C00-$1FFF
+      5'b011?_0: {mirroring} <= prg_din[0]; // Select Mirroing
+      5'b100?_0: {ram_enable[3], ram_protect[3]} <= {(prg_din==8'hA3),!(prg_din==8'hA3)};  // Enable RAM at $7F00-$7FFF
+      5'b0110_1: {chr_a12_invert,mirroring} <= prg_din[1:0]; // Select Mirroing
+      5'b0111_1: {ram_enable[0], ram_protect[0]} <= {(prg_din==8'hCA),!(prg_din==8'hCA)};  // Enable RAM at $6000-$67FF
+      5'b1000_1: {ram_enable[1], ram_protect[1]} <= {(prg_din==8'h69),!(prg_din==8'h69)};  // Enable RAM at $6F00-$6FFF
+      5'b1001_1: {ram_enable[2], ram_protect[2]} <= {(prg_din==8'h84),!(prg_din==8'h84)};  // Enable RAM at $7000-$73FF  //Using 6K; Require 5K instead?
+      5'b101?_0: prg_bank_0 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF
+      5'b110?_0: prg_bank_1 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
+      5'b111?_0: prg_bank_2 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $C000-$DFFF
+      5'b1010_1: prg_bank_0 <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $8000-$9FFF
+      5'b1011_1: prg_bank_1 <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $A000-$BFFF
+      5'b1100_1: prg_bank_2 <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $C000-$DFFF
+      endcase
+	 end
     
     // For Mapper 47
     // $6000-7FFF:  [.... ...B]  Block select
@@ -405,11 +434,11 @@ module MMC3(input clk, input ce, input reset,
   // The PRG bank to load. Each increment here is 8kb. So valid values are 0..63.
   reg [5:0] prgsel;
   always @* begin
-    casez({prg_ain[14:13], prg_rom_bank_mode && invert_support})
+    casez({prg_ain[14:13], prg_rom_bank_mode && prg_invert_support})
     3'b00_0: prgsel = prg_bank_0;  // $8000 mode 0
-    3'b00_1: prgsel = 6'b111110;   // $8000 fixed to second last bank
+    3'b00_1: prgsel = prg_bank_2;  // $8000 fixed to second last bank
     3'b01_?: prgsel = prg_bank_1;  // $A000 mode 0,1
-    3'b10_0: prgsel = 6'b111110;   // $C000 fixed to second last bank
+    3'b10_0: prgsel = prg_bank_2;  // $C000 fixed to second last bank
     3'b10_1: prgsel = prg_bank_0;  // $C000 mode 1
     3'b11_?: prgsel = 6'b111111;   // $E000 fixed to last bank
     endcase
@@ -428,7 +457,7 @@ module MMC3(input clk, input ce, input reset,
   reg [8:0] chrsel;
   always @* begin
    if (!mapper76) begin
-    casez({chr_ain[12] ^ (chr_a12_invert && invert_support), chr_ain[11], chr_ain[10]})
+    casez({chr_ain[12] ^ (chr_a12_invert && chr_invert_support), chr_ain[11], chr_ain[10]})
     3'b00?: chrsel = {chr_bank_0, chr_ain[10]};
     3'b01?: chrsel = {chr_bank_1, chr_ain[10]};
     3'b100: chrsel = {1'b0, chr_bank_2};
@@ -451,19 +480,29 @@ module MMC3(input clk, input ce, input reset,
   end
 
   wire [21:0] prg_aout_tmp = {3'b00_0,  prgsel, prg_ain[12:0]};
+  wire ram_enable_a = (ram_enable[0] && prg_ain[12:11] == 2'b00)
+                      || (ram_enable[1] && prg_ain[12:11] == 2'b01)
+                      || (ram_enable[2] && prg_ain[12:11] == 2'b10)
+                      || (ram_enable[3] && prg_ain[12:11] == 2'b11);
+  wire ram_protect_a = (ram_protect[0] && prg_ain[12:11] == 2'b00)
+                      || (ram_protect[1] && prg_ain[12:11] == 2'b01)
+                      || (ram_protect[2] && prg_ain[12:11] == 2'b10)
+                      || (ram_protect[3] && prg_ain[12:11] == 2'b11);
 
   assign {chr_allow, chr_aout} = 
       (TQROM && chrsel[6])   ? {1'b1,    9'b11_1111_111, chrsel[2:0], chr_ain[9:0]} :   // TQROM 8kb CHR-RAM
       (four_screen_mirroring && chr_ain[13]) ? {1'b1,    9'b11_1111_111, chr_ain[13], chr_ain[11:0]} :  // DxROM 8kb CHR-RAM
                              {flags[15], 3'b10_0, chrsel, chr_ain[9:0]};               // Standard MMC3
 
-  assign prg_is_ram = prg_ain >= 'h6000 && prg_ain < 'h8000 && ram_enable && !(ram_protect && prg_write);
+  assign prg_is_ram = (prg_ain[15:13] == 3'b011) && ((prg_ain[12:8] == 5'b1_1111) | ~internal_128) //(>= 'h6000 && < 'h8000) && (==7Fxx or external_ram)
+                      && ram_enable_a && !(ram_protect_a && prg_write);
   assign prg_allow = prg_ain[15] && !prg_write || prg_is_ram && !mapper47;
-  wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]};
+  wire [21:0] prg_ram = {9'b11_1100_000, internal_128 ? 6'b000000 : prg_ain[12:7], prg_ain[6:0]};
   assign prg_aout = prg_is_ram  && !mapper47 && !DxROM && !mapper95 && !mapper88 ? prg_ram : prg_aout_tmp;
   assign vram_a10 = TxSROM ? chrsel[7] :            // TxSROM do not support mirroring
                     mapper95 ? chrsel[5] :          // mapper95 does not support mirroring
                     mapper154 ? mirroring :         // mapper154 does not support mirroring
+                    mapper207 ? chrsel[7] :         // mapper207 does not support mirroring
                     (mirroring ? chr_ain[10] : chr_ain[11]);
   assign vram_ce = chr_ain[13] && !four_screen_mirroring;
 endmodule
@@ -3027,6 +3066,8 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 76 = Needs testing
 // 78 = Submapper 1 Requires NES 2.0/Needs testing overall
 // 79 = Working
+// 80 = Needs testing
+// 82 = Needs testing
 // 85 = Needs testing/Audio needs testing
 // 87 = Needs testing
 // 88 = Needs testing
@@ -3045,6 +3086,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 165 = GFX corrupted
 // 184 = Needs testing
 // 206 = Not Tested
+// 207 = Needs testing
 // 228 = Working
 // 234 = Not Tested        
     case(flags[7:0])
@@ -3058,6 +3100,9 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 	 154, // NAMCOT-3453 is mapper 88-like, but with one screen mirroring.
 	 95,  // NAMCOT-3425 is mapper 206-like, but connects A16 to CIRAM A10.
 	 76,  // NAMCOT-3446 is mapper 206-like, but coarser chr banking.
+	 80,  // Taito X01-005 is MMC3-like with Internal RAM and no IRQ
+	 82,  // Tatio X01-017 is mapper 80-like with more Internal RAM
+	 207,  // Tatio X01-005 is mapper 80-like with one screen mirroring
 	 48,  // MMC3-like with delayed IRQ
 	 33,  // Mapper 48 without IRQ and different mirroring location
 	 37,  // European Triple Cart (Super Mario, Tetris, Nintendo World Cup)
