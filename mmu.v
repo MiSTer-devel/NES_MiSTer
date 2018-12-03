@@ -2536,6 +2536,69 @@ module Mapper234(input clk, input ce, input reset,
   assign vram_ce = chr_ain[13];
 endmodule
 
+// VRC1 (75)
+module VRC1(input clk, input ce, input reset,
+                input [31:0] flags,
+                input [15:0] prg_ain, output [21:0] prg_aout,
+                input prg_read, prg_write,                   // Read / write signals
+                input [7:0] prg_din,
+                output prg_allow,                            // Enable access to memory for the specified operation.
+                input [13:0] chr_ain, output [21:0] chr_aout,
+                output chr_allow,                      // Allow write
+                output reg vram_a10,                         // Value for A10 address line
+                output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
+    reg [3:0] prg_bank0, prg_bank1, prg_bank2;
+    reg [4:0] chr_bank0, chr_bank1;
+	 reg [1:0] mirroring;
+	 reg [3:0] prg_tmp;
+	 reg [4:0] chr_tmp;
+    
+    always @(posedge clk) if (reset) begin
+      // Set value for mirroring
+      mirroring[1:0] <= {flags[16], !flags[14]};
+    end else if (ce) begin
+      if (prg_ain[15] & prg_write) begin
+        case (prg_ain[14:12])
+        3'b000:  prg_bank0      <= prg_din[3:0];  // PRG bank 0x8000-0x9FFF
+        3'b001:  {chr_bank1[4],chr_bank0[4],mirroring[0]} <= prg_din[2:0];
+        3'b010:  prg_bank1      <= prg_din[3:0];  // PRG bank 0xA000-0xBFFF
+        3'b100:  prg_bank2      <= prg_din[3:0];  // PRG bank 0xC000-0xEFFF
+        3'b110:  chr_bank0[3:0] <= prg_din[3:0];  // CHR bank 0x0000-0x0FFF
+        3'b111:  chr_bank1[3:0] <= prg_din[3:0];  // CHR bank 0x1000-0x1FFF
+        endcase
+      end
+    end
+    
+    always begin
+      // mirroring mode
+      casez(mirroring[1:0])
+      2'b00   :   vram_a10 = {chr_ain[10]};    // vertical
+      2'b01   :   vram_a10 = {chr_ain[11]};    // horizontal
+      2'b1?   :   vram_a10 = {mirroring[0]};   // 4 screen // Not implemented
+      endcase
+
+      // PRG ROM bank size select
+      casez(prg_ain[14:13])
+		2'b00 : prg_tmp = prg_bank0;
+		2'b01 : prg_tmp = prg_bank1;
+		2'b10 : prg_tmp = prg_bank2;
+		2'b11 : prg_tmp = 4'b1111;
+      endcase
+
+      // PRG ROM bank size select
+      casez(chr_ain[12])
+		1'b0 : chr_tmp = chr_bank0;
+		1'b1 : chr_tmp = chr_bank1;
+      endcase
+    end
+
+  assign vram_ce = chr_ain[13];
+  assign prg_aout = {5'b00_000, prg_tmp, prg_ain[12:0]};
+  assign prg_allow = prg_ain[15] && !prg_write;
+  assign chr_allow = flags[15];
+  assign chr_aout = {5'b10_000, chr_tmp, chr_ain[11:0]};
+endmodule
+
 module VRC6(input clk, input ce, input reset,
             input [31:0] flags,
             input [15:0] prg_ain, output [21:0] prg_aout,
@@ -2968,6 +3031,11 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   wire [21:0] nesev_prg_addr, nesev_chr_addr;
   wire nesev_irq;
   NesEvent nesev(clk, ce, reset, prg_ain, nesev_prg_addr, chr_ain, nesev_chr_addr, mmc1_chr_addr[16:13], mmc1_prg_addr, nesev_irq);
+
+  wire vrc1_prg_allow, vrc1_vram_a10, vrc1_vram_ce, vrc1_chr_allow;
+  wire [21:0] vrc1_prg_addr, vrc1_chr_addr;
+  VRC1 vrc1(clk, ce, reset, flags, prg_ain, vrc1_prg_addr, prg_read, prg_write, prg_din, vrc1_prg_allow,
+                                        chr_ain, vrc1_chr_addr, vrc1_chr_allow, vrc1_vram_a10, vrc1_vram_ce);
   
   wire vrc6_prg_allow, vrc6_vram_a10, vrc6_vram_ce, vrc6_chr_allow, vrc6_irq;
   wire [21:0] vrc6_prg_addr, vrc6_chr_addr;
@@ -3063,6 +3131,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 69 = Working
 // 70 = Needs testing
 // 71 = Working
+// 75 = Needs testing
 // 76 = Needs testing
 // 78 = Submapper 1 Requires NES 2.0/Needs testing overall
 // 79 = Working
@@ -3166,6 +3235,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 
     228: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map228_prg_addr, map228_prg_allow, map228_chr_addr, map228_vram_a10, map228_vram_ce, map228_chr_allow};
     234: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map234_prg_addr, map234_prg_allow, map234_chr_addr, map234_vram_a10, map234_vram_ce, map234_chr_allow};
+    75: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {vrc1_prg_addr, vrc1_prg_allow, vrc1_chr_addr, vrc1_vram_a10, vrc1_vram_ce, vrc1_chr_allow};
     20: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {mapfds_prg_addr, mapfds_prg_allow, mapfds_chr_addr, mapfds_vram_a10, mapfds_vram_ce, mapfds_chr_allow, mapfds_prg_dout, mapfds_irq, mapfds_audio};
     24,
     26: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {vrc6_prg_addr, vrc6_prg_allow, vrc6_chr_addr, vrc6_vram_a10, vrc6_vram_ce, vrc6_chr_allow, vrc6_prg_dout, vrc6_irq, vrc6_audio};
