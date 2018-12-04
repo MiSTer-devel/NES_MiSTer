@@ -1487,6 +1487,7 @@ module Mapper28(input clk, input ce, input reset,
                 input [7:0] prg_din,
                 output prg_allow,                            // Enable access to memory for the specified operation.
                 input [13:0] chr_ain, output [21:0] chr_aout,
+					 output reg [7:0] chr_dout, output has_chr_dout,
                 output chr_allow,                      // Allow write
                 output reg vram_a10,                         // Value for A10 address line
                 output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
@@ -1496,7 +1497,8 @@ module Mapper28(input clk, input ce, input reset,
     reg [3:0] inner;    // "inner" bank at 01h
     reg [5:0] mode;     // mode register at 80h
     reg [5:0] outer;    // "outer" bank at 81h  
-    reg [1:0] selreg;   // selector register
+    reg [2:0] selreg;   // selector register
+    reg [3:0] security; // selector register
     
     // Allow writes to 0x5000 only when launching through the proper mapper ID.
     wire [7:0] mapper = flags[7:0];
@@ -1509,7 +1511,7 @@ module Mapper28(input clk, input ce, input reset,
       selreg <= 1;
       
       // Set value for mirroring
-      if (mapper == 2 || mapper == 0 || mapper == 3)
+      if (mapper == 2 || mapper == 0 || mapper == 3 || mapper == 185)
         mode[1:0] <= flags[14] ? 2'b10 : 2'b11;
         
       // UNROM #2 - Current bank in $8000-$BFFF and fixed top half of outer bank in $C000-$FFFF
@@ -1521,6 +1523,10 @@ module Mapper28(input clk, input ce, input reset,
       if (mapper == 3)
         selreg <= 0;
 
+      // CNROM #185 - Fixed PRG bank, Fixed CHR Bank, Security.
+      if (mapper == 185)
+        selreg <= 4;
+
       // AxROM #7 - Switch 32kb rom bank + switchable nametables
       if (mapper == 7) begin
         mode[1:0] <= 2'b00;   // Switchable VRAM page.
@@ -1529,13 +1535,14 @@ module Mapper28(input clk, input ce, input reset,
       end
     end else if (ce) begin
       if ((prg_ain[15:12] == 4'h5) & prg_write && allow_select)
-			selreg <= {prg_din[7], prg_din[0]};        // select register
+			selreg <= {1'b0,prg_din[7], prg_din[0]};        // select register
       if (prg_ain[15] & prg_write) begin
-        case (selreg)
-        2'h0:  {mode[0], a53chr}  <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[1:0]};  // CHR RAM bank
-        2'h1:  {mode[0], inner}   <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[3:0]};  // "inner" bank
-        2'h2:  {mode}             <= {prg_din[5:0]};                                    // mode register
-        2'h3:  {outer}            <= {prg_din[5:0]};                                    // "outer" bank
+        casez (selreg)
+        3'h000:  {mode[0], a53chr}  <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[1:0]};  // CHR RAM bank
+        3'h001:  {mode[0], inner}   <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[3:0]};  // "inner" bank
+        3'h010:  {mode}             <= {prg_din[5:0]};                                    // mode register
+        3'h011:  {outer}            <= {prg_din[5:0]};                                    // "outer" bank
+        3'b1??:  {security}         <= {prg_din[5:4],prg_din[1:0]};                       // security
         endcase
       end
     end
@@ -1566,6 +1573,7 @@ module Mapper28(input clk, input ce, input reset,
       
       default     :  a53prg = {outer[5:0],             prg_ain[14]};  // 16K fixed bank
       endcase
+		chr_dout = 8'hFF;//chr_ain[7:0]; // return LSB of address below when CHR disabled by security
     end
 
   assign vram_ce = chr_ain[13];
@@ -1573,6 +1581,12 @@ module Mapper28(input clk, input ce, input reset,
   assign prg_allow = prg_ain[15] && !prg_write;
   assign chr_allow = flags[15];
   assign chr_aout = {7'b10_0000_0, a53chr, chr_ain[12:0]};
+  wire submapper = flags[24:21];
+  assign has_chr_dout = (mapper == 185) && (   ((submapper == 0) && (security[1:0] == 2'b00))
+                                            || ((submapper == 4) && (security[1:0] != 2'b00))
+                                            || ((submapper == 5) && (security[1:0] != 2'b01))
+                                            || ((submapper == 6) && (security[1:0] != 2'b10))
+                                            || ((submapper == 7) && (security[1:0] != 2'b11)));
 endmodule
 
 // 30-UNROM512
@@ -2907,8 +2921,11 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 
   wire map28_prg_allow, map28_vram_a10, map28_vram_ce, map28_chr_allow;
   wire [21:0] map28_prg_addr, map28_chr_addr;
+  wire [7:0]  map28_chr_dout;
+  wire  map28_has_chr_dout;
   Mapper28 map28(clk, ce, reset, flags, prg_ain, map28_prg_addr, prg_read, prg_write, prg_din, map28_prg_allow,
-                                        chr_ain, map28_chr_addr, map28_chr_allow, map28_vram_a10, map28_vram_ce);
+                                        chr_ain, map28_chr_addr, map28_chr_dout, map28_has_chr_dout, map28_chr_allow,
+													 map28_vram_a10, map28_vram_ce);
 
   wire map30_prg_allow, map30_vram_a10, map30_vram_ce, map30_chr_allow;
   wire [21:0] map30_prg_addr, map30_chr_addr;
@@ -3165,6 +3182,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 158 = Tons of GFX bugs
 // 165 = GFX corrupted
 // 184 = Needs testing
+// 185 = Needs testing
 // 191 = Not Tested
 // 192 = Not Tested
 // 194 = Not Tested
@@ -3205,7 +3223,8 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     2,
     3,
     7,
-    28: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map28_prg_addr, map28_prg_allow, map28_chr_addr, map28_vram_a10, map28_vram_ce, map28_chr_allow};
+    185,
+    28: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, chr_dout, has_chr_dout}      = {map28_prg_addr, map28_prg_allow, map28_chr_addr, map28_vram_a10, map28_vram_ce, map28_chr_allow, map28_chr_dout, map28_has_chr_dout};
 
     89,
     93,
