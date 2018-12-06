@@ -1814,6 +1814,7 @@ endmodule
 
 // 11 - Color Dreams
 // 38 - Bit Corps
+// 86 - Jaleco JF-13 -- no audio samples
 // 87 - Jaleco JF-11,JF-14
 // 101 - Jaleco JF-11,JF-14
 // 140 - Jaleco JF-11,JF-14
@@ -1835,6 +1836,7 @@ module Mapper66(input clk, input ce, input reset,
   wire BitCorps = (mapper == 38);
   wire Mapper140 = (mapper == 140);
   wire Mapper101 = (mapper == 101);
+  wire Mapper86 = (mapper == 86);
   wire Mapper87 = (mapper == 87);
   always @(posedge clk) if (reset) begin
     prg_bank <= 0;
@@ -1856,6 +1858,8 @@ module Mapper66(input clk, input ce, input reset,
         {chr_bank} <= {prg_din[3:0]}; // All 8 bits instead?
        end else if (Mapper87) begin
         {chr_bank} <= {2'b00, prg_din[0], prg_din[1]};
+       end else if (Mapper86) begin
+         {prg_bank, chr_bank} <= {prg_din[5:4], 1'b0, prg_din[6], prg_din[1:0]};
        end
     end
   end
@@ -2166,6 +2170,84 @@ module Mapper71(input clk, input ce, input reset,
   // XXX(ludde): Fire hawk uses flags[14] == 0 while no other game seems to do that.
   // So when flags[14] == 0 we use ciram_select instead.
   assign vram_a10 = flags[14] ? chr_ain[10] : ciram_select;
+endmodule
+
+
+// 92 - Jaleco JF-19 -- no audio samples
+// 72 - Jaleco JF-17 -- no audio samples
+module Mapper72(input clk, input ce, input reset,
+                input [31:0] flags,
+                input [15:0] prg_ain, output [21:0] prg_aout,
+                input prg_read, prg_write,                   // Read / write signals
+                input [7:0] prg_din,
+                output prg_allow,                            // Enable access to memory for the specified operation.
+                input [13:0] chr_ain, output [21:0] chr_aout,
+                output chr_allow,                      // Allow write
+                output vram_a10,                             // Value for A10 address line
+                output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
+  reg [3:0] prg_bank;
+  reg [3:0] chr_bank;
+  wire [7:0] mapper = flags[7:0];
+  reg last_prg;
+  reg last_chr;
+  wire mapper72 = (mapper == 72);
+
+  always @(posedge clk) if (reset) begin
+    prg_bank <= 0;
+    chr_bank <= 0;
+	 last_prg <= 0;
+	 last_chr <= 0;
+  end else if (ce) begin
+    if (prg_ain[15] & prg_write) begin
+      if ((!last_prg) && (prg_din[7]))
+        {prg_bank} <= {prg_din[3:0]};
+      if ((!last_chr) && (prg_din[6]))
+        {chr_bank} <= {prg_din[3:0]};
+		{last_prg, last_chr} <= prg_din[7:6];
+    end
+  end
+  assign prg_aout = {4'b00_00, prg_ain[14] ^ mapper72 ? prg_bank : mapper72 ? 4'b1111 : 4'b0000, prg_ain[13:0]};
+  assign prg_allow = prg_ain[15] && !prg_write;
+  assign chr_allow = flags[15];
+  assign chr_aout = {5'b10_000, chr_bank, chr_ain[12:0]};
+  assign vram_ce = chr_ain[13];
+  assign vram_a10 = flags[14] ? chr_ain[10] : chr_ain[11];
+endmodule
+
+// 77-IREM
+module Mapper77(input clk, input ce, input reset,
+                input [31:0] flags,
+                input [15:0] prg_ain, output [21:0] prg_aout,
+                input prg_read, prg_write,                   // Read / write signals
+                input [7:0] prg_din,
+                output prg_allow,                            // Enable access to memory for the specified operation.
+                input [13:0] chr_ain, output [21:0] chr_aout,
+                output chr_allow,                      // Allow write
+                output reg vram_a10,                         // Value for A10 address line
+                output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
+    reg [3:0] prgbank;
+    reg [3:0] chrbank;
+    
+    always @(posedge clk) if (reset) begin
+        prgbank <= 0;
+		  chrbank <= 0;
+    end else if (ce) begin
+      if (prg_ain[15] & prg_write) begin
+        {chrbank, prgbank}   <= prg_din[7:0];
+      end
+    end
+    
+  always begin
+     vram_a10 = {chr_ain[10]};    // four screen (consecutive)
+  end
+
+  assign prg_aout = {3'b000, prgbank, prg_ain[14:0]};
+  assign prg_allow = prg_ain[15] && !prg_write;
+  assign chr_allow = chrram;
+  wire chrram = (chr_ain[13:11]!=3'b000);
+  assign chr_aout[10:0] = {chr_ain[10:0]};
+  assign chr_aout[21:11] = chrram ? {8'b11_1111_11, chr_ain[13:11]} : {7'b10_0000_0, chrbank};
+  assign vram_ce = 0;
 endmodule
 
 // #78-IREM-HOLYDIVER/JALECO-JF-16
@@ -3042,6 +3124,16 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   Mapper71 map71(clk, ce, reset, flags, prg_ain, map71_prg_addr, prg_read, prg_write, prg_din, map71_prg_allow,
                                         chr_ain, map71_chr_addr, map71_chr_allow, map71_vram_a10, map71_vram_ce);
 
+  wire map72_prg_allow, map72_vram_a10, map72_vram_ce, map72_chr_allow;
+  wire [21:0] map72_prg_addr, map72_chr_addr;
+  Mapper72 map72(clk, ce, reset, flags, prg_ain, map72_prg_addr, prg_read, prg_write, prg_din, map72_prg_allow,
+                                        chr_ain, map72_chr_addr, map72_chr_allow, map72_vram_a10, map72_vram_ce);
+
+  wire map77_prg_allow, map77_vram_a10, map77_vram_ce, map77_chr_allow;
+  wire [21:0] map77_prg_addr, map77_chr_addr;
+  Mapper77 map77(clk, ce, reset, flags, prg_ain, map77_prg_addr, prg_read, prg_write, prg_din, map77_prg_allow,
+                                        chr_ain, map77_chr_addr, map77_chr_allow, map77_vram_a10, map77_vram_ce);
+
   wire map78_prg_allow, map78_vram_a10, map78_vram_ce, map78_chr_allow;
   wire [21:0] map78_prg_addr, map78_chr_addr;
   Mapper78 map78(clk, ce, reset, flags, prg_ain, map78_prg_addr, prg_read, prg_write, prg_din, map78_prg_allow,
@@ -3181,17 +3273,21 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 69 = Working
 // 70 = Needs testing
 // 71 = Working
+// 72 = Needs testing/No Audio Samples
 // 74 = Needs testing
 // 75 = Needs testing
 // 76 = Needs testing
+// 77 = Needs testing
 // 78 = Submapper 1 Requires NES 2.0/Needs testing overall
 // 79 = Working
 // 80 = Needs testing
 // 82 = Needs testing
 // 85 = Needs testing/Audio needs testing
+// 86 = Needs testing/No Audio Samples
 // 87 = Needs testing
 // 88 = Needs testing
 // 89 = Needs testing
+// 92 = Needs testing/No Audio Samples
 // 93 = Needs testing
 // 94 = Needs testing
 // 95 = Needs testing
@@ -3219,23 +3315,23 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 228 = Working
 // 234 = Not Tested        
     case(flags[7:0])
-	 155,
+    155,
     1:  {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {mmc1_prg_addr, mmc1_prg_allow, mmc1_chr_addr, mmc1_vram_a10, mmc1_vram_ce, mmc1_chr_allow};
     9:  {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {mmc2_prg_addr, mmc2_prg_allow, mmc2_chr_addr, mmc2_vram_a10, mmc2_vram_ce, mmc2_chr_allow};
     118, // TxSROM connects A17 to CIRAM A10.
     119, // TQROM  uses the Nintendo MMC3 like other TxROM boards but uses the CHR bank number specially.
     47,  // Mapper 047 is a MMC3 multicart
-	 206, // MMC3 w/o IRQ or WRAM support
-	 88,  // NAMCOT-3433 is mapper 206-like, but connects PPU-A12 to CHROM A16.
-	 154, // NAMCOT-3453 is mapper 88-like, but with one screen mirroring.
-	 95,  // NAMCOT-3425 is mapper 206-like, but connects A16 to CIRAM A10.
-	 76,  // NAMCOT-3446 is mapper 206-like, but coarser chr banking.
-	 80,  // Taito X01-005 is MMC3-like with Internal RAM and no IRQ
-	 82,  // Tatio X01-017 is mapper 80-like with more Internal RAM
-	 207,  // Tatio X01-005 is mapper 80-like with one screen mirroring
-	 48,  // MMC3-like with delayed IRQ
-	 33,  // Mapper 48 without IRQ and different mirroring location
-	 37,  // European Triple Cart (Super Mario, Tetris, Nintendo World Cup)
+    206, // MMC3 w/o IRQ or WRAM support
+    88,  // NAMCOT-3433 is mapper 206-like, but connects PPU-A12 to CHROM A16.
+    154, // NAMCOT-3453 is mapper 88-like, but with one screen mirroring.
+    95,  // NAMCOT-3425 is mapper 206-like, but connects A16 to CIRAM A10.
+    76,  // NAMCOT-3446 is mapper 206-like, but coarser chr banking.
+    80,  // Taito X01-005 is MMC3-like with Internal RAM and no IRQ
+    82,  // Tatio X01-017 is mapper 80-like with more Internal RAM
+    207,  // Tatio X01-005 is mapper 80-like with one screen mirroring
+    48,  // MMC3-like with delayed IRQ
+    33,  // Mapper 48 without IRQ and different mirroring location
+    37,  // European Triple Cart (Super Mario, Tetris, Nintendo World Cup)
     74,  // MMC3 like but uses the CHR RAM.
     191, // MMC3 like but uses the CHR RAM.
     192, // MMC3 like but uses the CHR RAM.
@@ -3282,6 +3378,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 
     11,
     38,
+    86,
     87,
     101,
     140,
@@ -3291,6 +3388,11 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 
     71,
     232: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map71_prg_addr, map71_prg_allow, map71_chr_addr, map71_vram_a10, map71_vram_ce, map71_chr_allow};
+
+	 92,
+    72: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map72_prg_addr, map72_prg_allow, map72_chr_addr, map72_vram_a10, map72_vram_ce, map72_chr_allow};
+
+    77: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map77_prg_addr, map77_prg_allow, map77_chr_addr, map77_vram_a10, map77_vram_ce, map77_chr_allow};
 
     152,
     70,
