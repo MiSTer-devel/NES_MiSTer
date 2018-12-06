@@ -145,7 +145,7 @@ parameter CONF_STR4 = {
 	"O5,Invert mirroring,OFF,ON;",
 	"R0,Reset;",
 	"J,A,B,Select,Start;",
-	"V,v0.85.",`BUILD_DATE
+	"V,v",`BUILD_DATE
 };
 
 wire [7:0] joyA;
