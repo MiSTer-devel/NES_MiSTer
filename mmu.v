@@ -1401,6 +1401,7 @@ module Mapper18(input clk, input ce, input reset,
 				5'b111_11: ram_enable <= prg_din[1:0];
 				endcase
 
+		//Is this necessary? or even correct?  Just load number of needed bits into separate counter instead?
 		if (irq_enable[0]) begin
 			irq_counter[3:0] <= irq_counter[3:0] - 4'd1;
 			if (irq_counter[3:0] == 4'h0) begin
@@ -1812,6 +1813,113 @@ module Mapper42(input clk, input ce, input reset,
 	assign vram_a10 = mirroring ? chr_ain[10] : chr_ain[11];
 endmodule
 
+// Mapper 65, IREM H3001
+module Mapper65(input clk, input ce, input reset,
+            input [31:0] flags,
+            input [15:0] prg_ain, output [21:0] prg_aout,
+            input prg_read, prg_write,                   // Read / write signals
+            input [7:0] prg_din,
+            output prg_allow,                            // Enable access to memory for the specified operation.
+            input [13:0] chr_ain, output [21:0] chr_aout,
+            output chr_allow,                      		// Allow write
+            output reg vram_a10,                         // Value for A10 address line
+            output vram_ce,                     			// True if the address should be routed to the internal 2kB VRAM.
+				output reg irq); 
+
+	reg [7:0] prg_bank_0, prg_bank_1, prg_bank_2;
+	reg [7:0] chr_bank_0, chr_bank_1, chr_bank_2, chr_bank_3,
+				 chr_bank_4, chr_bank_5, chr_bank_6, chr_bank_7;
+	reg mirroring;
+	reg irq_ack;
+	reg irq_enable;
+	reg [15:0] irq_reload;
+	reg [15:0] irq_counter;
+	
+	always @(posedge clk) if (reset) begin
+		prg_bank_0 <= 8'h00;
+		prg_bank_1 <= 8'h01;
+		prg_bank_2 <= 8'hFE;
+		chr_bank_0 <= 0;
+		chr_bank_1 <= 0;
+		chr_bank_2 <= 0;
+		chr_bank_3 <= 0;
+		chr_bank_4 <= 0;
+		chr_bank_5 <= 0;
+		chr_bank_6 <= 0;
+		chr_bank_7 <= 0;
+		mirroring <= 0;
+		irq_reload <= 0;
+		irq_counter <= 0;
+		irq_enable <= 0;
+	end else if (ce) begin
+	   irq_ack <= 1'b0;
+		if ((prg_write) && (prg_ain[15]))						// Cover all from $8000 to $FFFF to maximize compatibility
+			case({prg_ain[14:12],prg_ain[2:0]})				// 
+			6'b000_000: prg_bank_0 <= prg_din;
+			6'b010_000: prg_bank_1 <= prg_din;
+			6'b100_000: prg_bank_2 <= prg_din;
+			6'b011_000: chr_bank_0 <= prg_din;
+			6'b011_001: chr_bank_1 <= prg_din;
+			6'b011_010: chr_bank_2 <= prg_din;
+			6'b011_011: chr_bank_3 <= prg_din;
+			6'b011_100: chr_bank_4 <= prg_din;
+			6'b011_101: chr_bank_5 <= prg_din;
+			6'b011_110: chr_bank_6 <= prg_din;
+			6'b011_111: chr_bank_7 <= prg_din;
+			6'b001_001: mirroring <= prg_din[7];
+			6'b001_011: {irq_ack, irq_enable} <= {1'b1, prg_din[7]};
+			6'b001_100: {irq_ack, irq_counter} <= {1'b1, irq_reload};
+			6'b001_101: irq_reload[15:8] <= prg_din;
+			6'b001_110: irq_reload[7:0] <= prg_din;
+			endcase
+
+		if (irq_enable) begin
+			irq_counter <= irq_counter - 16'd1;
+			if (irq_counter == 16'h0) begin
+				irq <= 1'b1;	// IRQ
+				irq_enable <= 0;
+				irq_counter <= 0;
+			end
+		end
+		if (irq_ack)
+			irq <= 1'b0;	// IRQ ACK
+	end
+	
+	always begin
+      vram_a10 = mirroring ? chr_ain[11] : chr_ain[10];    // horizontal:vertical
+	end 
+	
+   reg [7:0] prgsel;  
+	always begin
+		case(prg_ain[14:13])
+		2'b00: 	prgsel = prg_bank_0;			// $8000 is swapable
+		2'b01: 	prgsel = prg_bank_1;			// $A000 is swapable
+		2'b10: 	prgsel = prg_bank_2;			// $C000 is swapable
+		2'b11: 	prgsel = 8'hFF;				// $E000 is hardwired to last bank
+		endcase
+	end
+
+   reg [7:0] chrsel;  
+   always begin
+    casez(chr_ain[12:10])
+    0: chrsel = chr_bank_0;
+    1: chrsel = chr_bank_1;
+    2: chrsel = chr_bank_2;
+    3: chrsel = chr_bank_3;
+    4: chrsel = chr_bank_4;
+    5: chrsel = chr_bank_5;
+    6: chrsel = chr_bank_6;
+    7: chrsel = chr_bank_7;
+    endcase
+   end	
+	assign chr_aout = {4'b10_00, chrsel, chr_ain[9:0]};					// 1kB banks
+	assign prg_aout = {2'b00, prgsel[6:0], prg_ain[12:0]};  	// 8kB banks	
+  
+   assign prg_allow = (prg_ain[15] && !prg_write);
+	assign chr_allow = flags[15];
+	assign vram_ce = chr_ain[13];
+endmodule
+
 // 11 - Color Dreams
 // 38 - Bit Corps
 // 86 - Jaleco JF-13 -- no audio samples
@@ -1869,6 +1977,112 @@ module Mapper66(input clk, input ce, input reset,
   assign chr_aout = {5'b10_000, chr_bank, chr_ain[12:0]};
   assign vram_ce = chr_ain[13];
   assign vram_a10 = flags[14] ? chr_ain[10] : chr_ain[11];
+endmodule
+
+
+// Mapper 190, Magic Kid GooGoo
+// Mapper 67, Sunsoft-3
+module Mapper67(input clk, input ce, input reset,
+            input [31:0] flags,
+            input [15:0] prg_ain, output [21:0] prg_aout,
+            input prg_read, prg_write,                   // Read / write signals
+            input [7:0] prg_din,
+            output prg_allow,                            // Enable access to memory for the specified operation.
+            input [13:0] chr_ain, output [21:0] chr_aout,
+            output chr_allow,                      		// Allow write
+            output reg vram_a10,                         // Value for A10 address line
+            output vram_ce,                     			// True if the address should be routed to the internal 2kB VRAM.
+				output reg irq); 
+
+	reg [7:0] prg_bank_0;
+	reg [7:0] chr_bank_0, chr_bank_1, chr_bank_2, chr_bank_3;
+	reg [1:0] mirroring;
+	reg irq_ack;
+	reg irq_enable;
+	reg irq_low;
+	reg [15:0] irq_counter;
+	wire mapper190 = (flags[7:0] == 190);
+	
+	always @(posedge clk) if (reset) begin
+		prg_bank_0 <= 0;
+		chr_bank_0 <= 0;
+		chr_bank_1 <= 0;
+		chr_bank_2 <= 0;
+		chr_bank_3 <= 0;
+		mirroring <= 2'b00; //vertical for mapper190
+		irq_counter <= 0;
+		irq_enable <= 0;
+		irq_low <= 0;
+	end else if (ce) begin
+	   irq_ack <= 1'b0;
+		if ((prg_write) && (prg_ain[15]))						// Cover all from $8000 to $FFFF to maximize compatibility
+		  if (!mapper190)
+			casez({prg_ain[14:11],irq_low})				// 
+			5'b000_1_?: chr_bank_0 <= prg_din;
+			5'b001_1_?: chr_bank_1 <= prg_din;
+			5'b010_1_?: chr_bank_2 <= prg_din;
+			5'b011_1_?: chr_bank_3 <= prg_din;
+			5'b110_1_?: mirroring <= prg_din[1:0];
+			5'b111_1_?: prg_bank_0 <= prg_din;
+			5'b100_1_0: {irq_low, irq_counter[15:8]} <= {1'b1,prg_din};
+			5'b100_1_1: {irq_low, irq_counter[7:0]} <= {1'b0,prg_din};
+			5'b101_1_?: {irq_low, irq_ack, irq_enable} <= {2'b01, prg_din[4]};
+			endcase
+		  else
+			casez({prg_ain[13],prg_ain[1:0]})				// 
+			3'b0_??: prg_bank_0[3:0] <= {prg_ain[14],prg_din[2:0]};
+			3'b1_00: chr_bank_0 <= prg_din;
+			3'b1_01: chr_bank_1 <= prg_din;
+			3'b1_10: chr_bank_2 <= prg_din;
+			3'b1_11: chr_bank_3 <= prg_din;
+			endcase
+
+		if (irq_enable) begin
+			irq_counter <= irq_counter - 16'd1;
+			if (irq_counter == 16'h0) begin
+				irq <= 1'b1;	// IRQ
+				irq_enable <= 0;
+			end
+		end
+		if (irq_ack)
+			irq <= 1'b0;	// IRQ ACK
+	end
+	
+	always begin
+      casez({mirroring})
+      2'b00   :   vram_a10 = {chr_ain[10]};    // vertical
+      2'b01   :   vram_a10 = {chr_ain[11]};    // horizontal
+      2'b1?   :   vram_a10 = {mirroring[0]};   // 1 screen lower:upper
+      endcase
+	end 
+	
+   reg [7:0] prgsel;  
+	always begin
+		case(prg_ain[14])
+		1'b0: 	prgsel = prg_bank_0;						// $8000 is swapable
+		1'b1: 	prgsel = mapper190 ? 8'h00 : 8'hFF;	// $C000 is hardwired to first/last bank
+		endcase
+	end
+
+   reg [7:0] chrsel;  
+   always begin
+    casez(chr_ain[12:11])
+    0: chrsel = chr_bank_0;
+    1: chrsel = chr_bank_1;
+    2: chrsel = chr_bank_2;
+    3: chrsel = chr_bank_3;
+    endcase
+   end	
+	assign chr_aout = {3'b10_0, chrsel, chr_ain[10:0]};					//  2kB banks
+	wire [21:0] prg_aout_tmp = {2'b00, prgsel[5:0], prg_ain[13:0]};  	// 16kB banks	
+	
+	wire prg_is_ram = (prg_ain >= 'h6000) && (prg_ain < 'h8000);
+   wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]};
+   assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
+  
+   assign prg_allow = (prg_ain[15] && !prg_write) || prg_is_ram;
+	assign chr_allow = flags[15];
+	assign vram_ce = chr_ain[13];
 endmodule
 
 // 34 - BxROM or NINA-001
@@ -3103,10 +3317,20 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   Mapper42 map42(clk, ce, reset, flags, prg_ain, map42_prg_addr, prg_read, prg_write, prg_din, map42_prg_allow,
                                         chr_ain, map42_chr_addr, map42_chr_allow, map42_vram_a10, map42_vram_ce, map42_irq);
 
+  wire map65_prg_allow, map65_vram_a10, map65_vram_ce, map65_chr_allow, map65_irq;
+  wire [21:0] map65_prg_addr, map65_chr_addr;
+  Mapper65 map65(clk, ce, reset, flags, prg_ain, map65_prg_addr, prg_read, prg_write, prg_din, map65_prg_allow,
+                                        chr_ain, map65_chr_addr, map65_chr_allow, map65_vram_a10, map65_vram_ce, map65_irq);
+
   wire map66_prg_allow, map66_vram_a10, map66_vram_ce, map66_chr_allow;
   wire [21:0] map66_prg_addr, map66_chr_addr;
   Mapper66 map66(clk, ce, reset, flags, prg_ain, map66_prg_addr, prg_read, prg_write, prg_din, map66_prg_allow,
                                         chr_ain, map66_chr_addr, map66_chr_allow, map66_vram_a10, map66_vram_ce);
+
+  wire map67_prg_allow, map67_vram_a10, map67_vram_ce, map67_chr_allow, map67_irq;
+  wire [21:0] map67_prg_addr, map67_chr_addr;
+  Mapper67 map67(clk, ce, reset, flags, prg_ain, map67_prg_addr, prg_read, prg_write, prg_din, map67_prg_allow,
+                                        chr_ain, map67_chr_addr, map67_chr_allow, map67_vram_a10, map67_vram_ce, map67_irq);
 
   wire map68_prg_allow, map68_vram_a10, map68_vram_ce, map68_chr_allow;
   wire [21:0] map68_prg_addr, map68_chr_addr;
@@ -3268,7 +3492,9 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 47 = Working
 // 48 = Needs testing
 // 64 = Tons of GFX bugs
+// 65 = Needs testing
 // 66 = Working
+// 67 = Needs testing
 // 68 = Working
 // 69 = Working
 // 70 = Needs testing
@@ -3306,6 +3532,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 180 = Needs testing
 // 184 = Needs testing
 // 185 = Needs testing
+// 190 = Not Tested
 // 191 = Not Tested
 // 192 = Not Tested
 // 194 = Not Tested
@@ -3375,6 +3602,10 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     158: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq} = {rambo1_prg_addr, rambo1_prg_allow, rambo1_chr_addr, rambo1_vram_a10, rambo1_vram_ce, rambo1_chr_allow, rambo1_irq};
 
 	 42: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq} = {map42_prg_addr, map42_prg_allow, map42_chr_addr, map42_vram_a10, map42_vram_ce, map42_chr_allow, map42_irq};
+
+	 65: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq} = {map65_prg_addr, map65_prg_allow, map65_chr_addr, map65_vram_a10, map65_vram_ce, map65_chr_allow, map65_irq};
+    190,
+	 67: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq} = {map67_prg_addr, map67_prg_allow, map67_chr_addr, map67_vram_a10, map67_vram_ce, map67_chr_allow, map67_irq};
 
     11,
     38,

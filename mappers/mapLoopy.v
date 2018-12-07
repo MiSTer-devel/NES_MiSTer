@@ -217,9 +217,9 @@ module vrcIRQ(
     input clk20,
     input reset,
     input nesprg_we,
-	 input irql,
-	 input irqc,
-	 input irqa,
+	 input irqlatch_add,
+	 input irqctrl_add,
+	 input irqack_add,
     input [7:0] nesprgdin,
     output irq,
 	 input ce
@@ -228,9 +228,9 @@ module vrcIRQ(
     reg irqM,irqE,irqA;
     always@(posedge clk20) begin
         if(ce && nesprg_we) begin
-            if (irql)
+            if (irqlatch_add)
 				    irqlatch<=nesprgdin;      //F000
-				else if (irqc)
+				else if (irqctrl_add)
                 {irqM,irqA}<={nesprgdin[2],nesprgdin[0]}; //F001
         end
     end
@@ -241,7 +241,7 @@ module vrcIRQ(
     reg [6:0] scalar;
     reg [1:0] line;
     wire irqclk=irqM|(scalar==0);
-    wire setE=nesprg_we & irqc & nesprgdin[1];
+    wire setE=nesprg_we & irqctrl_add & nesprgdin[1];
     always@(posedge clk20) begin
         if(setE) begin
             scalar<=113;
@@ -265,14 +265,14 @@ module vrcIRQ(
             irqE<=0;
             timeout<=0;
         end else if (ce) begin
-            if(nesprg_we & (irqc | irqa)) //write Fxx1 or Fxx2
+            if(nesprg_we & (irqctrl_add | irqack_add)) //write Fxx1 or Fxx2
                 timeout<=0;
             else if(irqclk & irqcnt==255)
                 timeout<=1;
 
-            if(nesprg_we & irqc) //write Fxx1
+            if(nesprg_we & irqctrl_add) //write Fxx1
                 irqE<=nesprgdin[1];
-            else if(nesprg_we & irqa) //write Fxx2
+            else if(nesprg_we & irqack_add) //write Fxx2
                 irqE<=irqA;
         end
     end
