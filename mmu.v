@@ -2804,6 +2804,26 @@ module Mapper165(input clk, input ce, input reset,
   assign vram_ce = chr_ain[13];
 endmodule
 
+// 218 - Magic Floor
+module Mapper218(input clk, input ce, input reset,
+                input [31:0] flags,
+                input [15:0] prg_ain, output [21:0] prg_aout,
+                input prg_read, prg_write,                   // Read / write signals
+                input [7:0] prg_din,
+                output prg_allow,                            // Enable access to memory for the specified operation.
+                input [13:0] chr_ain, output [21:0] chr_aout,
+                output chr_allow,                      // Allow write
+                output vram_a10,                             // Value for A10 address line
+                output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
+
+  assign prg_aout = {7'b00_0000_0, prg_ain[14:0]};
+  assign chr_allow =1'b1;
+  assign chr_aout = {9'b10_0000_000, chr_ain[12:11], vram_a10, chr_ain[9:0]};
+  assign vram_ce = 1'b1; //Always internal CHR RAM (no CHR ROM or RAM on cart)
+  assign vram_a10 = flags[16] ? (flags[14] ? chr_ain[13] : chr_ain[12]) : flags[14] ? chr_ain[10] : chr_ain[11]; // 11=1ScrB, 10=1ScrA, 01=vertical,00=horizontal
+  assign prg_allow = prg_ain[15] && !prg_write;
+endmodule
+
 // iNES Mapper 228 represents the board used by Active Enterprises for Action 52 and Cheetahmen II.
 module Mapper228(input clk, input ce, input reset,
                 input [31:0] flags,
@@ -3378,6 +3398,11 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   Mapper165 map165(clk, ppu_ce, reset, flags, prg_ain, map165_prg_addr, prg_read, prg_write, prg_din, map165_prg_allow,
 													 chr_read, chr_ain, map165_chr_addr, map165_chr_allow, map165_vram_a10, map165_vram_ce, map165_irq);
 
+  wire map218_prg_allow, map218_vram_a10, map218_vram_ce, map218_chr_allow;
+  wire [21:0] map218_prg_addr, map218_chr_addr;
+  Mapper218 map218(clk, ce, reset, flags, prg_ain, map218_prg_addr, prg_read, prg_write, prg_din, map218_prg_allow,
+                                        chr_ain, map218_chr_addr, map218_chr_allow, map218_vram_a10, map218_vram_ce);
+
   wire map228_prg_allow, map228_vram_a10, map228_vram_ce, map228_chr_allow;
   wire [21:0] map228_prg_addr, map228_chr_addr;
   Mapper228 map228(clk, ce, reset, flags, prg_ain, map228_prg_addr, prg_read, prg_write, prg_din, map228_prg_allow,
@@ -3539,6 +3564,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 195 = Not Tested
 // 206 = Not Tested
 // 207 = Needs testing
+// 218 = Working
 // 228 = Working
 // 234 = Not Tested        
     case(flags[7:0])
@@ -3635,6 +3661,8 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     105: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq}= {nesev_prg_addr, mmc1_prg_allow, nesev_chr_addr, mmc1_vram_a10, mmc1_vram_ce, mmc1_chr_allow, nesev_irq};
 
     165: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq} = {map165_prg_addr, map165_prg_allow, map165_chr_addr, map165_vram_a10, map165_vram_ce, map165_chr_allow, map165_irq};
+
+	 218: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map218_prg_addr, map218_prg_allow, map218_chr_addr, map218_vram_a10, map218_vram_ce, map218_chr_allow};
 
     228: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map228_prg_addr, map228_prg_allow, map228_chr_addr, map228_vram_a10, map228_vram_ce, map228_chr_allow};
     234: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map234_prg_addr, map234_prg_allow, map234_chr_addr, map234_vram_a10, map234_vram_ce, map234_chr_allow};
