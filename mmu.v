@@ -3217,7 +3217,7 @@ module N106(input clk, input ce, input reset,
 		neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 		prgram_oe, chr_aout[18:10], ramprgaout, irq, vram_ce, exp6, 
 		0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-		ce, audio[15:5]);
+		ce, (flags[7:0]==210), flags[24:21], audio[15:5]);
 
     assign chr_aout[21:19] = 3'b100;
     assign chr_aout[9:0] = chr_ain[9:0];
@@ -3625,6 +3625,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 195 = Not Tested
 // 206 = Not Tested
 // 207 = Needs testing
+// 210 = Needs testing
 // 218 = Working
 // 228 = Working
 // 234 = Not Tested        
@@ -3735,6 +3736,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     24,
     26: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {vrc6_prg_addr, vrc6_prg_allow, vrc6_chr_addr, vrc6_vram_a10, vrc6_vram_ce, vrc6_chr_allow, vrc6_prg_dout, vrc6_irq, vrc6_audio};
     85: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq, audio} = {vrc7_prg_addr, vrc7_prg_allow, vrc7_chr_addr, vrc7_vram_a10, vrc7_vram_ce, vrc7_chr_allow, vrc7_irq, vrc7_audio};
+    210,
     19: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {map19_prg_addr, map19_prg_allow, map19_chr_addr, map19_vram_a10, map19_vram_ce, map19_chr_allow, map19_prg_dout, map19_irq, map19_audio};
     default: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow} = {mmc0_prg_addr, mmc0_prg_allow, mmc0_chr_addr, mmc0_vram_a10, mmc0_vram_ce, mmc0_chr_allow};
     endcase
