@@ -1,6 +1,6 @@
 # NES for [MiSTer](https://github.com/MiSTer-devel/Main_MiSTer/wiki) 
 
-### This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://github.com/strigeus/fpganes) by Ludvig Strigeus and ported to MiSTer.
+This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://github.com/strigeus/fpganes) by Ludvig Strigeus and ported to MiSTer.
 
 ## Features
  * Supports saves for most ROM games (FDS saves not currently supported)
