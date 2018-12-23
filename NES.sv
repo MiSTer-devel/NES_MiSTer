@@ -138,7 +138,7 @@ parameter CONF_STR4 = {
 	"OCE,Palette,Smooth,Unsaturated-V6,FCEUX,NES Classic,Composite Direct,PC-10,PVM,Wavebeam;",
 	"O9,Swap joysticks,NO,YES;",
 `ifdef DEBUG_AUDIO
-	"OUV,Audio Enable,Both,Internal,External,None;",
+	"OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
 `else
 	"-;",
 `endif

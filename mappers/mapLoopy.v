@@ -217,9 +217,9 @@ module vrcIRQ(
     input clk20,
     input reset,
     input nesprg_we,
-	 input irql,
-	 input irqc,
-	 input irqa,
+	 input irqlatch_add,
+	 input irqctrl_add,
+	 input irqack_add,
     input [7:0] nesprgdin,
     output irq,
 	 input ce
@@ -228,9 +228,9 @@ module vrcIRQ(
     reg irqM,irqE,irqA;
     always@(posedge clk20) begin
         if(ce && nesprg_we) begin
-            if (irql)
+            if (irqlatch_add)
 				    irqlatch<=nesprgdin;      //F000
-				else if (irqc)
+				else if (irqctrl_add)
                 {irqM,irqA}<={nesprgdin[2],nesprgdin[0]}; //F001
         end
     end
@@ -241,7 +241,7 @@ module vrcIRQ(
     reg [6:0] scalar;
     reg [1:0] line;
     wire irqclk=irqM|(scalar==0);
-    wire setE=nesprg_we & irqc & nesprgdin[1];
+    wire setE=nesprg_we & irqctrl_add & nesprgdin[1];
     always@(posedge clk20) begin
         if(setE) begin
             scalar<=113;
@@ -265,14 +265,14 @@ module vrcIRQ(
             irqE<=0;
             timeout<=0;
         end else if (ce) begin
-            if(nesprg_we & (irqc | irqa)) //write Fxx1 or Fxx2
+            if(nesprg_we & (irqctrl_add | irqack_add)) //write Fxx1 or Fxx2
                 timeout<=0;
             else if(irqclk & irqcnt==255)
                 timeout<=1;
 
-            if(nesprg_we & irqc) //write Fxx1
+            if(nesprg_we & irqctrl_add) //write Fxx1
                 irqE<=nesprgdin[1];
-            else if(nesprg_we & irqa) //write Fxx2
+            else if(nesprg_we & irqack_add) //write Fxx2
                 irqE<=irqA;
         end
     end
@@ -414,6 +414,8 @@ module MAPN106(     //signal descriptions in powerpak.v
     input cfg_chrram,
 	 
 	 input ce,// add
+	 input mapper210,
+	 input [3:0] submapper,
 	 output [15:0] snd_level
 );
 
@@ -422,9 +424,12 @@ module MAPN106(     //signal descriptions in powerpak.v
     reg [1:0] chr_en;
     reg [5:0] prg89,prgAB,prgCD;
     reg [7:0] chr0,chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr10,chr11,chr12,chr13;
-    reg mirror;
+    reg [1:0] mirror;
+	 wire submapper1 = (submapper == 1);
     always@(posedge clk20) begin
-        if(ce && nesprg_we)
+        if (reset) begin
+            mirror <= cfg_vertical ? 2'b01 : 2'b10;
+        end else if(ce && nesprg_we)
         case(prgain[15:11])
             5'b10000: chr0<=nesprgdin;              //8000
             5'b10001: chr1<=nesprgdin;
@@ -438,7 +443,7 @@ module MAPN106(     //signal descriptions in powerpak.v
             5'b11001: chr11<=nesprgdin; 
             5'b11010: chr12<=nesprgdin;             //D000
             5'b11011: chr13<=nesprgdin;
-            5'b11100: {mirror,prg89}<=nesprgdin[6:0];//E000
+            5'b11100: {mirror,prg89}<=nesprgdin;    //E000
             5'b11101: {chr_en,prgAB}<=nesprgdin;    //E800
             5'b11110: prgCD<=nesprgdin[5:0];        //F000
             //5'b11111:                             //F800 (sound)
@@ -499,10 +504,19 @@ module MAPN106(     //signal descriptions in powerpak.v
             chrram_we=neschr_wr & chrram;
             ramchraout[10]=chrbank[10];
         end else begin
-            ciram_ce=&chrbank[17:15] | mirror;
+            ciram_ce=(&chrbank[17:15] | mirror[0]) | mapper210;
             chrram_oe=~ciram_ce & neschr_rd;
             chrram_we=~ciram_ce & neschr_wr & chrram;
-            ramchraout[10]=mirror?chrain[10]:chrbank[10];
+				casez({mapper210,submapper1,mirror,cfg_vertical})
+				   5'b0?_?0_?: ramchraout[10] = chrbank[10];
+				   5'b0?_?1_?: ramchraout[10] = chrain[10];
+				   5'b10_00_?: ramchraout[10] = 1'b0;
+				   5'b10_01_?: ramchraout[10] = chrain[10];
+				   5'b10_10_?: ramchraout[10] = chrain[11];
+				   5'b10_11_?: ramchraout[10] = 1'b1;
+				   5'b11_??_0: ramchraout[10] = chrain[11];
+				   5'b11_??_1: ramchraout[10] = chrain[10];
+				endcase
         end
         ramchraout[11]=chrbank[11];
         ramchraout[17:12]=chrbank[17:12] & cfg_chrmask[17:12];
@@ -537,7 +551,7 @@ module MAPN106(     //signal descriptions in powerpak.v
     wire [9:0] saturated=n106_out[9:0] | {10{n106_out[10]}};    //this is still too quiet for the suggested 47k resistor, but more clipping will make some games sound bad
     namco106_sound n106(ce, clk20, reset, nesprg_we, prgain, nesprgdin, n106_out);
     //pdm #(10) pdm_mod(clk20, saturated, exp6);
-	 assign snd_level = {6'b0, saturated};
+	 assign snd_level = (mapper210 | mirror[0]) ? 16'b0 : {6'b0, saturated};
 
 endmodule
 
