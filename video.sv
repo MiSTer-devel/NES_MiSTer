@@ -185,8 +185,8 @@ always @(posedge clk) begin
 			HBlank <= (hc >= 256);
 			VBlank <= (vc >= 240);
 		end
-		HSync  <= ((hc >= 277) && (hc <  318));
-		VSync  <= ((vc >= 245) && (vc <  254));
+		HSync  <= ((hc >= 277) && (hc < 302));
+		VSync  <= ((vc >= 242) && (vc < 245));
 	end
 end
 
