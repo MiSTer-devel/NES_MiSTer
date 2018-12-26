@@ -341,6 +341,12 @@ end
 wire reset_nes = init_reset || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading;
 wire run_nes = (nes_ce == 3);	// keep running even when reset, so that the reset can actually do its job!
 
+wire [14:0] bram_addr;
+wire [7:0] bram_din;
+wire [7:0] bram_dout;
+wire bram_write;
+wire bram_override;
+
 // NES is clocked at every 4th cycle.
 always @(posedge clk) nes_ce <= nes_ce + 1'd1;
 
@@ -356,6 +362,8 @@ NES nes
 	memory_read_cpu, memory_din_cpu,
 	memory_read_ppu, memory_din_ppu,
 	memory_write, memory_dout,
+   bram_addr, bram_din, bram_dout,
+	bram_write, bram_override,
 	cycle, scanline,
 	int_audio, ext_audio
 );
@@ -423,9 +431,14 @@ sdram sdram
 
 	.bk_clk        ( clk ),
 	.bk_addr       ( {sd_lba[5:0],sd_buff_addr} ),
-	.bk_dout       ( sd_buff_din  ),
+	.bk_dout       ( sd_buff_din ),
 	.bk_din        ( sd_buff_dout ),
-	.bk_we         ( sd_buff_wr & sd_ack )
+	.bk_we         ( sd_buff_wr & sd_ack ),
+	.bko_addr      ( bram_addr ),
+	.bko_dout      ( bram_din ),
+	.bko_din       ( bram_dout ),
+	.bko_we        ( bram_write ),
+	.bk_override   ( bram_override )
 );
 
 wire downloading;

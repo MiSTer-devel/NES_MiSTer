@@ -1251,6 +1251,10 @@ module Mapper16(input clk, input ce, input reset,
             output chr_allow,                      		// Allow write
             output reg vram_a10,                         // Value for A10 address line
             output vram_ce,                     			// True if the address should be routed to the internal 2kB VRAM.
+				output [14:0] mapper_addr,
+				input [7:0] mapper_data_in,
+				output [7:0] mapper_data_out,
+				output mapper_prg_write, output mapper_ovr,
 				output reg irq); 
 
 	reg [3:0] prg_bank;
@@ -1259,7 +1263,11 @@ module Mapper16(input clk, input ce, input reset,
 	reg [3:0] prg_sel;
 	reg [1:0] mirroring;
 	reg irq_enable;
+	reg irq_up;
 	reg [15:0] irq_counter;
+	reg [15:0] irq_latch;
+	reg eeprom_scl, eeprom_sda;
+	wire submapper5 = (flags[24:21] == 5);
 	
 	always @(posedge clk) if (reset) begin
 		prg_bank <= 4'hF;
@@ -1273,9 +1281,14 @@ module Mapper16(input clk, input ce, input reset,
 		chr_bank_7 <= 0;
 		mirroring <= 0;
 		irq_counter <= 0;
+		irq_latch <= 0;
+		irq_up <= 0;
+		eeprom_scl <= 0;
+		eeprom_sda <= 0;
 	end else if (ce) begin
+		irq_up <= 1'b0;
 		if (prg_write)
-			if(prg_ain >= 'h6000)				// Cover all from $6000 to $FFFF to maximize compatibility
+			if(((prg_ain[14:13] == 2'b11) && (!submapper5)) || (prg_ain[15]))				// Cover all from $6000 to $FFFF to maximize compatibility
 				case(prg_ain & 'hf)				// Registers are mapped every 16 bytes
 				'h0: chr_bank_0 <= prg_din[7:0];
 				'h1: chr_bank_1 <= prg_din[7:0];
@@ -1287,19 +1300,22 @@ module Mapper16(input clk, input ce, input reset,
 				'h7: chr_bank_7 <= prg_din[7:0];
 				'h8: prg_bank <= prg_din[3:0];
 				'h9: mirroring <= prg_din[1:0];
-				'ha: irq_enable <= prg_din[0];
-				'hb: irq_counter[7:0] <= prg_din[7:0];
-				'hc: irq_counter[15:8] <= prg_din[7:0];
-//				'hd: RAM enable or EEPROM control
+				'ha: {irq_up, irq_enable} <= {1'b1, prg_din[0]};
+				'hb: if (submapper5) irq_latch[7:0] <= prg_din[7:0]; else irq_counter[7:0] <= prg_din[7:0];
+				'hc: if (submapper5) irq_latch[15:8] <= prg_din[7:0]; else irq_counter[15:8] <= prg_din[7:0];
+				'hd: {eeprom_sda, eeprom_scl} <= prg_din[6:5];//RAM enable or EEPROM control
 				endcase
 
 		if (irq_enable)
 			irq_counter <= irq_counter - 16'd1;
-		else begin
-			irq <= 1'b0;	// IRQ ACK
-		end	
 		
-		if (irq_counter == 16'h0000)
+		if (irq_up) begin
+			irq <= 1'b0;	// IRQ ACK
+			if (submapper5)
+				irq_counter <= irq_latch;
+		end
+		
+		if ((irq_counter == 16'h0000) && (irq_enable))
 			irq <= 1'b1;	// IRQ
 			
 	end
@@ -1341,11 +1357,36 @@ module Mapper16(input clk, input ce, input reset,
 	wire prg_is_ram = (prg_ain >= 'h6000) && (prg_ain < 'h8000);
    wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]};
    assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
-	assign prg_dout = prg_is_ram ? 8'h00 : 8'hFF;							// EEPROM stub
+	// EEPROM - not used - Could use write to EEPROM cycle for both reads and write accesses, but this is easier
+	assign prg_dout = prg_is_ram ? prg_write ? mapper_data_out : {3'b111, sda_out, 4'b1111} : 8'hFF;
   
-   assign prg_allow = (prg_ain[15] && !prg_write) || prg_is_ram;
+   assign prg_allow = (prg_ain[15] && !prg_write);
 	assign chr_allow = flags[15];
 	assign vram_ce = chr_ain[13];
+
+	wire sda_out;
+   wire [7:0] ram_addr;
+   wire ram_read;
+	assign mapper_addr[14:8] = 0;
+	assign mapper_addr[7:0] = ram_addr;
+	assign mapper_ovr = 1'b1;
+	EEPROM_24C0x eeprom(
+		.type_24C01(0),                 //24C01 is 128 bytes, 24C02 is 256 bytes
+		.clk(clk),
+		.ce(ce),
+		.reset(reset),
+		.SCL(eeprom_scl),               // Serial Clock
+		.SDA_in(eeprom_sda),            // Serial Data (same pin as below, split for convenience)
+		.SDA_out(sda_out),              // Serial Data (same pin as above, split for convenience)
+		.E_id(3'b000),                  // Chip Enable
+		.WC_n(1'b0),                    // ~Write Control
+		.data_from_ram(mapper_data_in), // Data read from RAM
+		.data_to_ram(mapper_data_out),  // Data written to RAM
+		.ram_addr(ram_addr),            // RAM Address
+		.ram_read(ram_read),            // RAM read
+		.ram_write(mapper_prg_write),   // RAM write
+		.ram_done(1'b1));               // RAM access done
+	
 endmodule
 
 // Mapper 18, Jaleco SS88006
@@ -1496,7 +1537,7 @@ module Mapper18(input clk, input ce, input reset,
 	wire prg_is_ram = (prg_ain >= 'h6000) && (prg_ain < 'h8000);
    wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]};
    assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
-	assign prg_dout = prg_is_ram ? 8'h00 : 8'hFF;							// EEPROM stub
+	assign prg_dout = 8'hFF;
   
    assign prg_allow = (prg_ain[15] && !prg_write) || (prg_is_ram && ram_enable[0] && (ram_enable[1] || !prg_write));
 	assign chr_allow = flags[15];
@@ -3299,6 +3340,10 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
                    output reg chr_allow,                            // CHR Allow write
                    output reg vram_a10,                             // CHR Value for A10 address line
                    output reg vram_ce,                              // CHR True if the address should be routed to the internal 2kB VRAM.
+                   output reg [14:0] mapper_addr,
+                   input [7:0] mapper_data_in,
+                   output reg [7:0] mapper_data_out,
+                   output reg mapper_prg_write, output reg mapper_ovr,
                    output reg irq,
                    output reg [15:0] audio,                         // External Audio
 						 input fds_swap);                                 // FDS Disk Swap Pause
@@ -3364,11 +3409,14 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   Mapper15 map15(clk, ce, reset, flags, prg_ain, map15_prg_addr, prg_read, prg_write, prg_din, map15_prg_allow,
                                         chr_ain, map15_chr_addr, map15_chr_allow, map15_vram_a10, map15_vram_ce);
 
-  wire map16_prg_allow, map16_vram_a10, map16_vram_ce, map16_chr_allow, map16_irq;
+  wire map16_prg_allow, map16_vram_a10, map16_vram_ce, map16_chr_allow, map16_irq, map16_prg_write, map16_ovr;
   wire [21:0] map16_prg_addr, map16_chr_addr;
-  wire [7:0] map16_prg_dout;
+  wire [7:0] map16_prg_dout, map16_data_out;
+  wire [14:0] map16_mapper_addr;
   Mapper16 map16(clk, ce, reset, flags, prg_ain, map16_prg_addr, prg_read, prg_write, prg_din, map16_prg_dout, map16_prg_allow,
-                                        chr_ain, map16_chr_addr, map16_chr_allow, map16_vram_a10, map16_vram_ce, map16_irq);
+                                        chr_ain, map16_chr_addr, map16_chr_allow, map16_vram_a10, map16_vram_ce, 
+													 map16_mapper_addr, mapper_data_in, map16_data_out, map16_prg_write, map16_ovr,
+													 map16_irq);
 
   wire map18_prg_allow, map18_vram_a10, map18_vram_ce, map18_chr_allow, map18_irq;
   wire [21:0] map18_prg_addr, map18_chr_addr;
@@ -3546,6 +3594,10 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     has_chr_dout = 0;
     chr_dout = mmc5_chr_dout;
 	 audio = 16'h0000;
+	 mapper_addr = 14'h0000;
+	 mapper_data_out = 8'h00;
+	 mapper_prg_write = 1'b0;
+	 mapper_ovr = 1'b0;
 // 0 = Working
 // 1 = Working
 // 2 = Working
@@ -3558,7 +3610,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 11 = Working
 // 13 = Working
 // 15 = Working
-// 16 = Working minus EEPROM support
+// 16 = Working/EEPROM needs testing
 // 18 = Needs testing
 // 19 = Needs testing
 // 20 = Needs testing
@@ -3679,8 +3731,9 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 
     13: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map13_prg_addr, map13_prg_allow, map13_chr_addr, map13_vram_a10, map13_vram_ce, map13_chr_allow};
     15: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map15_prg_addr, map15_prg_allow, map15_chr_addr, map15_vram_a10, map15_vram_ce, map15_chr_allow};
-	 
-	 16: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq} = {map16_prg_addr, map16_prg_allow, map16_chr_addr, map16_vram_a10, map16_vram_ce, map16_chr_allow, map16_prg_dout, map16_irq};
+
+	 16: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, mapper_addr, mapper_data_out, mapper_prg_write, mapper_ovr, irq}
+	   = {map16_prg_addr, map16_prg_allow, map16_chr_addr, map16_vram_a10, map16_vram_ce, map16_chr_allow, map16_prg_dout, map16_mapper_addr, map16_data_out, map16_prg_write, map16_ovr, map16_irq};
     
 	 18: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq} = {map18_prg_addr, map18_prg_allow, map18_chr_addr, map18_vram_a10, map18_vram_ce, map18_chr_allow, map18_prg_dout, map18_irq};
     
