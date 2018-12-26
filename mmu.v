@@ -2161,7 +2161,7 @@ module Mapper34(input clk, input ce, input reset,
                 output chr_allow,                      // Allow write
                 output vram_a10,                             // Value for A10 address line
                 output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
-  reg [1:0] prg_bank;
+  reg [6:0] prg_bank;
   reg [3:0] chr_bank_0, chr_bank_1;
   
   wire NINA = (flags[13:11] != 0); // NINA is used when there is more than 8kb of CHR
@@ -2172,10 +2172,10 @@ module Mapper34(input clk, input ce, input reset,
   end else if (ce && prg_write) begin
     if (!NINA) begin // BxROM
       if (prg_ain[15])
-        prg_bank <= prg_din[1:0];
+        prg_bank <= prg_din[5:0]; //[1:0] offical, [5:0] oversize
     end else begin // NINA
       if (prg_ain == 16'h7ffd)
-        prg_bank <= prg_din[1:0];
+        prg_bank <= prg_din[5:0]; //[1:0] offical, [5:0] oversize
       else if (prg_ain == 16'h7ffe)
         chr_bank_0 <= prg_din[3:0];
       else if (prg_ain == 16'h7fff)
@@ -2183,7 +2183,7 @@ module Mapper34(input clk, input ce, input reset,
     end
   end
 
-  wire [21:0] prg_aout_tmp = {5'b00_000, prg_bank, prg_ain[14:0]};
+  wire [21:0] prg_aout_tmp = {1'b0, prg_bank, prg_ain[14:0]};
   assign chr_allow = flags[15];
   assign chr_aout = {6'b10_0000, chr_ain[12] == 0 ? chr_bank_0 : chr_bank_1, chr_ain[11:0]};
   assign vram_ce = chr_ain[13];
