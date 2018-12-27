@@ -1240,7 +1240,7 @@ module Mapper15(input clk, input ce, input reset,
   assign vram_a10 = mirroring ? chr_ain[11] : chr_ain[10];
 endmodule
 
-// Mapper 16, Bandai
+// Mapper 16, 159 Bandai
 module Mapper16(input clk, input ce, input reset,
             input [31:0] flags,
             input [15:0] prg_ain, output [21:0] prg_aout,
@@ -1268,6 +1268,8 @@ module Mapper16(input clk, input ce, input reset,
 	reg [15:0] irq_latch;
 	reg eeprom_scl, eeprom_sda;
 	wire submapper5 = (flags[24:21] == 5);
+	wire mapper159 = (flags[7:0] == 159);
+	wire mapperalt = submapper5 | mapper159;
 	
 	always @(posedge clk) if (reset) begin
 		prg_bank <= 4'hF;
@@ -1288,7 +1290,7 @@ module Mapper16(input clk, input ce, input reset,
 	end else if (ce) begin
 		irq_up <= 1'b0;
 		if (prg_write)
-			if(((prg_ain[14:13] == 2'b11) && (!submapper5)) || (prg_ain[15]))				// Cover all from $6000 to $FFFF to maximize compatibility
+			if(((prg_ain[14:13] == 2'b11) && (!mapperalt)) || (prg_ain[15]))				// Cover all from $6000 to $FFFF to maximize compatibility
 				case(prg_ain & 'hf)				// Registers are mapped every 16 bytes
 				'h0: chr_bank_0 <= prg_din[7:0];
 				'h1: chr_bank_1 <= prg_din[7:0];
@@ -1301,8 +1303,8 @@ module Mapper16(input clk, input ce, input reset,
 				'h8: prg_bank <= prg_din[3:0];
 				'h9: mirroring <= prg_din[1:0];
 				'ha: {irq_up, irq_enable} <= {1'b1, prg_din[0]};
-				'hb: if (submapper5) irq_latch[7:0] <= prg_din[7:0]; else irq_counter[7:0] <= prg_din[7:0];
-				'hc: if (submapper5) irq_latch[15:8] <= prg_din[7:0]; else irq_counter[15:8] <= prg_din[7:0];
+				'hb: if (mapperalt) irq_latch[7:0] <= prg_din[7:0]; else irq_counter[7:0] <= prg_din[7:0];
+				'hc: if (mapperalt) irq_latch[15:8] <= prg_din[7:0]; else irq_counter[15:8] <= prg_din[7:0];
 				'hd: {eeprom_sda, eeprom_scl} <= prg_din[6:5];//RAM enable or EEPROM control
 				endcase
 
@@ -1311,7 +1313,7 @@ module Mapper16(input clk, input ce, input reset,
 		
 		if (irq_up) begin
 			irq <= 1'b0;	// IRQ ACK
-			if (submapper5)
+			if (mapperalt)
 				irq_counter <= irq_latch;
 		end
 		
@@ -1371,7 +1373,7 @@ module Mapper16(input clk, input ce, input reset,
 	assign mapper_addr[7:0] = ram_addr;
 	assign mapper_ovr = 1'b1;
 	EEPROM_24C0x eeprom(
-		.type_24C01(0),                 //24C01 is 128 bytes, 24C02 is 256 bytes
+		.type_24C01(mapper159),         //24C01 is 128 bytes, 24C02 is 256 bytes
 		.clk(clk),
 		.ce(ce),
 		.reset(reset),
@@ -3869,6 +3871,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 154 = Needs testing
 // 155 = Needs testing
 // 158 = Tons of GFX bugs
+// 159 = Needs testing
 // 165 = GFX corrupted
 // 180 = Needs testing
 // 184 = Needs testing
@@ -3935,6 +3938,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     13: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map13_prg_addr, map13_prg_allow, map13_chr_addr, map13_vram_a10, map13_vram_ce, map13_chr_allow};
     15: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {map15_prg_addr, map15_prg_allow, map15_chr_addr, map15_vram_a10, map15_vram_ce, map15_chr_allow};
 
+    159,
 	 16: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, mapper_addr, mapper_data_out, mapper_prg_write, mapper_ovr, irq}
 	   = {map16_prg_addr, map16_prg_allow, map16_chr_addr, map16_vram_a10, map16_vram_ce, map16_chr_allow, map16_prg_dout, map16_mapper_addr, map16_data_out, map16_prg_write, map16_ovr, map16_irq};
     
