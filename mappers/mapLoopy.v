@@ -166,7 +166,7 @@ module MAPVRC6(     //signal descriptions in powerpak.v
         endcase
     end
 
-	 vrcIRQ vrc6irq(clk20,reset,nesprg_we,irql,irqc,irqa,nesprgdin,irq,ce);
+	 vrcIRQ vrc6irq(clk20,reset,nesprg_we,{irql,irql},irqc,irqa,nesprgdin,irq,ce);
 	 
 //mirroring
     assign ramchraout[10]=!chrain[13] ? chrbank[10] : ((mirror==0 & chrain[10]) | (mirror==1 & chrain[11]) | (mirror==3));
@@ -217,7 +217,7 @@ module vrcIRQ(
     input clk20,
     input reset,
     input nesprg_we,
-	 input irqlatch_add,
+	 input [1:0] irqlatch_add,
 	 input irqctrl_add,
 	 input irqack_add,
     input [7:0] nesprgdin,
@@ -228,8 +228,12 @@ module vrcIRQ(
     reg irqM,irqE,irqA;
     always@(posedge clk20) begin
         if(ce && nesprg_we) begin
-            if (irqlatch_add)
-				    irqlatch<=nesprgdin;      //F000
+            if (irqlatch_add == 2'b11)
+				    irqlatch<=nesprgdin;                //F000
+            else if (irqlatch_add == 2'b10)
+				    irqlatch[7:4]<=nesprgdin[3:0];      //F000h
+            else if (irqlatch_add == 2'b01)
+				    irqlatch[3:0]<=nesprgdin[3:0];      //F000l
 				else if (irqctrl_add)
                 {irqM,irqA}<={nesprgdin[2],nesprgdin[0]}; //F001
         end

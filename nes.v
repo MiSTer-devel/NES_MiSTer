@@ -142,6 +142,12 @@ module NES(input clk, input reset, input ce,
            input [7:0] memory_din_ppu,  // next cycle, contents of latch B (PPU's data)
            output memory_write,         // is a write operation
            output [7:0] memory_dout,
+			  // Override for BRAM
+           output [14:0] bram_addr,     // address to access
+           input [7:0] bram_din,        // Data from BRAM
+           output [7:0] bram_dout,
+           output bram_write,           // is a write operation
+           output bram_override,
            
            output [8:0] cycle,
            output [8:0] scanline,
@@ -290,7 +296,7 @@ module NES(input clk, input reset, input ce,
   MultiMapper multi_mapper(clk, cart_ce, ce, reset, mapper_ppu_flags, mapper_flags, 
                            prg_addr, prg_linaddr, prg_read, prg_write, prg_din, prg_dout_mapper, from_data_bus, prg_allow,
                            chr_read, chr_addr, chr_linaddr, chr_from_ppu_mapper, has_chr_from_ppu_mapper, chr_allow, vram_a10,
-									vram_ce, mapper_irq, sample_ext, fds_swap);
+									vram_ce, bram_addr, bram_din, bram_dout, bram_write, bram_override, mapper_irq, sample_ext, fds_swap);
   assign chr_to_ppu = has_chr_from_ppu_mapper ? chr_from_ppu_mapper : memory_din_ppu;
                              
   // Mapper IRQ seems to be delayed by one PPU clock.   
@@ -315,7 +321,7 @@ module NES(input clk, input reset, input ce,
    
   // -- Multiplexes CPU and PPU accesses into one single RAM
   MemoryMultiplex mem(clk, ce, reset, prg_linaddr, prg_read && prg_allow, prg_write && prg_allow, prg_din, 
-                               chr_linaddr, chr_read,              chr_write && (chr_allow || vram_ce), chr_from_ppu,
+                               chr_linaddr, chr_read, chr_write && (chr_allow || vram_ce), chr_from_ppu,
                                memory_addr, memory_read_cpu, memory_read_ppu, memory_write, memory_dout);
 
   always @* begin

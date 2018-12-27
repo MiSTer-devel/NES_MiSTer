@@ -50,7 +50,12 @@ module sdram (
 	input	    [14:0] bk_addr,
 	input	     [7:0] bk_din,
 	output     [7:0] bk_dout,
-	input	           bk_we
+	input	           bk_we,
+	input	    [14:0] bko_addr,
+	input	     [7:0] bko_din,
+	output     [7:0] bko_dout,
+	input	           bko_we,
+	input	           bk_override
 );
 
 // no burst configured
@@ -176,12 +181,14 @@ always @(posedge clk) begin
 end
 
 reg [7:0] dpram_dout;
+assign bko_dout = dpram_dout;
+
 ovr_dpram ovr_ram
 (
 	.clock_a(clk),
-	.address_a(addr[14:0]),
-	.data_a(din),
-	.wren_a(dpram_we),
+	.address_a(bk_override ? bko_addr : addr[14:0]),
+	.data_a(bk_override ? bko_din : din),
+	.wren_a(bk_override ? bko_we : dpram_we),
 	.q_a(dpram_dout),
 
 	.clock_b(bk_clk),
