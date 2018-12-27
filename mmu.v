@@ -2161,7 +2161,7 @@ module Mapper34(input clk, input ce, input reset,
                 output chr_allow,                      // Allow write
                 output vram_a10,                             // Value for A10 address line
                 output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
-  reg [6:0] prg_bank;
+  reg [5:0] prg_bank;
   reg [3:0] chr_bank_0, chr_bank_1;
   
   wire NINA = (flags[13:11] != 0); // NINA is used when there is more than 8kb of CHR
@@ -3002,7 +3002,7 @@ module VRC1(input clk, input ce, input reset,
                 input [7:0] prg_din,
                 output prg_allow,                            // Enable access to memory for the specified operation.
                 input [13:0] chr_ain, output [21:0] chr_aout,
-                output chr_allow,                      // Allow write
+                output chr_allow,                            // Allow write
                 output reg vram_a10,                         // Value for A10 address line
                 output vram_ce);                             // True if the address should be routed to the internal 2kB VRAM.
     reg [3:0] prg_bank0, prg_bank1, prg_bank2;
@@ -3055,6 +3055,194 @@ module VRC1(input clk, input ce, input reset,
   assign prg_allow = prg_ain[15] && !prg_write;
   assign chr_allow = flags[15];
   assign chr_aout = {5'b10_000, chr_tmp, chr_ain[11:0]};
+endmodule
+
+// VRC3 (73)
+module VRC3(input clk, input ce, input reset,
+                input [31:0] flags,
+                input [15:0] prg_ain, output [21:0] prg_aout,
+                input prg_read, prg_write,                   // Read / write signals
+                input [7:0] prg_din,
+                output prg_allow,                            // Enable access to memory for the specified operation.
+                input [13:0] chr_ain, output [21:0] chr_aout,
+                output chr_allow,                            // Allow write
+                output vram_a10,                             // Value for A10 address line
+                output vram_ce,                              // True if the address should be routed to the internal 2kB VRAM.
+					 output reg irq);                             
+    reg [2:0] prg_bank;
+	 reg [4:0] irq_enable;
+	 reg [15:0] irq_latch;
+	 reg [15:0] irq_counter;
+    
+    always @(posedge clk) if (reset) begin
+      // Set value for mirroring
+		irq <= 0;
+		prg_bank <= 0;
+		irq_enable <= 0;
+    end else if (ce) begin
+	   irq_enable[3] <= 1'b0;
+      if (prg_ain[15] & prg_write) begin
+        case (prg_ain[14:12])
+        3'b000:  irq_latch[3:0]   <= prg_din[3:0];
+        3'b001:  irq_latch[7:4]   <= prg_din[3:0];
+        3'b010:  irq_latch[11:8]  <= prg_din[3:0];
+        3'b011:  irq_latch[15:12] <= prg_din[3:0];
+        3'b100:  irq_enable[4:0]  <= {2'b11, prg_din[2:0]};
+        3'b101:  irq_enable[4:3]  <= 2'b01;
+        3'b111:  prg_bank         <= prg_din[2:0];  // PRG bank 0x8000-0xBFFF
+        endcase
+      end
+
+		if (irq_enable[1]) begin
+			irq_counter[7:0] <= irq_counter[7:0] + 8'd1;
+			if (irq_counter[7:0] == 8'hFF) begin
+				if (irq_enable[2]) begin
+					irq <= 1'b1;	// IRQ
+				end else begin
+					irq_counter[15:8] <= irq_counter[15:8] + 8'd1;
+					if (irq_counter[15:8] == 8'hFF) begin
+						irq <= 1'b1;	// IRQ
+					end
+				end
+			end
+		end
+		if (irq_enable[3]) begin
+			irq <= 1'b0;	// IRQ ACK
+			if (irq_enable[4])
+				irq_counter <= irq_latch;
+			else
+				irq_enable[1] <= irq_enable[0];
+		end
+    end
+    
+  assign vram_ce = chr_ain[13];
+  assign vram_a10 = flags[14] ? chr_ain[10] : chr_ain[11];
+  wire prg_is_ram = (prg_ain[15:13] == 3'b011);//prg_ain >= 'h6000 && prg_ain < 'h8000;
+  assign prg_aout = prg_is_ram ? {9'b11_1100_000, prg_ain[12:0]} : {5'b00_000, prg_ain[14] ? 3'b111 : prg_bank, prg_ain[13:0]};
+  assign prg_allow = (prg_ain[15] && !prg_write) || prg_is_ram;
+  assign chr_allow = flags[15];
+  assign chr_aout = {8'b10_0000_00, chr_ain[13:0]};
+endmodule
+
+// VRC2 and VRC4
+module VRC24(input clk, input ce, input reset,
+            input [31:0] flags,
+            input [15:0] prg_ain, output [21:0] prg_aout,
+            input prg_read, prg_write,                   // Read / write signals
+            input [7:0] prg_din,
+            output prg_allow,                            // Enable access to memory for the specified operation.
+            input [13:0] chr_ain, output [21:0] chr_aout,
+            output chr_allow,                            // Allow write
+            output reg vram_a10,                         // Value for A10 address line
+            output vram_ce,                              // True if the address should be routed to the internal 2kB VRAM.
+            output irq);
+    reg [4:0] prg_bank0, prg_bank1;
+    reg [8:0] chr_bank0, chr_bank1, chr_bank2, chr_bank3, chr_bank4, chr_bank5, chr_bank6, chr_bank7;
+	 reg [1:0] mirroring;
+	 reg [4:0] prg_tmp;
+	 reg [8:0] chr_tmp;
+	 reg prg_invert;
+	 wire mapper21 = (flags[7:0] == 21);
+	 wire mapper22 = (flags[7:0] == 22);
+	 wire mapper23 = (flags[7:0] == 23);
+	 //wire mapper25 = (flags[7:0] == 25); //default
+	 wire mapperVRC4 = (flags[7:0] != 22) && (flags[24:21] != 3);
+	 wire [1:0] registers = {mapper21 ?  {(prg_ain[7]|prg_ain[2]),(prg_ain[6]|prg_ain[1])} :
+	                         mapper22 ?  {(prg_ain[0]),           (prg_ain[1])           } :
+	                         mapper23 ?  {(prg_ain[3]|prg_ain[1]),(prg_ain[2]|prg_ain[0])} :
+									 /*mapper25*/{(prg_ain[2]|prg_ain[0]),(prg_ain[3]|prg_ain[1])}};
+    
+    always @(posedge clk) if (reset) begin
+      // Set value for mirroring
+      mirroring[1:0] <= {1'b0, !flags[14]};
+		prg_invert <= 0;
+		prg_bank0 <= 5'd0;
+		prg_bank1 <= 5'd1;
+		chr_bank0 <= 9'd0;
+		chr_bank1 <= 9'd1;
+		chr_bank2 <= 9'd2;
+		chr_bank3 <= 9'd3;
+		chr_bank4 <= 9'd4;
+		chr_bank5 <= 9'd5;
+		chr_bank6 <= 9'd6;
+		chr_bank7 <= 9'd7;
+    end else if (ce) begin
+      if (prg_ain[15] & prg_write) begin
+        casez ({prg_ain[14:12], registers, mapperVRC4})
+        6'b000_??_?:  prg_bank0      <= prg_din[4:0];  // PRG bank 0x8000-0x9FFF or 0xC000-0xDFFF
+        6'b001_??_0:  mirroring[0]   <= prg_din[0];
+        6'b001_0?_1:  mirroring      <= prg_din[1:0];
+        6'b001_1?_1:  prg_invert     <= prg_din[1];
+        6'b010_??_?:  prg_bank1      <= prg_din[4:0];  // PRG bank 0xA000-0xBFFF
+        6'b011_00_?:  chr_bank0[3:0] <= prg_din[3:0];  // CHR bank 0x0000-0x03FF
+        6'b011_01_?:  chr_bank0[8:4] <= prg_din[4:0];  // CHR bank 0x0000-0x03FF
+        6'b011_10_?:  chr_bank1[3:0] <= prg_din[3:0];  // CHR bank 0x0400-0x07FF
+        6'b011_11_?:  chr_bank1[8:4] <= prg_din[4:0];  // CHR bank 0x0400-0x07FF
+        6'b100_00_?:  chr_bank2[3:0] <= prg_din[3:0];  // CHR bank 0x0800-0x0BFF
+        6'b100_01_?:  chr_bank2[8:4] <= prg_din[4:0];  // CHR bank 0x0800-0x0BFF
+        6'b100_10_?:  chr_bank3[3:0] <= prg_din[3:0];  // CHR bank 0x0C00-0x0FFF
+        6'b100_11_?:  chr_bank3[8:4] <= prg_din[4:0];  // CHR bank 0x0C00-0x0FFF
+        6'b101_00_?:  chr_bank4[3:0] <= prg_din[3:0];  // CHR bank 0x1000-0x13FF
+        6'b101_01_?:  chr_bank4[8:4] <= prg_din[4:0];  // CHR bank 0x1000-0x13FF
+        6'b101_10_?:  chr_bank5[3:0] <= prg_din[3:0];  // CHR bank 0x1400-0x17FF
+        6'b101_11_?:  chr_bank5[8:4] <= prg_din[4:0];  // CHR bank 0x1400-0x17FF
+        6'b110_00_?:  chr_bank6[3:0] <= prg_din[3:0];  // CHR bank 0x1800-0x1BFF
+        6'b110_01_?:  chr_bank6[8:4] <= prg_din[4:0];  // CHR bank 0x1800-0x1BFF
+        6'b110_10_?:  chr_bank7[3:0] <= prg_din[3:0];  // CHR bank 0x1C00-0x1FFF
+        6'b110_11_?:  chr_bank7[8:4] <= prg_din[4:0];  // CHR bank 0x1C00-0x1FFF
+        //6'b111_??_1:  IRQ Stuff;  // IRQ
+        endcase
+      end
+    end
+    
+    always begin
+      // mirroring mode
+      casez(mirroring[1:0])
+      2'b00   :   vram_a10 = {chr_ain[10]};    // vertical
+      2'b01   :   vram_a10 = {chr_ain[11]};    // horizontal
+      2'b1?   :   vram_a10 = {mirroring[0]};   // 1 screen
+      endcase
+
+      // PRG ROM bank size select
+      casez({prg_ain[14:13],prg_invert})
+		3'b00_0 : prg_tmp = prg_bank0;
+		3'b00_1 : prg_tmp = 5'b11110;
+		3'b01_? : prg_tmp = prg_bank1;
+		3'b10_0 : prg_tmp = 5'b11110;
+		3'b10_1 : prg_tmp = prg_bank0;
+		3'b11_? : prg_tmp = 5'b11111;
+      endcase
+
+      // PRG ROM bank size select
+      casez(chr_ain[12:10])
+		3'b000 : chr_tmp = chr_bank0;
+		3'b001 : chr_tmp = chr_bank1;
+		3'b010 : chr_tmp = chr_bank2;
+		3'b011 : chr_tmp = chr_bank3;
+		3'b100 : chr_tmp = chr_bank4;
+		3'b101 : chr_tmp = chr_bank5;
+		3'b110 : chr_tmp = chr_bank6;
+		3'b111 : chr_tmp = chr_bank7;
+      endcase
+    end
+
+  assign vram_ce = chr_ain[13];
+  wire [21:13] prg_aout_tmp = {4'b00_00, prg_tmp};
+  wire [21:13] prg_ram = {9'b11_1100_000};
+  wire prg_is_ram = (prg_ain[15:13] == 3'b011);//prg_ain >= 'h6000 && prg_ain < 'h8000;
+  assign prg_aout[21:13] = prg_is_ram ? prg_ram : prg_aout_tmp;
+  assign prg_aout[12:0] = prg_ain[12:0];
+  assign prg_allow = (prg_ain[15] && !prg_write) || prg_is_ram;
+  assign chr_allow = flags[15];
+  assign chr_aout = {3'b10_0, vram_ce ? {5'b00000, chr_ain[13:10]} : mapper22 ? {1'b0, chr_tmp[8:1]} : chr_tmp, chr_ain[9:0]};
+
+  wire irqll = {prg_ain[15:12],registers[1:0]}==6'b1111_00; // 0xF000
+  wire irqlh = {prg_ain[15:12],registers[1:0]}==6'b1111_01; // 0xF001
+  wire irqc  = {prg_ain[15:12],registers[1:0]}==6'b1111_10; // 0xF002
+  wire irqa  = {prg_ain[15:12],registers[1:0]}==6'b1111_11; // 0xF003
+  wire irqout;
+  assign irq = irqout & mapperVRC4;
+  vrcIRQ vrc4irq(clk,reset,prg_write,{irqlh,irqll},irqc,irqa,prg_din,irqout,ce);
 endmodule
 
 module VRC6(input clk, input ce, input reset,
@@ -3195,7 +3383,7 @@ module VRC7(input clk, input ce, input reset,
 	 wire irqc = {prg_ain[15:12],prg_ain43}==5'b11110; // 0xF000
 	 wire irqa = {prg_ain[15:12],prg_ain43}==5'b11111; // 0xF008 or 0xF010
 	 
-	 vrcIRQ vrc7irq(clk,reset,prg_write,irql,irqc,irqa,prg_din,irq,ce);
+	 vrcIRQ vrc7irq(clk,reset,prg_write,{irql,irql},irqc,irqa,prg_din,irq,ce);
 
 	 reg [3:0] ce_count;
     always@(posedge clk) begin
@@ -3534,6 +3722,16 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   wire [21:0] vrc1_prg_addr, vrc1_chr_addr;
   VRC1 vrc1(clk, ce, reset, flags, prg_ain, vrc1_prg_addr, prg_read, prg_write, prg_din, vrc1_prg_allow,
                                         chr_ain, vrc1_chr_addr, vrc1_chr_allow, vrc1_vram_a10, vrc1_vram_ce);
+
+  wire vrc3_prg_allow, vrc3_vram_a10, vrc3_vram_ce, vrc3_chr_allow, vrc3_irq;
+  wire [21:0] vrc3_prg_addr, vrc3_chr_addr;
+  VRC3 vrc3(clk, ce, reset, flags, prg_ain, vrc3_prg_addr, prg_read, prg_write, prg_din, vrc3_prg_allow,
+                                        chr_ain, vrc3_chr_addr, vrc3_chr_allow, vrc3_vram_a10, vrc3_vram_ce, vrc3_irq);
+  
+  wire vrc24_prg_allow, vrc24_vram_a10, vrc24_vram_ce, vrc24_chr_allow, vrc24_irq;
+  wire [21:0] vrc24_prg_addr, vrc24_chr_addr;
+  VRC24 vrc24(clk, ce, reset, flags, prg_ain, vrc24_prg_addr, prg_read, prg_write, prg_din, vrc24_prg_allow,
+                                   chr_ain, vrc24_chr_addr, vrc24_chr_allow, vrc24_vram_a10, vrc24_vram_ce, vrc24_irq);
   
   wire vrc6_prg_allow, vrc6_vram_a10, vrc6_vram_ce, vrc6_chr_allow, vrc6_irq;
   wire [21:0] vrc6_prg_addr, vrc6_chr_addr;
@@ -3614,7 +3812,11 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 18 = Needs testing
 // 19 = Needs testing
 // 20 = Needs testing
+// 21 = Needs testing
+// 22 = Needs testing
+// 23 = Needs testing
 // 24 = Needs testing
+// 25 = Needs testing
 // 26 = Needs testing
 // 28 = Working
 // 30 = No Self Flashing/Needs testing
@@ -3636,6 +3838,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 // 70 = Needs testing
 // 71 = Working
 // 72 = Needs testing/No Audio Samples
+// 73 = Needs testing
 // 74 = Needs testing
 // 75 = Needs testing
 // 76 = Needs testing
@@ -3786,6 +3989,11 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
     234: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}     = {map234_prg_addr, map234_prg_allow, map234_chr_addr, map234_vram_a10, map234_vram_ce, map234_chr_allow};
     75: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow}      = {vrc1_prg_addr, vrc1_prg_allow, vrc1_chr_addr, vrc1_vram_a10, vrc1_vram_ce, vrc1_chr_allow};
     20: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {mapfds_prg_addr, mapfds_prg_allow, mapfds_chr_addr, mapfds_vram_a10, mapfds_vram_ce, mapfds_chr_allow, mapfds_prg_dout, mapfds_irq, mapfds_audio};
+    21,
+    22,
+    23,
+    25: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq} = {vrc24_prg_addr, vrc24_prg_allow, vrc24_chr_addr, vrc24_vram_a10, vrc24_vram_ce, vrc24_chr_allow, vrc24_irq};
+    73: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq} = {vrc3_prg_addr, vrc3_prg_allow, vrc3_chr_addr, vrc3_vram_a10, vrc3_vram_ce, vrc3_chr_allow, vrc3_irq};
     24,
     26: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, prg_dout, irq, audio} = {vrc6_prg_addr, vrc6_prg_allow, vrc6_chr_addr, vrc6_vram_a10, vrc6_vram_ce, vrc6_chr_allow, vrc6_prg_dout, vrc6_irq, vrc6_audio};
     85: {prg_aout, prg_allow, chr_aout, vram_a10, vram_ce, chr_allow, irq, audio} = {vrc7_prg_addr, vrc7_prg_allow, vrc7_chr_addr, vrc7_vram_a10, vrc7_vram_ce, vrc7_chr_allow, vrc7_irq, vrc7_audio};
