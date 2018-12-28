@@ -523,6 +523,7 @@ ascal
 (
 	.reset_na (~reset_req),
 	.run      (1),
+	.freeze   (0),
 
 	.i_clk  (clk_vid),
 	.i_ce   (ce_pix),
@@ -560,7 +561,7 @@ ascal
 	.vmin   (vmin),
 	.vmax   (vmax),
 
-	.mode     ({1'b1,scaler_flt ? 3'd6 : 3'd0}),
+	.mode     ({1'b1,scaler_flt,2'b00}),
 	.poly_clk (clk_sys),
 	.poly_a   (coef_addr),
 	.poly_dw  (coef_data),
