@@ -129,20 +129,27 @@ wire [15:0] pal_wavebeam_lut[64] = '{
 	'h539D, 'h53BA, 'h5BD7, 'h67D6, 'h7BB6, 'h5EF7, 'h0000, 'h0000
 };
 
-wire [14:0] pixel;
+reg [14:0] pixel;
+reg HBlank_r, VBlank_r;
 
 always @(posedge clk) begin
-	case (palette)
-		0: pixel = pal_smooth_lut[color][14:0];
-		1: pixel = pal_unsat_lut[color][14:0];
-		2: pixel = pal_fcelut[color][14:0];
-		3: pixel = pal_nes_classic_lut[color][14:0];
-		4: pixel = pal_composite_direct_lut[color][14:0];
-		5: pixel = pal_pc10_lut[color][14:0];
-		6: pixel = pal_pvm_lut[color][14:0];
-		7: pixel = pal_wavebeam_lut[color][14:0];
-		default:pixel = pal_smooth_lut[color][14:0];
-	endcase
+	
+	if(pix_ce_n) begin
+		case (palette)
+			0: pixel <= pal_smooth_lut[color][14:0];
+			1: pixel <= pal_unsat_lut[color][14:0];
+			2: pixel <= pal_fcelut[color][14:0];
+			3: pixel <= pal_nes_classic_lut[color][14:0];
+			4: pixel <= pal_composite_direct_lut[color][14:0];
+			5: pixel <= pal_pc10_lut[color][14:0];
+			6: pixel <= pal_pvm_lut[color][14:0];
+			7: pixel <= pal_wavebeam_lut[color][14:0];
+			default:pixel <= pal_smooth_lut[color][14:0];
+		endcase
+	
+		HBlank_r <= HBlank;
+		VBlank_r <= VBlank;
+	end
 end
 
 
@@ -179,8 +186,8 @@ always @(posedge clk) begin
 
 	if(pix_ce) begin
 		if(hide_overscan) begin
-			HBlank <= (hc > (256-8)) || (hc<10);
-			VBlank <= (vc > (240-10)) || (vc<6);
+			HBlank <= (hc > (256-8)) || (hc<9);
+			VBlank <= (vc > (240-10)) || (vc<7);
 		end else begin
 			HBlank <= (hc >= 256);
 			VBlank <= (vc >= 240);
@@ -190,10 +197,9 @@ always @(posedge clk) begin
 	end
 end
 
-wire [14:0] pixel_v = (HBlank | VBlank) ? 5'd0 : pixel;
-wire  [4:0] vga_r   = pixel_v[4:0];
-wire  [4:0] vga_g   = pixel_v[9:5];
-wire  [4:0] vga_b   = pixel_v[14:10];
+wire  [4:0] vga_r = pixel[4:0];
+wire  [4:0] vga_g = pixel[9:5];
+wire  [4:0] vga_b = pixel[14:10];
 
 video_mixer #(.LINE_LENGTH(350), .HALF_DEPTH(0)) video_mixer
 (
@@ -201,6 +207,9 @@ video_mixer #(.LINE_LENGTH(350), .HALF_DEPTH(0)) video_mixer
 	.clk_sys(clk),
 	.ce_pix(pix_ce),
 	.ce_pix_out(ce_pix),
+	
+	.HBlank(HBlank_r),
+	.VBlank(VBlank_r),
 
 	.scanlines(0),
 	.hq2x(scale==1),
