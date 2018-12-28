@@ -675,6 +675,8 @@ module MMC5(input clk, input ce, input reset,
             input prg_read, prg_write,                   // Read / write signals
             input [7:0] prg_din, output reg [7:0] prg_dout,
             output prg_allow,                            // Enable access to memory for the specified operation.
+				input chr_write,
+				input [7:0] chr_din,
             input [13:0] chr_ain, output reg [21:0] chr_aout,
             output reg [7:0] chr_dout, output has_chr_dout,
             output chr_allow,                            // Allow write
@@ -762,15 +764,17 @@ module MMC5(input clk, input ce, input reset,
         endcase
         
         // Remember which set of CHR was written to last.
-        if (prg_ain[9:0] >= 10'h120 && prg_ain[9:0] < 10'h130)
+        if (prg_ain[9:4] == 6'b010010)//(prg_ain[9:0] >= 10'h120 && prg_ain[9:0] < 10'h130)
           chr_last <= prg_ain[3];
       end
       
       // Mode 0/1 - Not readable (returns open bus), can only be written while the PPU is rendering (otherwise, 0 is written)
       // Mode 2 - Readable and writable
       // Mode 3 - Read-only
-      if (prg_write && prg_ain[15:10] == 6'b010111) begin // $5C00-$5FFF
-        if (extended_ram_mode != 3)
+      if (extended_ram_mode != 3) begin
+        if (!extended_ram_mode[1] && chr_write && (mirrbits == 2))
+          expansion_ram[chr_ain[9:0]] <= chr_din;
+        else if (prg_write && prg_ain[15:10] == 6'b010111) // $5C00-$5FFF
           expansion_ram[prg_ain[9:0]] <= (extended_ram_mode[1] || ppu_in_frame) ? prg_din : 8'd0;
       end
     end
@@ -918,16 +922,17 @@ module MMC5(input clk, input ce, input reset,
     5'b11_110: prgsel = {      prg_bank_2};                      // $C000-$DFFF mode 3, 8kB (prg_bank_2)
     5'b11_111: prgsel = {1'b1, prg_bank_3};                      // $E000-$FFFF mode 3, 8kB (prg_bank_3)
     endcase
-	 //Done below
+	 //Original
     //prgsel[7] = !prgsel[7]; // 0 means RAM, doh.
     
-    if (prgsel[7])
-      prgsel[7] = 0;  //ROM
-    else
-      // Limit to 64k RAM.
-      prgsel[7:3] = 5'b1_1100;  //RAM location for saves
+	 //Done below
+    //if (prgsel[7])
+    //  prgsel[7] = 0;  //ROM
+    //else
+    //  // Limit to 64k RAM.
+    //  prgsel[7:3] = 5'b1_1100;  //RAM location for saves
   end
-  assign prg_aout = {prgsel[7], prgsel, prg_ain[12:0]};    // 8kB banks
+  assign prg_aout = {prgsel[7] ? {2'b00, prgsel[6:0]} : {6'b11_1100, prgsel[2:0]}, prg_ain[12:0]};    // 8kB banks
 
   // Registers $5120-$5127 apply to sprite graphics and $5128-$512B for background graphics, but ONLY when 8x16 sprites are enabled.
   // Otherwise, the last set of registers written to (either $5120-$5127 or $5128-$512B) will be used for all graphics.
@@ -985,7 +990,7 @@ module MMC5(input clk, input ce, input reset,
   
   // Writing to RAM is enabled only when the protect bits say so.  
   wire prg_ram_we = prg_protect_1 && prg_protect_2;
-  assign prg_allow = (prg_ain >= 16'h6000) && (!prg_write || prgsel[7] && prg_ram_we);
+  assign prg_allow = (prg_ain >= 16'h6000) && (!prg_write || ((!prgsel[7]) && prg_ram_we));
   
   // MMC5 boards typically have no CHR RAM.
   assign chr_allow = flags[15];
@@ -3524,6 +3529,8 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
                    input [7:0] prg_from_ram,                        // PRG Data from RAM
                    output reg prg_allow,                            // PRG Allow write access
                    input chr_read,                                  // Read from CHR
+                   input chr_write,                                 // Write to CHR
+						 input [7:0] chr_din,
                    input [13:0] chr_ain, output reg [21:0] chr_aout,// CHR Input / Output Address Lines
                    output reg [7:0] chr_dout,                       // Value to override CHR data with
                    output reg has_chr_dout,                         // True if CHR data should be overridden
@@ -3586,7 +3593,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   wire mmc5_has_chr_dout;
   wire [15:0] mmc5_audio;
   MMC5 mmc5(clk, ppu_ce, reset, flags, ppuflags, prg_ain, mmc5_prg_addr, prg_read, prg_write, prg_din, mmc5_prg_dout, mmc5_prg_allow,
-                                   chr_ain, mmc5_chr_addr, mmc5_chr_dout, mmc5_has_chr_dout, 
+                                   chr_write, chr_din, chr_ain, mmc5_chr_addr, mmc5_chr_dout, mmc5_has_chr_dout, 
                                    mmc5_chr_allow, mmc5_vram_a10, mmc5_vram_ce, mmc5_irq, mmc5_audio);
 
   wire map13_prg_allow, map13_vram_a10, map13_vram_ce, map13_chr_allow;
