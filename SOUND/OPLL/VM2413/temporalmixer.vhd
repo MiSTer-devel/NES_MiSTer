@@ -88,9 +88,13 @@ begin
             when "01001" => mute <= '1';
             when "01010" => mute <= '1';
             when "01011" => mute <= '1';
-            when "01100" => maddr <= "01101"; mute<='0'; -- CH6
-            when "01101" => maddr <= "01111"; mute<='0'; -- CH7
-            when "01110" => maddr <= "10001"; mute<='0'; -- CH8
+            --when "01100" => maddr <= "01101"; mute<='0'; -- CH6
+            --when "01101" => maddr <= "01111"; mute<='0'; -- CH7
+            --when "01110" => maddr <= "10001"; mute<='0'; -- CH8
+			--VRC7
+            when "01100" => mute<='1'; -- CH6
+            when "01101" => mute<='1'; -- CH7
+            when "01110" => mute<='1'; -- CH8
             when "01111" => mute <= '1';
             when "10000" => mute <= '1';
             when "10001" => mute <= '1';
