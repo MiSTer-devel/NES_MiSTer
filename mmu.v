@@ -668,13 +668,14 @@ module MMC4(input clk, input ce, input reset,
 
 endmodule
 
-module MMC5(input clk, input ce, input reset,
+module MMC5(input clk, input ce, input ppu_ce, input reset,
             input [31:0] flags,
             input [19:0] ppuflags,
             input [15:0] prg_ain, output [21:0] prg_aout,
             input prg_read, prg_write,                   // Read / write signals
             input [7:0] prg_din, output reg [7:0] prg_dout,
             output prg_allow,                            // Enable access to memory for the specified operation.
+				input chr_read,
 				input chr_write,
 				input [7:0] chr_din,
             input [13:0] chr_ain, output reg [21:0] chr_aout,
@@ -714,6 +715,8 @@ module MMC5(input clk, input ce, input reset,
   reg [7:0] expansion_ram[0:1023]; // Block RAM, otherwise we need to time multiplex..
   reg [7:0] last_read_ram;
   reg [7:0] last_read_exattr;
+  reg [7:0] last_read_vram;
+  reg last_chr_read;
   
   // unpack ppu flags
   wire ppu_in_frame = ppuflags[0];
@@ -768,16 +771,17 @@ module MMC5(input clk, input ce, input reset,
           chr_last <= prg_ain[3];
       end
       
+    end
+	 
       // Mode 0/1 - Not readable (returns open bus), can only be written while the PPU is rendering (otherwise, 0 is written)
       // Mode 2 - Readable and writable
       // Mode 3 - Read-only
       if (extended_ram_mode != 3) begin
-        if (!extended_ram_mode[1] && chr_write && (mirrbits == 2))
+        if (ppu_ce && !ppu_in_frame && !extended_ram_mode[1] && chr_write && (mirrbits == 2) && chr_ain[13])
           expansion_ram[chr_ain[9:0]] <= chr_din;
-        else if (prg_write && prg_ain[15:10] == 6'b010111) // $5C00-$5FFF
+        else if (ce && prg_write && prg_ain[15:10] == 6'b010111) // $5C00-$5FFF
           expansion_ram[prg_ain[9:0]] <= (extended_ram_mode[1] || ppu_in_frame) ? prg_din : 8'd0;
       end
-    end
     if (reset) begin
       prg_bank_3 <= 7'h7F;
       prg_mode <= 3;
@@ -800,8 +804,8 @@ module MMC5(input clk, input ce, input reset,
   
   // Determine IRQ handling
   reg last_scanline, irq_trig;
-  always @(posedge clk) if (ce) begin
-    if (prg_read && prg_ain == 16'h5204)
+  always @(posedge clk) if (ce || ppu_ce) begin
+    if (ce && prg_read && prg_ain == 16'h5204)
       irq_pending <= 0;
     irq_trig <= (irq_scanline != 0 && irq_scanline < 240 && ppu_scanline == {1'b0, irq_scanline});
     last_scanline <= ppu_scanline[0];
@@ -829,13 +833,13 @@ module MMC5(input clk, input ce, input reset,
         in_split_area = 0;
     end
   end
-  always @(posedge clk) if (ce) begin
+  always @(posedge clk) if (ppu_ce) begin
     last_in_split_area <= in_split_area;
     if (ppu_cycle[2:0] == 0 && ppu_cycle < 336)
       cur_tile <= new_cur_tile;
   end
   // Keep track of scroll
-  always @(posedge clk) if (ce) begin
+  always @(posedge clk) if (ppu_ce) begin
     if (ppu_cycle == 319)
       vscroll <= ppu_scanline[8] ? vsplit_scroll : 
                  (vscroll == 239) ? 8'b0 : vscroll + 8'b1;
@@ -868,24 +872,31 @@ module MMC5(input clk, input ce, input reset,
   wire insplit = in_split_area && vsplit_enable;
 
   // Currently reading the attribute byte?
-  wire exattr_read = (extended_ram_mode == 1) && (ppu_cycle[2:1]==1);
+  wire exattr_read = (extended_ram_mode == 1) && (ppu_cycle[2:1]==1) && ppu_in_frame;
   
   // If the current chr read should be redirected from |chr_dout| instead.
   assign has_chr_dout = chr_ain[13] && (mirrbits[1] || insplit || exattr_read);
   wire [1:0] override_attr = insplit ? split_attr : (extended_ram_mode == 1) ? last_read_exattr[7:6] : fill_attr;
   always @* begin
-    if (ppu_cycle[1] == 0) begin
-      // Name table fetch
-      if (insplit || mirrbits[0] == 0) chr_dout = (extended_ram_mode[1] ? 8'b0 : last_read_ram);
-      else begin
-        //$write("Inserting filltile!\n");
-        chr_dout = fill_tile;
+    if (ppu_in_frame) begin
+      if (ppu_cycle[1] == 0) begin
+        // Name table fetch
+        if (insplit || mirrbits[0] == 0) chr_dout = (extended_ram_mode[1] ? 8'b0 : last_read_ram);
+        else begin
+          //$write("Inserting filltile!\n");
+          chr_dout = fill_tile;
+        end
+      end else begin
+        // Attribute table fetch
+        if (!insplit && !exattr_read && mirrbits[0] == 0) chr_dout = (extended_ram_mode[1] ? 8'b0 : last_read_ram);
+        else chr_dout = {override_attr, override_attr, override_attr, override_attr};
       end
-    end else begin
-      // Attribute table fetch
-      if (!insplit && !exattr_read && mirrbits[0] == 0) chr_dout = (extended_ram_mode[1] ? 8'b0 : last_read_ram);
-      else chr_dout = {override_attr, override_attr, override_attr, override_attr};
-    end
+	 end else begin
+      chr_dout = last_read_vram;
+	   last_chr_read <= chr_read;
+      if (!chr_read && last_chr_read)
+	     last_read_vram <= extended_ram_mode[1] ? 8'b0 : last_read_ram;
+	 end
   end
 
   // Handle reading from the expansion ram.
@@ -898,7 +909,7 @@ module MMC5(input clk, input ce, input reset,
                                                       chr_ain[9:0];
   always @(posedge clk) begin
     last_read_ram <= expansion_ram[exram_read_addr];
-    if ((ppu_cycle[2] == 0) && (ppu_cycle[1] == 0)) begin
+    if ((ppu_cycle[2] == 0) && (ppu_cycle[1] == 0) && ppu_in_frame) begin
       last_read_exattr <= last_read_ram;
     end
   end
@@ -1001,7 +1012,7 @@ module MMC5(input clk, input ce, input reset,
   wire [15:0] DmaAddr;  // Address DMC wants to read
   wire odd_or_even;
   wire apu_irq;       // IRQ asserted
-  APU mmc5apu(1, clk, ce, reset,
+  APU mmc5apu(1, clk, ppu_ce, reset,
           prg_ain[4:0], prg_din, apu_dout, 
           prg_write && apu_cs, prg_read && apu_cs,
           5'b10011,
@@ -3592,8 +3603,8 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   wire [7:0] mmc5_chr_dout, mmc5_prg_dout;
   wire mmc5_has_chr_dout;
   wire [15:0] mmc5_audio;
-  MMC5 mmc5(clk, ppu_ce, reset, flags, ppuflags, prg_ain, mmc5_prg_addr, prg_read, prg_write, prg_din, mmc5_prg_dout, mmc5_prg_allow,
-                                   chr_write, chr_din, chr_ain, mmc5_chr_addr, mmc5_chr_dout, mmc5_has_chr_dout, 
+  MMC5 mmc5(clk, ce, ppu_ce, reset, flags, ppuflags, prg_ain, mmc5_prg_addr, prg_read, prg_write, prg_din, mmc5_prg_dout, mmc5_prg_allow,
+                                   chr_read, chr_write, chr_din, chr_ain, mmc5_chr_addr, mmc5_chr_dout, mmc5_has_chr_dout, 
                                    mmc5_chr_allow, mmc5_vram_a10, mmc5_vram_ce, mmc5_irq, mmc5_audio);
 
   wire map13_prg_allow, map13_vram_a10, map13_vram_ce, map13_chr_allow;

@@ -478,12 +478,14 @@ reg [5:0] palette [32] = '{
 };
 
 // Force read from backdrop channel if reading from any addr 0.
-wire [4:0] addr2 = (addr[1:0] == 0) ? 5'd0 : addr;
+// Do this to the input, not here
+//wire [4:0] addr2 = (addr[1:0] == 0) ? 5'd0 : addr; 
+// If 0x0,4,8,C: mirror every 0x10
+wire [4:0] addr2 = (addr[1:0] == 0) ? {1'b0, addr[3:0]} : addr;
 assign dout = palette[addr2];
 
 always @(posedge clk) if (ce && write) begin
-	// Allow writing only to x0
-	if (!(addr[3:2] != 0 && addr[1:0] == 0)) palette[addr2] <= din;
+	palette[addr2] <= din;
 end
 
 endmodule  // PaletteRam
@@ -638,7 +640,8 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
                   cycle[8] && !cycle[6] ? {1'b0, sprite_vram_addr} : 
                                           {1'b0, bg_patt, bg_name_table, cycle[1], loopy[14:12]}; // Pattern table bitmap #0, #1
   // Read from VRAM, either when user requested a manual read, or when we're generating pixels.
-  assign vram_r = read && (ain == 7) ||
+  wire vram_r_ppudata = read && (ain == 7);
+  assign vram_r = vram_r_ppudata ||
                   is_rendering && cycle[0] == 0 && !end_of_line;
   
   // Write to VRAM?
@@ -646,7 +649,8 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
 
   wire [5:0] color2;
   PaletteRam palette_ram(clk, ce, 
-                         is_rendering ? {pixel_is_obj, pixel[3:0]} : (is_pal_address ? loopy[4:0] : 5'b0000), // Read addr
+                         is_rendering ? ((|pixel[1:0]) ? {pixel_is_obj, pixel[3:0]} : 5'b00000)
+                                      : (is_pal_address ? loopy[4:0] : 5'b0000), // Read addr
                          din[5:0], // Value to write
                          color2,    // Output color
                          write && (ain == 7) && is_pal_address); // Condition for writing
@@ -703,7 +707,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
   always @(posedge clk) if (ce) begin
     if (vram_read_delayed)
       vram_latch <= vram_din;
-    vram_read_delayed <= vram_r;
+    vram_read_delayed <= vram_r_ppudata;
   end
   
   // Value currently being written to video ram
