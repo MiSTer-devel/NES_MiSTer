@@ -984,10 +984,10 @@ module MMC5(input clk, input ce, input ppu_ce, input reset,
     chr_aout = {2'b10, chrsel, chr_ain[9:0]};    // 1kB banks
     
     // Override |chr_aout| if we're in a vertical split.
-    if (insplit) begin
+    if (ppu_in_frame && insplit) begin
       //$write("In vertical split!\n");
       chr_aout = {2'b10, vsplit_bank, chr_ain[11:3], vscroll[2:0]};
-    end else if (extended_ram_mode == 1 && is_bg_fetch && (ppu_cycle[2:1]!=0)) begin 
+    end else if (ppu_in_frame && extended_ram_mode == 1 && is_bg_fetch && (ppu_cycle[2:1]!=0)) begin 
       //$write("In exram thingy!\n");
       // Extended attribute mode. Replace the page with the page from exram.
       chr_aout = {2'b10, upper_chr_bank_bits, last_read_exattr[5:0], chr_ain[11:0]};
