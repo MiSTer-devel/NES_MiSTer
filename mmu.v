@@ -949,7 +949,7 @@ module MMC5(input clk, input ce, input ppu_ce, input reset,
   // Otherwise, the last set of registers written to (either $5120-$5127 or $5128-$512B) will be used for all graphics.
   // 0 if using $5120-$5127, 1 if using $5128-$512F
   wire is_bg_fetch = !(ppu_cycle[8] && !ppu_cycle[6]);
-  wire chrset = ppu_sprite16 ? is_bg_fetch : chr_last; 
+  wire chrset = (ppu_sprite16 && ppu_in_frame) ? is_bg_fetch : chr_last; 
   reg [9:0] chrsel;
   always @* begin
     casez({chr_mode, chr_ain[12:10], chrset})

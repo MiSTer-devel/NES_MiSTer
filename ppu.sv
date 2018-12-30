@@ -719,14 +719,24 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
     2: latched_dout = {nmi_occured,
                sprite0_hit_bg,
                sprite_overflow,
-               5'b00000};
+               saved_dout[4:0]};
     4: latched_dout = oam_bus;
-    default: if (is_pal_address) begin
+    7: if (is_pal_address) begin
         latched_dout = {2'b00, color};
       end else begin
         latched_dout = vram_latch;
       end 
+    default: latched_dout = saved_dout;
     endcase
+  end
+  // Last data on bus is persistent
+  reg [7:0] saved_dout;
+  always @(posedge clk) if (ce) begin
+   if (read) begin
+	 saved_dout <= latched_dout;
+   end else if (write) begin
+    saved_dout = din;
+   end
   end
   
   assign dout = latched_dout;
