@@ -186,7 +186,7 @@ always @(posedge clk) begin
 
 	if(pix_ce) begin
 		if(hide_overscan) begin
-			HBlank <= (hc > (256-8)) || (hc<9);
+			HBlank <= (hc > (256-8)) || (hc<7);
 			VBlank <= (vc > (240-10)) || (vc<7);
 		end else begin
 			HBlank <= (hc >= 256);
