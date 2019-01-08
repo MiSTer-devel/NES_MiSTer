@@ -74,6 +74,9 @@ wire [10:0] PeriodRhs = (SweepNegate ? (~ShiftedPeriod + {10'b0, sq2}) : Shifted
 wire [11:0] NewSweepPeriod = Period + PeriodRhs;
 wire ValidFreq = (MMC5==1) || ((|Period[10:3]) && (SweepNegate || !NewSweepPeriod[11]));
  // |Period[10:3] is equivalent to Period >= 8
+
+//double speed for MMC5=Env_Clock
+wire LenCtrClockEnable = (MMC5==0 && LenCtr_Clock) || (MMC5==1 && Env_Clock);
  
 always @(posedge clk) if (reset) begin
     LenCtr <= 0;
@@ -140,18 +143,11 @@ always @(posedge clk) if (reset) begin
     TimerCtr <= TimerCtr - 1'd1;
   end
 
-	if (MMC5==0) begin
   // Clock the length counter?
-  if (LenCtr_Clock && LenCtr != 0 && !LenCtrHalt) begin
+  if (LenCtrClockEnable && LenCtr != 0 && !LenCtrHalt) begin
     LenCtr <= LenCtr - 1'd1;
   end
-  else
-  // Clock the length counter? //double speed for MMC5=Env_Clock
-  if (Env_Clock && LenCtr != 0 && !LenCtrHalt) begin
-    LenCtr <= LenCtr - 1'd1;
-  end
-  end
-  
+
   // Clock the sweep unit?
   if (LenCtr_Clock) begin
     if (SweepDivider == 0) begin
