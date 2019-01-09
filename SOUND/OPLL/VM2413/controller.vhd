@@ -349,7 +349,8 @@ begin   -- rtl
                     elsif conv_integer(addr) = 14 then
 
                         --rflag <= data;
-						--VRC7
+                        rflag <= (others=>'0');
+                        --VRC7
 						null;
 
                     elsif conv_integer(addr) < 16 then
@@ -387,7 +388,8 @@ begin   -- rtl
                         --else
                         --    extra_mode := '0';
                         --end if;
-						--VRC7
+                        extra_mode := '0';
+                        --VRC7
 						null;
 
                     end if;
