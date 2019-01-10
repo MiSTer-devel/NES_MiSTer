@@ -119,37 +119,36 @@ parameter CONF_STR1 = {
 	"FS,NES;",
 	"F,BIN,BIOS;",
 	"F,FDS;",
+	"-;",
+	"O5,Invert mirroring,OFF,ON;",
+	"-;",
 };
 
 parameter CONF_STR2 = {
-	"AB,Save Slot,1,2,3,4;"
-};
-
-parameter CONF_STR3 = {
 	"6,Load Backup RAM;"
 };
 
-parameter CONF_STR4 = {
+parameter CONF_STR3 = {
 	"7,Save Backup RAM;",
 	"-;",
 	"O8,Aspect ratio,4:3,16:9;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O4,Hide overscan,OFF,ON;",
 	"OCE,Palette,Smooth,Unsaturated-V6,FCEUX,NES Classic,Composite Direct,PC-10,PVM,Wavebeam;",
-	"O9,Swap joysticks,NO,YES;",
-`ifdef DEBUG_AUDIO
-	"OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
-`else
 	"-;",
+	"O9,Swap joysticks,NO,YES;",
+	"OA,Multitap,Disabled,Enabled;",
+`ifdef DEBUG_AUDIO
+	"-;",
+	"OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
 `endif
-	"O5,Invert mirroring,OFF,ON;",
+	"-;",
 	"R0,Reset;",
 	"J,A,B,Select,Start;",
 	"V,v",`BUILD_DATE
 };
 
-wire [7:0] joyA;
-wire [7:0] joyB;
+wire [7:0] joyA,joyB,joyC,joyD;
 wire [1:0] buttons;
 
 wire [31:0] status;
@@ -186,17 +185,19 @@ wire [63:0] img_size;
 wire [7:0]  filetype;
 wire [24:0] ioctl_addr;
 
-hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + 3)) hps_io
+hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + 2)) hps_io
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-   .conf_str({CONF_STR1,bk_ena ? "O" : "+",CONF_STR2,bk_ena ? "R" : "+",CONF_STR3,bk_ena ? "R" : "+",CONF_STR4}),
+   .conf_str({CONF_STR1,bk_ena ? "R" : "+",CONF_STR2,bk_ena ? "R" : "+",CONF_STR3}),
 
    .buttons(buttons),
    .forced_scandoubler(forced_scandoubler),
 
    .joystick_0(joyA),
    .joystick_1(joyB),
+   .joystick_2(joyC),
+   .joystick_3(joyD),
 
    .status(status),
 
@@ -230,6 +231,10 @@ wire [7:0] nes_joy_A = (reset_nes) ? 8'd0 :
 							  { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], joyA[4] } | kbd_joy0;
 wire [7:0] nes_joy_B = (reset_nes) ? 8'd0 : 
 							  { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], joyB[4] } | kbd_joy1;
+wire [7:0] nes_joy_C = (reset_nes) ? 8'd0 : 
+							  { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], joyC[4] };
+wire [7:0] nes_joy_D = (reset_nes) ? 8'd0 : 
+							  { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], joyD[4] };
  
 wire clock_locked;
 wire clk85;
@@ -272,7 +277,7 @@ wire        memory_read_cpu, memory_read_ppu;
 wire        memory_write;
 wire  [7:0] memory_din_cpu, memory_din_ppu;
 wire  [7:0] memory_dout;
-reg   [7:0] joypad_bits, joypad_bits2;
+reg  [23:0] joypad_bits, joypad_bits2;
 reg   [7:0] powerpad_d3, powerpad_d4;
 reg   [1:0] last_joypad_clock;
 wire fds_swap = joy_swap ? nes_joy_B[2] : nes_joy_A[2];
@@ -281,30 +286,30 @@ reg [1:0] nes_ce;
 
 always @(posedge clk) begin
 	if (reset_nes) begin
-		joypad_bits <= 8'd0;
-		joypad_bits2 <= 8'd0;
-		powerpad_d3 <= 8'd0;
-		powerpad_d4 <= 8'd0;
-		last_joypad_clock <= 2'b00;
+		joypad_bits <= 0;
+		joypad_bits2 <= 0;
+		powerpad_d3 <= 0;
+		powerpad_d4 <= 0;
+		last_joypad_clock <= 0;
 	end else begin
 		if (joypad_strobe) begin
-			joypad_bits  <= joy_swap ? nes_joy_B : nes_joy_A;
-			joypad_bits2 <= joy_swap ? nes_joy_A : nes_joy_B;
+			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'h0000, joy_swap ? nes_joy_B : nes_joy_A};
+			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'h0000, joy_swap ? nes_joy_A : nes_joy_B};
 			powerpad_d4 <= {4'b0000, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
 			powerpad_d3 <= {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
 		end
 		if (!joypad_clock[0] && last_joypad_clock[0]) begin
-			joypad_bits <= {1'b0, joypad_bits[7:1]};
+			joypad_bits <= {1'b0, joypad_bits[23:1]};
 		end	
 		if (!joypad_clock[1] && last_joypad_clock[1]) begin
-			joypad_bits2 <= {1'b0, joypad_bits2[7:1]};
+			joypad_bits2 <= {1'b0, joypad_bits2[23:1]};
 			powerpad_d4 <= {1'b0, powerpad_d4[7:1]};
 			powerpad_d3 <= {1'b0, powerpad_d3[7:1]};
 		end	
 		last_joypad_clock <= joypad_clock;
 	end
 end
-  
+
 // Loader
 wire [7:0] loader_input;
 wire       loader_clk;
@@ -500,6 +505,9 @@ reg  bk_state   = 0;
 
 always @(posedge clk) begin
 	reg old_load = 0, old_save = 0, old_ack;
+	reg old_downloading = 0;
+	
+	old_downloading <= downloading;
 
 	old_load <= bk_load & bk_ena;
 	old_save <= bk_save & bk_ena;
@@ -511,9 +519,16 @@ always @(posedge clk) begin
 		if((~old_load & bk_load) | (~old_save & bk_save)) begin
 			bk_state <= 1;
 			bk_loading <= bk_load;
-			sd_lba <= {status[11:10],6'd0};
+			sd_lba <= 0;
 			sd_rd <=  bk_load;
 			sd_wr <= ~bk_load;
+		end
+		if(old_downloading & ~downloading & bk_ena) begin
+			bk_state <= 1;
+			bk_loading <= 1;
+			sd_lba <= 0;
+			sd_rd <= 1;
+			sd_wr <= 0;
 		end
 	end else begin
 		if(old_ack & ~sd_ack) begin
