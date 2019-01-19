@@ -49,18 +49,22 @@ entity RegisterMemory is
 end RegisterMemory;
 
 architecture rtl of registermemory is
+    --constant Channels : Integer := 9;
+    --VRC7
+    constant Channels : Integer := 6;
+
     --  チャネル情報保持用 1read/1write の SRAM
-    type regs_array_type is array (0 to 8) of std_logic_vector( 23 downto 0 );
+    type regs_array_type is array (0 to Channels-1) of std_logic_vector( 23 downto 0 );
     signal regs_array : regs_array_type;
 
 begin
     process( reset, clk )
-        variable init_state : integer range 0 to 9;
+        variable init_state : integer range 0 to Channels;
     begin
         if( reset = '1' )then
             init_state := 0;
         elsif( clk'event and clk ='1' )then
-            if( init_state /= 9 )then
+            if( init_state /= Channels )then
                 --  起動してすぐに RAM の内容を初期化する
                 regs_array( init_state ) <= (others => '0');
                 init_state := init_state + 1;

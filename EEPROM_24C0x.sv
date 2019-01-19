@@ -2,7 +2,8 @@
 // by GreyRogue for NES MiSTer
 
 module EEPROM_24C0x 
-  (input type_24C01, //24C01 is 128 bytes, 24C02 is 256 bytes
+  (//Replace type_24C01 with EEPROM size and command size (Test State y/n and address bytes)?
+   input type_24C01,          //24C01 is 128 bytes/no Test State?, 24C02 is 256 bytes/Test State
    input clk, input ce, input reset,
    input SCL,                 // Serial Clock
    input SDA_in,              // Serial Data (same pin as below, split for convenience)
@@ -24,6 +25,9 @@ mystate state;
   reg [8:0] data; // 8 bits data, plus ack bit
   reg last_SCL;
   reg last_SDA;
+  //Some 24C01 documents show it working with a test state, instead of combined address/read/write.
+  //If these are used, NoTestState needs to be an input to the module, not just derived from the type.
+  wire NoTestState = type_24C01;
 
   always @(posedge clk) if (reset) begin
     state <= STATE_STANDBY;
@@ -46,7 +50,10 @@ mystate state;
 		address <= address + 8'b1;
     end
     if (SCL && last_SCL && !SDA_in && last_SDA) begin
-	   state <= STATE_TEST;
+		if (NoTestState)
+		  state <= STATE_ADDRESS;
+		else
+	     state <= STATE_TEST;
 		command <= 10'd2;
     end else if (SCL && last_SCL && SDA_in && !last_SDA) begin
       state <= STATE_STANDBY;
@@ -76,8 +83,18 @@ mystate state;
 			 end
           command <= 10'd1;
 		  end else if (state == STATE_ADDRESS) begin
-		    address <= command[7:0];
-			 state <= STATE_WRITE;
+		    if (NoTestState) begin
+		      address <= {1'b0,command[7:1]};
+				if (command[0]) begin
+				  state <= STATE_READ;
+				  ram_read <= 1;
+				end else begin
+			     state <= STATE_WRITE;
+				end
+			 end else begin
+		      address <= command[7:0];
+			   state <= STATE_WRITE;
+			 end
 		    SDA_out <= 0; //Ack
           command <= 10'd1;
 		  end else if (state == STATE_WRITE) begin

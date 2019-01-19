@@ -53,7 +53,7 @@ package VM2413 is
   function CONV_REGS_VECTOR ( regs : REGS_TYPE ) return REGS_VECTOR_TYPE;
   function CONV_REGS ( vec : REGS_VECTOR_TYPE ) return REGS_TYPE;
 
-  subtype VOICE_ID_TYPE is integer range 0 to 37;
+  subtype VOICE_ID_TYPE is integer range 0 to 31;--37; VRC7
   subtype VOICE_VECTOR_TYPE is std_logic_vector(35 downto 0);
 
   type VOICE_TYPE is record

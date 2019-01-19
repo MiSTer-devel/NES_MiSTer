@@ -348,7 +348,10 @@ begin   -- rtl
 
                     elsif conv_integer(addr) = 14 then
 
-                        rflag <= data;
+                        --rflag <= data;
+                        rflag <= (others=>'0');
+                        --VRC7
+						null;
 
                     elsif conv_integer(addr) < 16 then
 
@@ -380,11 +383,14 @@ begin   -- rtl
 
                     elsif conv_integer(addr) = 240 then
 
-                        if data(7 downto 0) = "10000000" then
-                            extra_mode := '1';
-                        else
-                            extra_mode := '0';
-                        end if;
+                        --if data(7 downto 0) = "10000000" then
+                        --    extra_mode := '1';
+                        --else
+                        --    extra_mode := '0';
+                        --end if;
+                        extra_mode := '0';
+                        --VRC7
+						null;
 
                     end if;
 

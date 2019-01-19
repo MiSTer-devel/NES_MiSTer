@@ -281,10 +281,10 @@ module NES(input clk, input reset, input ce,
 
   // -- Memory mapping logic
   wire [15:0] prg_addr = addr;
-  wire [7:0] prg_din = dbus;
+  wire [7:0] prg_din = dbus & (prg_conflict ? memory_din_cpu : 8'hFF);
   wire prg_read = mr_int && (cpu_cycle_counter == 0) && !apu_cs && !ppu_cs;
   wire prg_write = mw_int && (cpu_cycle_counter == 0) && !apu_cs && !ppu_cs;
-  wire prg_allow, vram_a10, vram_ce, chr_allow;
+  wire prg_allow, prg_open_bus, prg_conflict, vram_a10, vram_ce, chr_allow;
   wire [21:0] prg_linaddr, chr_linaddr;
   wire [7:0] prg_dout_mapper, chr_from_ppu_mapper;
   wire cart_ce = (cpu_cycle_counter == 0) && ce;
@@ -294,9 +294,9 @@ module NES(input clk, input reset, input ce,
   reg [16:0] sample_sum;
   assign sample = sample_sum[16:1]; //loss of 1 bit of resolution.  Add control for when no external audio to boost back up?
   MultiMapper multi_mapper(clk, cart_ce, ce, reset, mapper_ppu_flags, mapper_flags, 
-                           prg_addr, prg_linaddr, prg_read, prg_write, prg_din, prg_dout_mapper, from_data_bus, prg_allow,
-                           chr_read, chr_addr, chr_linaddr, chr_from_ppu_mapper, has_chr_from_ppu_mapper, chr_allow, vram_a10,
-									vram_ce, bram_addr, bram_din, bram_dout, bram_write, bram_override, mapper_irq, sample_ext, fds_swap);
+                           prg_addr, prg_linaddr, prg_read, prg_write, prg_din, prg_dout_mapper, from_data_bus, prg_allow, prg_open_bus, prg_conflict,
+                           chr_read, chr_write, chr_from_ppu, chr_addr, chr_linaddr, chr_from_ppu_mapper, has_chr_from_ppu_mapper, chr_allow,
+									vram_a10, vram_ce, bram_addr, bram_din, bram_dout, bram_write, bram_override, mapper_irq, sample_ext, fds_swap);
   assign chr_to_ppu = has_chr_from_ppu_mapper ? chr_from_ppu_mapper : memory_din_ppu;
                              
   // Mapper IRQ seems to be delayed by one PPU clock.   
@@ -324,6 +324,11 @@ module NES(input clk, input reset, input ce,
                                chr_linaddr, chr_read, chr_write && (chr_allow || vram_ce), chr_from_ppu,
                                memory_addr, memory_read_cpu, memory_read_ppu, memory_write, memory_dout);
 
+  reg [7:0] open_bus_data;
+  always @(posedge clk) begin
+      open_bus_data <= from_data_bus;
+  end
+  
   always @* begin
     if (reset)
 		from_data_bus = 0;
@@ -331,13 +336,15 @@ module NES(input clk, input reset, input ce,
       if (joypad1_cs)
         from_data_bus = {7'b0100000, joypad_data[0]};
       else if (joypad2_cs)
-        from_data_bus = {3'b010, joypad_data[3:2] ,2'b00, joypad_data[1]};
+        from_data_bus = {3'b010, joypad_data[3:2], 2'b00, joypad_data[1]};
       else
         from_data_bus = apu_dout;
     end else if (ppu_cs) begin
       from_data_bus = ppu_dout;
     end else if (prg_allow) begin
       from_data_bus = memory_din_cpu;
+    end else if (prg_open_bus) begin
+      from_data_bus = open_bus_data;
     end else begin
       from_data_bus = prg_dout_mapper;
     end
