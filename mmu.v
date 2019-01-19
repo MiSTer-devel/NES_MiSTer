@@ -1579,6 +1579,7 @@ module Mapper28(input clk, input ce, input reset,
                 input prg_read, prg_write,                   // Read / write signals
                 input [7:0] prg_din,
                 output prg_allow,                            // Enable access to memory for the specified operation.
+                output prg_open_bus,                         // PRG Data not driven
                 input [13:0] chr_ain, output [21:0] chr_aout,
 					 output reg [7:0] chr_dout, output has_chr_dout,
                 output chr_allow,                      // Allow write
@@ -1695,6 +1696,7 @@ module Mapper28(input clk, input ce, input reset,
   assign vram_ce = chr_ain[13];
   assign prg_aout = {1'b0, (a53prg & 7'b0011111), prg_ain[13:0]};
   assign prg_allow = prg_ain[15] && !prg_write;
+  assign prg_open_bus = (prg_ain[15:13] == 3'b011) && (mapper == 7);
   assign chr_allow = flags[15];
   assign chr_aout = {7'b10_0000_0, a53chr, chr_ain[12:0]};
   wire [4:0] submapper = flags[24:21];
@@ -3548,6 +3550,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
                    input [7:0] prg_din, output reg [7:0] prg_dout,  // PRG Data
                    input [7:0] prg_from_ram,                        // PRG Data from RAM
                    output reg prg_allow,                            // PRG Allow write access
+                   output reg prg_open_bus,                         // PRG Data Not Driven
                    input chr_read,                                  // Read from CHR
                    input chr_write,                                 // Write to CHR
 						 input [7:0] chr_din,
@@ -3574,11 +3577,11 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
   MMC1 mmc1(clk, ce, reset, flags, prg_ain, mmc1_prg_addr, prg_read, prg_write, prg_din, mmc1_prg_allow,
                                    chr_ain, mmc1_chr_addr, mmc1_chr_allow, mmc1_vram_a10, mmc1_vram_ce);
 
-  wire map28_prg_allow, map28_vram_a10, map28_vram_ce, map28_chr_allow;
+  wire map28_prg_allow, map28_open_bus, map28_vram_a10, map28_vram_ce, map28_chr_allow;
   wire [21:0] map28_prg_addr, map28_chr_addr;
   wire [7:0]  map28_chr_dout;
   wire  map28_has_chr_dout;
-  Mapper28 map28(clk, ce, reset, flags, prg_ain, map28_prg_addr, prg_read, prg_write, prg_din, map28_prg_allow,
+  Mapper28 map28(clk, ce, reset, flags, prg_ain, map28_prg_addr, prg_read, prg_write, prg_din, map28_prg_allow, map28_open_bus,
                                         chr_ain, map28_chr_addr, map28_chr_dout, map28_has_chr_dout, map28_chr_allow,
 													 map28_vram_a10, map28_vram_ce);
 
@@ -3825,6 +3828,7 @@ module MultiMapper(input clk, input ce, input ppu_ce, input reset,
 	 mapper_data_out = 8'h00;
 	 mapper_prg_write = 1'b0;
 	 mapper_ovr = 1'b0;
+	 prg_open_bus = map28_open_bus;
 // 0 = Working
 // 1 = Working
 // 2 = Working
