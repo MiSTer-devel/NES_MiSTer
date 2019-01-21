@@ -122,6 +122,7 @@ parameter CONF_STR1 = {
 	"F,BIN,BIOS;",
 	"F,FDS;",
 	"-;",
+	"OG,Disk Swap,Auto,Select;",	
 	"O5,Invert mirroring,OFF,ON;",
 	"-;",
 };
@@ -140,7 +141,6 @@ parameter CONF_STR3 = {
 	"-;",
 	"O9,Swap joysticks,NO,YES;",
 	"OA,Multitap,Disabled,Enabled;",
-	"OG,Disk Swap,Auto,Select;",	
 `ifdef DEBUG_AUDIO
 	"-;",
 	"OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
