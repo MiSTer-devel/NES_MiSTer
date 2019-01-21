@@ -722,8 +722,8 @@ module MMC5(input clk, input ce, input ppu_ce, input reset,
   //reg display_enable;
   //wire ppu_in_frame = ppuflags[0] & display_enable;
   wire ppu_in_frame = ppuflags[0];
-  //wire ppu_sprite16 = ppuflags[1];
-  reg ppu_sprite16;
+  wire ppu_sprite16 = ppuflags[1];
+  //reg ppu_sprite16;
   wire [8:0] ppu_cycle = ppuflags[10:2]; 
   wire [8:0] ppu_scanline = ppuflags[19:11];
   
@@ -773,9 +773,10 @@ module MMC5(input clk, input ce, input ppu_ce, input reset,
         if (prg_ain[9:4] == 6'b010010)//(prg_ain[9:0] >= 10'h120 && prg_ain[9:0] < 10'h130)
           chr_last <= prg_ain[3];
       end
-      if (prg_write && prg_ain == 16'h2000) begin // $2000
-		  ppu_sprite16 <= (prg_din[5]);
-		end
+		//Not currently passing prg_write when ppu_cs
+      //if (prg_write && prg_ain == 16'h2000) begin // $2000
+		//  ppu_sprite16 <= (prg_din[5]);
+		//end
       //if (prg_write && prg_ain == 16'h2001) begin // $2001
 		//  display_enable <= (prg_din[4:3] != 2'b0);
 		//end
