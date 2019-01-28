@@ -602,8 +602,7 @@ wire [2:0] chr_size = chrrom <= 1  ? 3'd0 : 		// 8KB
 // detect iNES2.0 compliant header
 wire is_nes20 = (ines[7][3:2] == 2'b10);
 // differentiate dirty iNES1.0 headers from proper iNES2.0 ones
-wire is_dirty = !is_nes20 && ((ines[8]  != 0)
-								  || (ines[9]  != 0)
+wire is_dirty = !is_nes20 && ((ines[9][7:1] != 0)
 								  || (ines[10] != 0)
 								  || (ines[11] != 0)
 								  || (ines[12] != 0)
