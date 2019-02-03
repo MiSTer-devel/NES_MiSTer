@@ -721,7 +721,8 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	 input ce,// add
 	 input fds_swap,
 	 output prg_allow,
-	 output [11:0] snd_level
+	 output [11:0] snd_level,
+	 input [1:0] diskside_manual
 );
     localparam WRITE_LO=16'hF4CD, WRITE_HI=16'hF4CE, READ_LO=16'hF4D0, READ_HI=16'hF4D1;
 
@@ -751,7 +752,17 @@ module MAPFDS(              //signal descriptions in powerpak.v
     reg [15:0] diskpos;
     reg [17:0] sideoffset;
     wire [17:0] romoffset;
-    reg [1:0] diskside;
+	 
+//	Loopy's patched bios use a trick to catch requested diskside for games
+// using standard bios load process.
+// Unlicensed games sometimes doesn't use standard bios load process. This
+// break automatic diskside trick. 
+// diskside_manual to be manage from OSD user input allow to add diskswap capabilities.
+// (automatic fds_swap should be preferably stopped before changing diskside_manual)
+
+    reg [1:0] diskside_auto;
+    wire[1:0] diskside;
+    assign diskside = diskside_auto + diskside_manual;
     wire diskend=(diskpos==65499);
     always@* case(diskside) //16+65500*diskside
         0:sideoffset=18'h00010;
@@ -760,6 +771,42 @@ module MAPFDS(              //signal descriptions in powerpak.v
         3:sideoffset=18'h2ffa4;
     endcase
     assign romoffset=diskpos + sideoffset;
+	 
+// Unlicensed fds games use NMI trick to skip protection. Rationale is to load
+// a file starting @$2000 with $90 or $80 to enable NMI. This file should be at
+// least 256 bytes length to allow NMI to occure before end of load. PC is then
+// transfered to a special loader. This is ok with real hardware.
+// But with loopy's patched bios the 256 bytes file is loaded too fast and no NMI
+// occure early enough.
+// Here proposed solution is to create an infinite loop at the end of normal
+// load subroutine if @$2000 was written during load subroutine. Infinite loop 
+// give enough time for NMI to occure. (Generaly observed NMI enabling file is
+// the last file of 'normal' loading process to be loaded).
+	 
+	 // manage infinite loop trap at the end ($E233) of LoadFiles subroutine
+//	 reg previous_is_E1F9;
+	 reg infinite_loop_on_E233 = 0;
+	 reg within_loader = 0;
+//	 reg loader_write_in_2000 = 0;
+    always@(posedge clk20)
+			if(reset) begin
+				// on reset activate infinite loop trap
+			end	
+			else begin 
+					if ((m2) && (ramprgaout[18]==1'b0))begin
+								
+						// detect enter / leave LoadFile subroutine
+						if(prgain==16'hE1FA) within_loader <= 1;
+						if(prgain==16'hE235) within_loader <= 0;
+						
+						// deactivate infinite loop at LoadFile subroutine
+						if(prgain==16'hE1FA) infinite_loop_on_E233 <= 0;
+						
+						// activate infinite loop if @$2000 is accessed during FileLoad subroutine
+						if((prgain==16'h2000) && (within_loader == 1)) infinite_loop_on_E233 <= 1;
+					end
+					
+			end 
 
     //NES data out
     wire match0=prgain==16'h4030;       //IRQ status
@@ -769,6 +816,9 @@ module MAPFDS(              //signal descriptions in powerpak.v
     wire match4=((prgain==READ_HI)|(prgain==WRITE_HI))&!(Wstate==2 | Rstate==2);
     wire match5=prgain==16'h4208;       //powerpak save flag
     wire match6=prgain[15:8]==8'h40 && |prgain[7:6];    //4040..40FF
+    wire match7=(prgain==16'hE233) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
+    wire match8=(prgain==16'hE234) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
+    wire match9=(prgain==16'hE235) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
     always@*
         case(1)
             match0: nesprgdout={7'd0, timer_irq};
@@ -778,10 +828,13 @@ module MAPFDS(              //signal descriptions in powerpak.v
             match4: nesprgdout={3'b111,romoffset[12:8]};
             match5: nesprgdout={7'd0,saved};
             match6: nesprgdout=audio_dout;
+            match7: nesprgdout=8'h4C;  // when infinite loop is active replace jsr $E778 with jmp $E233 
+            match8: nesprgdout=8'h33;
+            match9: nesprgdout=8'hE2;
             default: nesprgdout=ramprgdin;
         endcase
     assign prg_allow = (nesprg_we & (Wstate==2 | (prgain[15]^(&prgain[14:13]))))
-                     | (~nesprg_we & ((prgain[15] & !match3 & !match4) | prgain[15:13]==3));
+                     | (~nesprg_we & ((prgain[15] & !match3 & !match4 & !match7 & !match8 & !match9) | prgain[15:13]==3));
 
     reg write_en;
     reg vertical;
@@ -810,7 +863,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
                     //disk_irq_en<=nesprgdin[7];
                 end
             16'h4027:   //powerpak extra: disk side
-                    diskside<=nesprgdin[1:0];
+                    diskside_auto<=nesprgdin[1:0];
         endcase
     end
 
