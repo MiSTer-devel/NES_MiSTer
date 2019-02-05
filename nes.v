@@ -320,7 +320,7 @@ module NES(input clk, input reset, input ce,
   end
    
   // -- Multiplexes CPU and PPU accesses into one single RAM
-  MemoryMultiplex mem(clk, ce, reset, prg_linaddr, prg_read && prg_allow, prg_write && prg_allow, prg_din, 
+  MemoryMultiplex mem(clk, ce, reset, prg_linaddr, (prg_read && prg_allow) | (prg_write && prg_conflict), prg_write && prg_allow, prg_din, 
                                chr_linaddr, chr_read, chr_write && (chr_allow || vram_ce), chr_from_ppu,
                                memory_addr, memory_read_cpu, memory_read_ppu, memory_write, memory_dout);
 
