@@ -618,6 +618,7 @@ wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
   
 // ines[6][0] is mirroring
 // ines[6][3] is 4 screen mode
+// ines[8][7:4] is NES 2.0 submapper
 assign mapper_flags = {7'b0, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
 
 always @(posedge clk) begin
