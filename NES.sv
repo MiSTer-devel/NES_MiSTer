@@ -119,7 +119,6 @@ parameter CONF_STR1 = {
 	"NES;;",
 	"-;",
 	"FS,NES;",
-	"F,BIN,BIOS;",
 	"F,FDS;",
 	"-;",
 	"OG,Disk Swap,Auto,Select;",	
@@ -399,7 +398,7 @@ always @(posedge clk) begin
 	if(loader_write) begin
 		loader_write_triggered <= 1'b1;
 		loader_addr_mem <= loader_addr;
-		loader_write_data_mem <= (filetype == 2) ? loader_write_data ^ xor_data : loader_write_data;
+		loader_write_data_mem <= (filetype == 8'hC0) ? loader_write_data ^ xor_data : loader_write_data;
 	end
 
 	if(nes_ce == 3) begin
@@ -626,7 +625,7 @@ always @(posedge clk) begin
 		state <= 0;
 		done <= 0;
 		ctr <= 0;
-		mem_addr <= filetype == 8'h03 ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
+		mem_addr <= filetype == 8'h02 ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
 	end else begin
 		case(state)
 		// Read 16 bytes of ines header
@@ -646,11 +645,11 @@ always @(posedge clk) begin
 					mem_addr <= 22'b00_0100_0000_0000_0001_0000;  // Address for FDS skip Header
 					state <= 4;
 					bytes_left <= 21'b1;
-				 end else if (filetype[7:0]==8'h02) begin // Bios
+				 end else if (filetype[7:0]==8'hC0) begin // Bios
 					state <= 4;
 					mem_addr <= 22'b00_0000_0000_0000_0001_0000;  // Address for BIOS skip Header
 					bytes_left <= 21'b1;
-				 end else if (filetype[7:0]==8'h03) begin // FDS
+				 end else if (filetype[7:0]==8'h02) begin // FDS
 					state <= 4;
 					mem_addr <= 22'b00_0100_0000_0000_0010_0000;  // Address for FDS no Header
 					bytes_left <= 21'b1;
