@@ -131,14 +131,14 @@ wire [15:0] pal_wavebeam_lut[64] = '{
 
 // Real by Squire
 wire [15:0] pal_real_lut[64] = '{
-	'h318C, 'h3C80, 'h4C00, 'h4406, 'h340B, 'h180D, 'h000C, 'h0049,
-	'h0065, 'h00A4, 'h0100, 'h18E0, 'h24E0, 'h0000, 'h0421, 'h0421,
-	'h56B5, 'h6542, 'h7CA3, 'h748C, 'h5C15, 'h2859, 'h0479, 'h00F3,
-	'h014C, 'h0188, 'h01E0, 'h29C0, 'h41C0, 'h0421, 'h0421, 'h0421,
-	'h7FFF, 'h7E68, 'h7DAB, 'h7D93, 'h7D9A, 'h499F, 'h299F, 'h1A5E,
-	'h02B8, 'h0B12, 'h174A, 'h4B04, 'h6AE3, 'h2529, 'h0421, 'h0421,
-	'h7FFF, 'h7F34, 'h7ED4, 'h7ED8, 'h7EDC, 'h631F, 'h56FF, 'h4F5F,
-	'h4B9F, 'h4FBC, 'h53D9, 'h73B4, 'h7F94, 'h5AD6, 'h0421, 'h0421
+	'h35AD, 'h4480, 'h5400, 'h4808, 'h380E, 'h200F, 'h000E, 'h004C,
+	'h0088, 'h00C6, 'h0140, 'h2100, 'h3100, 'h0000, 'h0842, 'h0842,
+	'h5EF7, 'h6D64, 'h7CE7, 'h7890, 'h6018, 'h385A, 'h109A, 'h0915,
+	'h014F, 'h018B, 'h0220, 'h35C0, 'h4DC0, 'h1084, 'h0842, 'h0842,
+	'h7FFF, 'h7E89, 'h7E31, 'h7DB8, 'h7D5F, 'h5D9F, 'h3DFF, 'h1E5F,
+	'h02BB, 'h1334, 'h2769, 'h5325, 'h7703, 'h2D6B, 'h0842, 'h0842,
+	'h7FFF, 'h7F56, 'h7F18, 'h7EFD, 'h7EDF, 'h76FF, 'h631F, 'h575F,
+	'h4BBF, 'h53DE, 'h63F8, 'h7BD5, 'h7FB4, 'h6318, 'h1084, 'h0842
 };
 
 // Sony CXA by FirebrandX
