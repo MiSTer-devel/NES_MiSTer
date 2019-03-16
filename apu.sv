@@ -288,7 +288,7 @@ module TriangleChan(input clk, input ce, input reset,
       SeqPos <= SeqPos + 1'd1;
   end
   // Generate the output
-  assign Sample = SeqPos[3:0] ^ {4{~SeqPos[4]}};
+  assign Sample = (Period > 2) ? SeqPos[3:0] ^ {4{~SeqPos[4]}} : 4'b0000;
   //
 endmodule
 
