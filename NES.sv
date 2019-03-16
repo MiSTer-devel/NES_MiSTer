@@ -147,7 +147,7 @@ parameter CONF_STR3 = {
 	"O8,Aspect ratio,4:3,16:9;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O4,Hide overscan,OFF,ON;",
-	"OCE,Palette,Smooth,Unsaturated-V6,FCEUX,NES Classic,Composite Direct,PC-10,PVM,Wavebeam;",
+	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Nintendulator;",
 	"-;",
 	"O9,Swap joysticks,NO,YES;",
 	"OA,Multitap,Disabled,Enabled;",
@@ -169,7 +169,7 @@ wire [31:0] status;
 wire arm_reset = status[0];
 wire mirroring_osd = status[5];
 wire hide_overscan = status[4];
-wire [2:0] palette2_osd = status[14:12];
+wire [3:0] palette2_osd = status[15:12];
 wire joy_swap = status[9];
 wire fds_swap_invert = status[16];
 `ifdef DEBUG_AUDIO
