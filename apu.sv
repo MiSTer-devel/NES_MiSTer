@@ -137,7 +137,7 @@ always @(posedge clk) if (reset) begin
   // Count down the square timer...
   if (TimerCtr == 0) begin
     // Timer was clocked
-    TimerCtr <= {Period, 1'b0};
+    TimerCtr <= {Period, 1'b1};
     SeqPos <= SeqPos - 1'd1;
   end else begin
     TimerCtr <= TimerCtr - 1'd1;
