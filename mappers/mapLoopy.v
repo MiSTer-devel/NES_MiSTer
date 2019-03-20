@@ -971,6 +971,20 @@ module fds_sound(
     reg mod_en;
     reg [7:0] env_speed;
 
+    reg [3:0] m2_cnt;
+    wire acc_clk_en = (m2_cnt == 4'd15); // Tick accumulator
+    always@(posedge clk, posedge reset) begin
+        if(reset) begin
+            m2_cnt <= 0;
+        end else if(m2) begin
+            if (wave_en) begin
+                m2_cnt <= 0;
+            end else begin
+                m2_cnt <= m2_cnt + 1'b1;
+            end
+        end
+    end
+
     always@(posedge clk, posedge reset) begin
         if(reset) begin
             vol_en<=1;
@@ -1043,11 +1057,12 @@ module fds_sound(
 
     //modulation
     wire [2:0] mod_table_out;
-    reg [4:0] mod_ptr_in;
-    reg [5:0] mod_ptr_out;
-    reg [15:0] mod_cnt;
-    reg signed [5:0] bias, bias_inc;
-    wire [16:0] mod_cnt_next=mod_cnt+modfreq;
+    reg [5:0] mod_ptr;
+    reg signed [6:0] mod_cnt;
+    reg signed [6:0] mod_cnt_inc;
+    reg [11:0] mod_acc_cnt;
+    wire [12:0] mod_acc_next=mod_acc_cnt+modfreq;
+
 //    RAMB4_S4_S4 modtable(
 //        .WEA(wr & ain==16'h4088 & mod_en), .ENA(1'b1), .RSTA(1'b0), .CLKA(m2), .ADDRA({5'd0,mod_ptr_in}), .DIA({1'b0,din[2:0]}), .DOA(),    //write port
 //        .WEB(1'b0), .ENB(1'b1 /*~mod_we & ~mod_en*/), .RSTB(1'b0), .CLKB(m2), .ADDRB({5'd0,mod_ptr_out[5:1]}), .DIB(4'd0), .DOB(mod_table_out));        //read port
@@ -1056,14 +1071,14 @@ module fds_sound(
   dpram #(.widthad_a(5)) modtable
     (
       .clock_a   (clk),
-      .address_a (mod_ptr_in),
+      .address_a (mod_ptr[5:1]),
       .wren_a    (wr & ain==16'h4088 & mod_en),
 		.byteena_a (1),
       .data_a    ({5'b0,din[2:0]}),
       //.q_a     (),
 
       .clock_b   (clk),
-      .address_b (mod_ptr_out[5:1]),
+      .address_b (mod_ptr[5:1]),
       .wren_b    (0),
 		.byteena_b (1),
       .data_b    (0),
@@ -1071,56 +1086,70 @@ module fds_sound(
     );
     always@(posedge clk) begin
 		if (m2) begin
-        if(wr) begin
-            if(ain==16'h4087 & din[7])      mod_ptr_in<=0;
-            else if(ain==16'h4088 & mod_en)     mod_ptr_in<=mod_ptr_in+1'd1;
-        end
+            if(~mod_en & acc_clk_en) begin
+                mod_acc_cnt <= mod_acc_next[11:0];
 
-        //if(~mod_en)
-            mod_cnt<=mod_cnt_next[15:0];
+                if(mod_acc_next[12]) begin
+                    mod_ptr <= mod_ptr + 1'd1;
+                    if(mod_table_out==4) begin
+                        mod_cnt <= 0;
+                    end else begin
+                        mod_cnt <= mod_cnt + mod_cnt_inc;
+                    end
+                end
+            end
 
-        if(wr & ain==16'h4087 & din[7]) mod_ptr_out<=0;
-        else if(/*~mod_en &*/ mod_cnt_next[16]) mod_ptr_out<=mod_ptr_out+1'd1;
-
-        if(wr & (ain==16'h4085 | ain==16'h4087) & din[7])
-            bias<=0;
-        else if(~mod_en & mod_cnt_next[16]) begin
-            if(mod_table_out==4)    bias<=0;
-            else            bias<=bias+bias_inc;
-        end
+            if(wr) begin
+                if(ain==16'h4085)   mod_cnt <= din[6:0];
+                if(ain==16'h4087 & din[7])      mod_acc_cnt <= 0;
+                if(ain==16'h4088 & mod_en)     mod_ptr<=mod_ptr+6'd2;
+            end
 		end
     end
     always@*
     case(mod_table_out)
-        0:bias_inc=0;
-        1:bias_inc=1;
-        2:bias_inc=2;
-        3:bias_inc=4;
-        4:bias_inc=0;
-        5:bias_inc=-6'd4;
-        6:bias_inc=-6'd2;
-        7:bias_inc=-6'd1;
+        0:mod_cnt_inc=0;
+        1:mod_cnt_inc=1;
+        2:mod_cnt_inc=2;
+        3:mod_cnt_inc=4;
+        4:mod_cnt_inc=0;
+        5:mod_cnt_inc=-7'd4;
+        6:mod_cnt_inc=-7'd2;
+        7:mod_cnt_inc=-7'd1;
     endcase
-    wire [9:0] mod_sweep=(sweep_clip*bias)^10'h200;     //6x5 signed mul
-    wire [21:0] mod_freq_mul; //=freq*mod_sweep;
-    mul10x12 mm(clk,m2,freq,mod_sweep,mod_freq_mul);
-    wire [12:0] modulated_freq=mod_freq_mul[21:9];
+    /*
+    Modulator formula
+
+    pitch   = $4082/4083 (12-bit unsigned pitch value)
+    counter = $4085 (7-bit signed mod counter)
+    gain    = $4084 (6-bit unsigned mod gain)
+
+    temp = counter * gain;
+    if((temp & 0x0f) && !(temp & 0x800))
+        temp += 0x20;
+    temp += 0x400;
+    temp = (temp >> 4) & 0xff;
+    wave_pitch = pitch * temp;      //20-bit unsigned result
+    */
+    wire signed [11:0] mod_sweep_t = ($signed({2'b0,sweep_clip})*mod_cnt);
+    wire signed [12:0] mod_sweep = mod_sweep_t + $signed( (mod_sweep_t[3:0] && ~mod_sweep_t[11]) ? 12'h420 : 12'h400 );
+
+    wire [19:0] wave_pitch; //=freq * mod_sweep[11:4];
+    mul12x8 mm(clk,m2,freq,mod_sweep[11:4],wave_pitch);
 
     //waveform step
-    wire [12:0] wave_freq=mod_en?freq:modulated_freq;
-    reg [15:0] wave_cnt;
-    wire [16:0] wave_cnt_next=wave_cnt+wave_freq;
-    reg [5:0] wave_ptr;
+    reg [23:0] wave_acc_cnt;
+    wire [5:0] wave_ptr = wave_acc_cnt[23:18];
     always@(posedge clk) begin
 		if (m2) begin
-        if(~wave_en)
-            wave_cnt<=wave_cnt_next[15:0];
-        //if(wr & ain==16'h4083 & din[7])
-        //  wave_ptr<=0;
-        //else
-        if(~wave_en & wave_cnt_next[16])
-            wave_ptr<=wave_ptr+1'd1;
-		end
+            if (acc_clk_en) begin
+                wave_acc_cnt <= wave_acc_cnt + wave_pitch;
+            end
+
+            if(wr & ain==16'h4083 & din[7]) begin
+                wave_acc_cnt <= 0;
+            end
+        end
     end
 
     //6x64 wavetable ram
@@ -1184,25 +1213,25 @@ module fds_sound(
 
 endmodule
 
-//10x12 unsigned multiplier
-module mul10x12(input clk, input ce, input [11:0] in12, input [9:0] in10, output reg [21:0] out);
+//12x8 unsigned multiplier
+module mul12x8(input clk, input ce, input [11:0] in12,  input [7:0] in8, output reg [19:0] out);
     reg [3:0] count;
-    reg [11:0] sr1;
-    reg [21:0] sr2;
-    wire [10:0] sum=sr2[21:12]+(sr1[0]?in10:11'd0);
-    wire [21:0] next={sum,sr2[11:1]};
+    reg [7:0] sr1;
+    reg [19:0] sr2;
+    wire [12:0] sum=sr2[19:8]+(sr1[0]?in12:13'd0);
+    wire [19:0] next={sum,sr2[7:1]};
     always@(posedge clk) begin
-		if(ce) begin
-        count<=count+1'd1;
-        if(count==0) begin
-            sr1<=in12;
-            sr2<=0;
-        end else begin
-            sr1<={1'b0,sr1[11:1]};
-            sr2<=next;
+        if(ce) begin
+            count<=count+1'd1;
+            if(count==0) begin
+                sr1<=in8;
+                sr2<=0;
+            end else begin
+                sr1<={1'b0,sr1[7:1]};
+                sr2<=next;
+            end
+            if(count==8)
+                out<=next;
         end
-        if(count==12)
-            out<=next;
-		end
     end
 endmodule
