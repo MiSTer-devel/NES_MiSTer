@@ -89,8 +89,18 @@ module emu
 	output        UART_DTR,
 	input         UART_DSR,
 
+	// Open-drain User port.
+	// 0 - D+/RX
+	// 1 - D-/TX
+	// 2..5 - USR1..USR4
+	// Set USER_OUT to 1 to read from USER_IN.
+	input   [5:0] USER_IN,
+	output  [5:0] USER_OUT,
+
 	input         OSD_STATUS
 );
+
+assign USER_OUT = '1;
 
 assign AUDIO_S   = 0;
 assign AUDIO_L   = sample;
@@ -136,7 +146,7 @@ parameter CONF_STR3 = {
 	"O8,Aspect ratio,4:3,16:9;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O4,Hide overscan,OFF,ON;",
-	"OCE,Palette,Smooth,Unsaturated-V6,FCEUX,NES Classic,Composite Direct,PC-10,PVM,Wavebeam;",
+	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Nintendulator;",
 	"-;",
 	"O9,Swap joysticks,NO,YES;",
 	"OA,Multitap,Disabled,Enabled;",
@@ -158,7 +168,7 @@ wire [31:0] status;
 wire arm_reset = status[0];
 wire mirroring_osd = status[5];
 wire hide_overscan = status[4];
-wire [2:0] palette2_osd = status[14:12];
+wire [3:0] palette2_osd = status[15:12];
 wire joy_swap = status[9];
 wire fds_swap_invert = status[16];
 `ifdef DEBUG_AUDIO
@@ -508,7 +518,7 @@ always @(posedge clk) begin
 	if(~old_downloading & downloading) bk_ena <= 0;
 	
 	//Save file always mounted in the end of downloading state.
-	if(downloading && img_mounted && img_size && !img_readonly) bk_ena <= 1;
+	if(downloading && img_mounted && !img_readonly) bk_ena <= 1;
 end
 
 wire bk_load    = status[6];
@@ -534,7 +544,7 @@ always @(posedge clk) begin
 			bk_loading <= bk_load;
 			bk_request <= 1;
 		end
-		if(old_downloading & ~downloading & bk_ena) begin
+		if(old_downloading & ~downloading & |img_size & bk_ena) begin
 			bk_loading <= 1;
 			bk_request <= 1;
 		end
