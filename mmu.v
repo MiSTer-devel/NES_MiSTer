@@ -283,6 +283,7 @@ module MMC3(input clk, input ce, input reset,
   reg irq_enable, irq_reload;        // IRQ enabled, and IRQ reload requested
   reg [7:0] irq_latch, counter;      // IRQ latch value and current counter
   reg [3:0] ram_enable, ram_protect;       // RAM protection bits
+  reg ram6_enabled, ram6_enable, ram6_protect; //extra bits for mmc6
   reg [7:0] chr_bank_0, chr_bank_1;  // Selected CHR banks
   reg [7:0] chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5;
   reg [5:0] prg_bank_0, prg_bank_1, prg_bank_2;  // Selected PRG banks
@@ -313,6 +314,7 @@ module MMC3(input clk, input ce, input reset,
   wire mapper192 = (flags[7:0] == 192);   // Has 4KB CHR RAM
   wire mapper194 = (flags[7:0] == 194);   // Has 2KB CHR RAM
   wire mapper195 = (flags[7:0] == 195);   // Has 4KB CHR RAM
+  wire MMC6 = ((flags[7:0] == 4) && (flags[24:21] == 1)); // mapper 4, submapper 1 = MMC6
   
   wire four_screen_mirroring = flags[16] | DxROM;
   reg mapper47_multicart;
@@ -347,7 +349,7 @@ module MMC3(input clk, input ce, input reset,
     if (!regs_7e && prg_write && prg_ain[15]) begin
 	  if (!mapper33 && !mapper48 && !mapper112) begin
       casez({prg_ain[14:13], prg_ain[1:0]})
-      4'b00_?0: {chr_a12_invert, prg_rom_bank_mode, bank_select} <= {prg_din[7], prg_din[6], prg_din[2:0]}; // Bank select ($8000-$9FFE, even)
+      4'b00_?0: {chr_a12_invert, prg_rom_bank_mode, ram6_enabled, bank_select} <= {prg_din[7:5], prg_din[2:0]}; // Bank select ($8000-$9FFE, even)
       4'b00_?1: begin // Bank data ($8001-$9FFF, odd)
         case (bank_select) 
         0: chr_bank_0 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
@@ -361,7 +363,7 @@ module MMC3(input clk, input ce, input reset,
         endcase
       end
       4'b01_?0: mirroring <= !prg_din[0];                   // Mirroring ($A000-$BFFE, even)
-      4'b01_?1: {ram_enable, ram_protect} <= {{4{prg_din[7]}},{4{prg_din[6]}}}; // PRG RAM protect ($A001-$BFFF, odd)
+      4'b01_?1: {ram_enable, ram_protect, ram6_enable, ram6_protect} <= {{4{prg_din[7]}},{4{prg_din[6]}}, prg_din[5:4]}; // PRG RAM protect ($A001-$BFFF, odd)
       4'b10_?0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
       4'b10_?1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFF, odd)
       4'b11_?0: begin irq_enable <= 0; irq_reg[0] <= 0; end// IRQ disable ($E000-$FFFE, even)
@@ -509,11 +511,19 @@ module MMC3(input clk, input ce, input reset,
   end
 
   wire [21:0] prg_aout_tmp = {3'b00_0,  prgsel, prg_ain[12:0]};
-  wire ram_enable_a = (ram_enable[0] && prg_ain[12:11] == 2'b00)
+  wire ram_enable_a = MMC6 ?
+                         (ram6_enabled && ram6_enable && prg_ain[12] == 1'b1 && prg_ain[9] == 1'b0)
+                      || (ram6_enabled && ram_enable[3] && prg_ain[12] == 1'b1 && prg_ain[9] == 1'b1)
+                      : 
+                         (ram_enable[0] && prg_ain[12:11] == 2'b00)
                       || (ram_enable[1] && prg_ain[12:11] == 2'b01)
                       || (ram_enable[2] && prg_ain[12:11] == 2'b10)
                       || (ram_enable[3] && prg_ain[12:11] == 2'b11);
-  wire ram_protect_a = (ram_protect[0] && prg_ain[12:11] == 2'b00)
+  wire ram_protect_a = MMC6 ?
+                         !(ram6_enabled && ram6_enable && ram6_protect && prg_ain[12] == 1'b1 && prg_ain[9] == 1'b0)
+                      && !(ram6_enabled && ram_enable[3] && ram_protect[3] && prg_ain[12] == 1'b1 && prg_ain[9] == 1'b1)
+                      : 
+                         (ram_protect[0] && prg_ain[12:11] == 2'b00)
                       || (ram_protect[1] && prg_ain[12:11] == 2'b01)
                       || (ram_protect[2] && prg_ain[12:11] == 2'b10)
                       || (ram_protect[3] && prg_ain[12:11] == 2'b11);
@@ -531,7 +541,7 @@ module MMC3(input clk, input ce, input reset,
   assign prg_is_ram = (prg_ain[15:13] == 3'b011) && ((prg_ain[12:8] == 5'b1_1111) | ~internal_128) //(>= 'h6000 && < 'h8000) && (==7Fxx or external_ram)
                       && ram_enable_a && !(ram_protect_a && prg_write);
   assign prg_allow = prg_ain[15] && !prg_write || prg_is_ram && !mapper47;
-  wire [21:0] prg_ram = {9'b11_1100_000, internal_128 ? 6'b000000 : prg_ain[12:7], prg_ain[6:0]};
+  wire [21:0] prg_ram = {9'b11_1100_000, internal_128 ? 6'b000000 : MMC6 ? {3'b000, prg_ain[9:7]} : prg_ain[12:7], prg_ain[6:0]};
   assign prg_aout = prg_is_ram  && !mapper47 && !DxROM && !mapper95 && !mapper88 ? prg_ram : prg_aout_tmp;
   assign vram_a10 = TxSROM ? chrsel[7] :            // TxSROM do not support mirroring
                     mapper95 ? chrsel[5] :          // mapper95 does not support mirroring
