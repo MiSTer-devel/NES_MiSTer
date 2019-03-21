@@ -56,7 +56,7 @@ reg [3:0] cycles;
 // Loopy's magical modulation math
 (* keep = 1 *) wire signed [11:0] temp2 = $signed((|temp[3:0] & ~temp[11]) ? temp + 12'sh20 : temp);
 (* keep = 1 *) wire signed [11:0] temp3 = temp2 + 12'sh400;
-(* keep = 1 *) wire [19:0] wave_pitch = $unsigned(temp3) * wave_frequency;
+(* keep = 1 *) wire [19:0] wave_pitch = $unsigned(temp3[11:4]) * wave_frequency;
 
 // Rainwarrior's formula of doom
 // wire signed [12:0] frequency_signed = wave_frequency;
