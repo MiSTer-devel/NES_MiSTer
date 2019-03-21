@@ -3545,13 +3545,22 @@ module MapperFDS(input clk, input ce, input reset,
 		neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 		prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6, 
 		0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-		ce, fds_swap, prg_allow, audio[15:4]);
+		ce, fds_swap, prg_allow, audio_in);
     assign chr_aout[21:19] = 3'b100;
     assign chr_aout[9:0] = chr_ain[9:0];
 	 assign vram_a10 = chr_aout[10];
     assign prg_aout[21:19] = 3'b000;
     //assign prg_aout[12:0] = prg_ain[12:0];
-    assign audio[3:0] = 4'b0;
+
+    wire [11:0] audio_in;
+
+    lpf_aud fds_lpf
+    (
+      .CLK(clk),
+      .CE(ce),
+      .IDATA({1'b0, audio_in, audio_in[2:0]}),
+      .ODATA(audio)
+    );
 
 endmodule
 

@@ -946,8 +946,19 @@ module MAPFDS(              //signal descriptions in powerpak.v
 
     //expansion audio
     //wire [11:0] snd_level;
-    fds_sound sound(ce, reset, nesprg_we, prgain, nesprgdin, audio_dout, snd_level, clk20);
+    //fds_sound sound(ce, reset, nesprg_we, prgain, nesprgdin, audio_dout, snd_level, clk20);
     //pdm #(12) pdm_mod(clk20, snd_level, exp6);
+    fds_audio fds_audio
+    (
+        .clk(clk20),
+        .m2(ce),
+        .reset(reset),
+        .wr(nesprg_we),
+        .addr_in(prgain),
+        .data_in(nesprgdin),
+        .data_out(audio_dout),
+        .audio_out(snd_level)
+    );
   
 endmodule
 
