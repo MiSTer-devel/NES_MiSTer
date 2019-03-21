@@ -952,7 +952,6 @@ module MAPFDS(              //signal descriptions in powerpak.v
 endmodule
 
 //mod table supposed to be a fifo?
-//sweep clips at 31 instead of 32
 module fds_sound(
     input m2,
     input reset,
@@ -967,7 +966,7 @@ module fds_sound(
     reg wave_we;
     reg [1:0] mastervol;
     reg [11:0] freq, modfreq;
-    reg sweep_en, sweep_dir;
+    reg mod_env_en, mod_dir;
     reg mod_en;
     reg [7:0] env_speed;
 
@@ -988,7 +987,7 @@ module fds_sound(
     always@(posedge clk, posedge reset) begin
         if(reset) begin
             vol_en<=1;
-            sweep_en<=1;
+            mod_env_en<=1;
             env_en<=1;
             wave_en<=1;
         end else begin
@@ -997,7 +996,7 @@ module fds_sound(
                     16'h4080:{vol_en, vol_dir}<=din[7:6];
                     16'h4082:freq[7:0]<=din;
                     16'h4083:{wave_en,env_en,freq[11:8]}<={din[7:6],din[3:0]};
-                    16'h4084:{sweep_en, sweep_dir}<=din[7:6];
+                    16'h4084:{mod_env_en, mod_dir}<=din[7:6];
                     16'h4086:modfreq[7:0]<=din;
                     16'h4087:{mod_en,modfreq[11:8]}<={din[7],din[3:0]};
                     16'h4089:{wave_we,mastervol}<={din[7],din[1:0]};
@@ -1008,52 +1007,16 @@ module fds_sound(
     end
 
     //vol envelope
-    reg [10:0] env_div;
-    reg [5:0] vol_div;
-    reg [5:0] vol, vol_speed;
-    wire vol_clock=(~env_en & env_div==8 & ~vol_en &  vol_div==0);
-    wire [4:0] vol_clip=vol[4:0]|{5{vol[5]}};
-    always@(posedge clk) begin
-		if (m2) begin
-        if(~env_en) begin
-            if(env_div==0)  env_div<={env_speed,3'b111};
-            else        env_div<=env_div-1'd1;
-            if(env_div==8 & ~vol_en) begin
-                if(vol_div==0)  vol_div<=vol_speed;
-                else        vol_div<=vol_div-1'd1;
-            end
-        end
-        if(wr & ain==16'h4080 & ~din[7]) vol_speed<=din[5:0];
-        if(wr & ain==16'h4080 & din[7]) vol<=din[5:0];
-        else if(vol_clock) begin
-            if(vol_dir & ~vol[5]) vol<=vol+1'd1;
-            else if(~vol_dir & vol!=0) vol<=vol-1'd1;
-        end 
-		end
-        
-    end
+    wire [5:0] vol;
+    wire [5:0] vol_clip = (vol[5] ? 6'd32 : vol);
+    wire vol_env_enabled = (~env_en & ~wave_en & ~vol_en);
+    fds_envelope vol_env(clk, m2, vol_env_enabled, vol_dir, (wr & ain==16'h4080), din, env_speed, vol);
 
-    //sweep envelope
-    reg [5:0] sweep_div;
-    reg [5:0] sweep, sweep_speed;
-    wire sweep_clock=(~env_en & env_div==8 & ~sweep_en & sweep_div==0);
-    wire [4:0] sweep_clip=sweep[4:0]|{5{sweep[5]}};
-    always@(posedge clk) begin
-		if (m2) begin
-        if(~env_en) begin
-            if(env_div==8 & ~sweep_en) begin
-                if(sweep_div==0) sweep_div<=sweep_speed;
-                else sweep_div<=sweep_div-1'd1;
-            end
-        end
-        if(wr & ain==16'h4084 & ~din[7]) sweep_speed<=din[5:0];
-        if(wr & ain==16'h4084 & din[7]) sweep<=din[5:0];
-        else if(sweep_clock) begin
-            if(sweep_dir & ~sweep[5]) sweep<=sweep+1'd1;
-            else if(~sweep_dir & sweep!=0) sweep<=sweep-1'd1;
-        end 
-		end
-    end
+    //modulation envelope
+    wire [5:0] mod_gain;
+    wire [5:0] mod_clip = (mod_gain[5] ? 6'd32 : mod_gain);
+    wire mod_env_enabled = (~env_en & ~wave_en & ~mod_env_en);
+    fds_envelope mod_env(clk, m2, mod_env_enabled, mod_dir, (wr & ain==16'h4084), din, env_speed, mod_gain);
 
     //modulation
     wire [2:0] mod_table_out;
@@ -1131,11 +1094,11 @@ module fds_sound(
     temp = (temp >> 4) & 0xff;
     wave_pitch = pitch * temp;      //20-bit unsigned result
     */
-    wire signed [11:0] mod_sweep_t = ($signed({2'b0,sweep_clip})*mod_cnt);
-    wire signed [12:0] mod_sweep = mod_sweep_t + $signed( (mod_sweep_t[3:0] && ~mod_sweep_t[11]) ? 12'h420 : 12'h400 );
+    wire signed [11:0] mod_gain_t = ($signed({1'b0,mod_clip})*mod_cnt);
+    wire signed [12:0] mod_gain_mult = mod_gain_t + $signed( (mod_gain_t[3:0] && ~mod_gain_t[11]) ? 12'h420 : 12'h400 );
 
-    wire [19:0] wave_pitch; //=freq * mod_sweep[11:4];
-    mul12x8 mm(clk,m2,freq,mod_sweep[11:4],wave_pitch);
+    wire [19:0] wave_pitch; //=freq * mod_gain_mult[11:4];
+    mul12x8 mm(clk,m2,freq,mod_gain_mult[11:4],wave_pitch);
 
     //waveform step
     reg [23:0] wave_acc_cnt;
@@ -1191,7 +1154,7 @@ module fds_sound(
 
     reg [5:0] outA_buf;
     always@(posedge clk) if(m2 & ~wave_we & ~wave_en) outA_buf<=outA[5:0];
-    wire [10:0] mul_out=outA_buf*vol_clip;      //6x5 mult
+    wire [10:0] mul_out=outA_buf*vol_clip;
 // 0.8 vol
     wire [6:0] out1=(mastervol!=3)?7'd0:mul_out[10:4]; //{1100 1000 0110 0101} (approximates 1, 2/3, 1/2, 2/5.. try to match VRC6 output levels)
     wire [8:0] out2=out1+((mastervol!=2)?9'd0:mul_out[10:3]);
@@ -1207,10 +1170,54 @@ module fds_sound(
     always@* begin
         dout[7:6]='b01;
         if({ain[7],ain[1]}==2'b10)  dout[5:0]=vol;  //4090
-        else if({ain[7],ain[1]}==2'b11) dout[5:0]=sweep;    //4092
+        else if({ain[7],ain[1]}==2'b11) dout[5:0]=mod_gain;    //4092
         else                dout[5:0]=outB[5:0];
     end
 
+endmodule
+
+module fds_envelope(
+    input clk,
+    input ce,
+    input enabled,
+    input env_dir,
+    input write,
+    input [7:0] din,
+    input [7:0] master_env_speed,
+    output reg [5:0] gain
+);
+
+    reg [10:0] env_div;
+    reg [5:0] gain_div;
+    reg [5:0] env_speed;
+    wire env_clock = (enabled & env_div==8 & gain_div==0);
+
+    always@(posedge clk) begin
+        if (ce) begin
+            if(enabled) begin
+                if(env_div==0)  env_div<={master_env_speed,3'b111};
+                else  env_div<=env_div-1'd1;
+
+                if(env_div==8) begin
+                    if(gain_div==0) gain_div<=env_speed;
+                    else gain_div<=gain_div-1'd1;
+                end
+            end
+            if(env_clock) begin
+                if(env_dir & ~gain[5]) gain<=gain+1'd1;
+                else if(~env_dir & gain!=0) gain<=gain-1'd1;
+            end
+
+            if(write) begin
+                env_speed<=din[5:0];
+                if (din[7]) gain<=din[5:0];
+                // Reset timer
+                env_div<={master_env_speed,3'b111};
+                gain_div<=din[5:0];
+            end
+
+        end
+    end
 endmodule
 
 //12x8 unsigned multiplier
