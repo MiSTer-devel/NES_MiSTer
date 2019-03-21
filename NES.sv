@@ -255,18 +255,16 @@ pll pll
 // reset after download
 reg [7:0] download_reset_cnt;
 wire download_reset = download_reset_cnt != 0;
-always @(posedge CLK_50M) begin
+always @(posedge clk) begin
 	if(downloading) download_reset_cnt <= 8'hFF;
-	else if(!loader_busy && download_reset_cnt != 0) download_reset_cnt <= download_reset_cnt - 8'd1;
+	else if(!loader_busy && download_reset_cnt) download_reset_cnt <= download_reset_cnt - 1'd1;
 end
 
 // hold machine in reset until first download starts
-reg init_reset;
-always @(posedge CLK_50M) begin
-	if(!clock_locked) init_reset <= 1'b1;
-	else if(downloading) init_reset <= 1'b0;
-end
-  
+reg init_reset_n = 0;
+always @(posedge clk) if(downloading) init_reset_n <= 1;
+
+
 wire  [8:0] cycle;
 wire  [8:0] scanline;
 wire [15:0] sample;
@@ -331,12 +329,13 @@ wire loader_write;
 wire [31:0] loader_flags;
 reg [31:0] mapper_flags;
 wire loader_busy, loader_done, loader_fail;
+wire bios_download;
 
 GameLoader loader
 (
 	clk, loader_reset, downloading, filetype,
 	loader_input, loader_clk, mirroring_osd,
-	loader_addr, loader_write_data, loader_write,
+	loader_addr, loader_write_data, loader_write, bios_download,
 	loader_flags, loader_busy, loader_done, loader_fail
 );
 
@@ -354,7 +353,7 @@ always @(posedge clk) begin
 	end;
 end
  
-wire reset_nes = init_reset || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading;
+wire reset_nes = ~init_reset_n || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading;
 wire run_nes = (nes_ce == 3);	// keep running even when reset, so that the reset can actually do its job!
 
 wire [14:0] bram_addr;
@@ -388,8 +387,7 @@ assign SDRAM_CKE         = 1'b1;
 
 wire [7:0] xor_data;
 wire [7:0] bios_data;
-reg last_loader_write;
-wire bios_write = (loader_write && !last_loader_write && filetype == 8'h00);
+wire bios_write = (loader_write && bios_download);
 
 dpram #("fdspatch.mif", 13) biospatch
 (
@@ -415,7 +413,7 @@ always @(posedge clk) begin
 	if(loader_write) begin
 		loader_write_triggered <= 1'b1;
 		loader_addr_mem <= loader_addr;
-		loader_write_data_mem <= (downloading && filetype == 8'h00) ? loader_write_data ^ xor_data : loader_write_data;
+		loader_write_data_mem <= bios_download ? loader_write_data ^ xor_data : loader_write_data;
 	end
 
 	if(nes_ce == 3) begin
@@ -443,10 +441,10 @@ sdram sdram
 	.init         	( !clock_locked     			),
 
 	// cpu/chipset interface
-	.addr     		( downloading || loader_busy ? {3'b000, loader_addr_mem} : {3'b000, memory_addr} ),
+	.addr     		( (downloading || loader_busy) ? {3'b000, loader_addr_mem} : {3'b000, memory_addr} ),
 	
 	.we       		( memory_write || loader_write_mem	),
-	.din       		( downloading || loader_busy ? loader_write_data_mem : memory_dout ),
+	.din       		( (downloading || loader_busy) ? loader_write_data_mem : memory_dout ),
 	
 	.oeA         	( memory_read_cpu ),
 	.doutA       	( memory_din_cpu	),
@@ -569,6 +567,7 @@ module GameLoader
 	output reg [21:0] mem_addr,
 	output [7:0]  mem_data,
 	output        mem_write,
+	output reg    bios_download,
 	output [31:0] mapper_flags,
 	output reg    busy,
 	output reg    done,
@@ -629,13 +628,16 @@ reg [3:0] clearclk; //Wait for SDRAM
 typedef enum bit [2:0] { STATE_LOADHEADER, STATE_LOADPRG, STATE_LOADCHR, STATE_LOADFDS, STATE_ERROR, STATE_CLEARRAM, STATE_COPYBIOS, STATE_DONE } mystate;
 mystate state;
 
+wire type_fds = (filetype == 2 || filetype==8'h80); //*.FDS or boot2.rom
+
 always @(posedge clk) begin
 	if (reset) begin
 		state <= STATE_LOADHEADER;
 		busy <= 0;
 		done <= 0;
 		ctr <= 0;
-		mem_addr <= (filetype[1:0] | filetype[7:6]) == 6'h02 ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
+		mem_addr <= type_fds ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
+		bios_download <= 0;
 	end else begin
 		case(state)
 		// Read 16 bytes of ines header
@@ -657,11 +659,12 @@ always @(posedge clk) begin
 					mem_addr <= 22'b00_0100_0000_0000_0001_0000;  // Address for FDS skip Header
 					state <= STATE_LOADFDS;
 					bytes_left <= 21'b1;
-				 end else if (filetype[7:0]==8'h00) begin // Bios
+				 end else if (!filetype) begin // Bios
 					state <= STATE_LOADFDS;
 					mem_addr <= 22'b00_0000_0000_0000_0001_0000;  // Address for BIOS skip Header
 					bytes_left <= 21'b1;
-				 end else if ((filetype[1:0] | filetype[7:6])==6'h02) begin // FDS
+					bios_download <= 1;
+				 end else if(type_fds) begin // FDS
 					state <= STATE_LOADFDS;
 					mem_addr <= 22'b00_0100_0000_0000_0010_0000;  // Address for FDS no Header
 					bytes_left <= 21'b1;
