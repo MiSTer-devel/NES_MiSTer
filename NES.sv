@@ -131,7 +131,7 @@ parameter CONF_STR1 = {
 	"FS,NES;",
 	"F,FDS;",
 	"-;",
-	"OG,Disk Swap,Auto,Select;",	
+	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert mirroring,OFF,ON;",
 	"-;",
 };
@@ -156,11 +156,11 @@ parameter CONF_STR3 = {
 `endif
 	"-;",
 	"R0,Reset;",
-	"J,A,B,Select,Start;",
+	"J1,A,B,Select,Start,FDS,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
 	"V,v",`BUILD_DATE
 };
 
-wire [7:0] joyA,joyB,joyC,joyD;
+wire [20:0] joyA,joyB,joyC,joyD;
 wire [1:0] buttons;
 
 wire [31:0] status;
@@ -182,7 +182,6 @@ wire int_audio = 1;
 
 wire forced_scandoubler;
 wire ps2_kbd_clk, ps2_kbd_data;
-wire [10:0] ps2_key;
 
 reg  [31:0] sd_lba;
 reg         sd_rd = 0;
@@ -202,17 +201,17 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-   .conf_str({CONF_STR1,bk_ena ? "R" : "+",CONF_STR2,bk_ena ? "R" : "+",CONF_STR3}),
+	.conf_str({CONF_STR1,bk_ena ? "R" : "+",CONF_STR2,bk_ena ? "R" : "+",CONF_STR3}),
 
-   .buttons(buttons),
-   .forced_scandoubler(forced_scandoubler),
+	.buttons(buttons),
+	.forced_scandoubler(forced_scandoubler),
 
-   .joystick_0(joyA),
-   .joystick_1(joyB),
-   .joystick_2(joyC),
-   .joystick_3(joyD),
+	.joystick_0(joyA),
+	.joystick_1(joyB),
+	.joystick_2(joyC),
+	.joystick_3(joyD),
 
-   .status(status),
+	.status(status),
 
 	.ioctl_download(downloading),
 	.ioctl_addr(ioctl_addr),
@@ -233,22 +232,11 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.img_readonly(img_readonly),
 	.img_size(img_size),
 
-   .ps2_key(ps2_key),
-
 	.ps2_kbd_led_use(0),
 	.ps2_kbd_led_status(0)
 );
 
 
-wire [7:0] nes_joy_A = (reset_nes) ? 8'd0 : 
-							  { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], joyA[4] } | kbd_joy0;
-wire [7:0] nes_joy_B = (reset_nes) ? 8'd0 : 
-							  { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], joyB[4] } | kbd_joy1;
-wire [7:0] nes_joy_C = (reset_nes) ? 8'd0 : 
-							  { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], joyC[4] };
-wire [7:0] nes_joy_D = (reset_nes) ? 8'd0 : 
-							  { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], joyD[4] };
- 
 wire clock_locked;
 wire clk85;
 wire clk;
@@ -293,7 +281,16 @@ wire  [7:0] memory_dout;
 reg  [23:0] joypad_bits, joypad_bits2;
 reg   [7:0] powerpad_d3, powerpad_d4;
 reg   [1:0] last_joypad_clock;
-wire fds_swap = fds_swap_invert ^ (joy_swap ? nes_joy_B[2] : nes_joy_A[2]);
+
+wire [11:0] powerpad = joyA[20:9] | joyB[20:9] | joyC[20:9] | joyD[20:9];
+
+wire [7:0] nes_joy_A = { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], joyA[4] };
+wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], joyB[4] };
+wire [7:0] nes_joy_C = { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], joyC[4] };
+wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], joyD[4] };
+
+wire fds_btn = joyA[8] | joyB[8];
+wire fds_swap = fds_swap_invert ^ fds_btn;
 
 reg [1:0] nes_ce;
 
@@ -306,7 +303,7 @@ always @(posedge clk) begin
 		last_joypad_clock <= 0;
 	end else begin
 		if (joypad_strobe) begin
-			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'h0000, joy_swap ? nes_joy_B : nes_joy_A};
+			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'h0000, joy_swap ? nes_joy_B : nes_joy_A} | fds_btn;
 			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'h0000, joy_swap ? nes_joy_A : nes_joy_B};
 			powerpad_d4 <= {4'b0000, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
 			powerpad_d3 <= {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
@@ -488,23 +485,6 @@ video video
 	.palette(palette2_osd),
 
 	.ce_pix(CE_PIXEL)
-);
-
-wire [7:0] kbd_joy0;
-wire [7:0] kbd_joy1;
-wire [11:0] powerpad;
-
-keyboard keyboard
-(
-	.clk(clk),
-	.reset(reset_nes),
-
-	.ps2_key(ps2_key),
-
-	.joystick_0(kbd_joy0),
-	.joystick_1(kbd_joy1),
-	
-	.powerpad(powerpad)
 );
 
 
