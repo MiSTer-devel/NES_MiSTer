@@ -3554,12 +3554,13 @@ module MapperFDS(input clk, input ce, input reset,
 
     wire [11:0] audio_in;
 
-    fds_lpf fds_lpf
+    // XXX: This needs to be replaced with a proper ~2000hz LPF
+    lpf_aud fds_lpf
     (
-      .clk(clk),
-      .reset(reset),
-      .in({1'b0, audio_in, audio_in[2:0]}),
-      .out(audio)
+      .CLK(clk),
+      .CE(ce),
+      .IDATA({1'b0, audio_in, audio_in[2:0]}),
+      .ODATA(audio)
     );
 
 endmodule
