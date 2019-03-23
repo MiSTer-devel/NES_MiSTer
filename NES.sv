@@ -131,7 +131,7 @@ parameter CONF_STR1 = {
 	"FS,NES;",
 	"F,FDS;",
 	"-;",
-	"OG,Disk Swap,Auto,Select;",	
+	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert mirroring,OFF,ON;",
 	"-;",
 };
@@ -156,11 +156,11 @@ parameter CONF_STR3 = {
 `endif
 	"-;",
 	"R0,Reset;",
-	"J,A,B,Select,Start;",
+	"J1,A,B,Select,Start,FDS,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
 	"V,v",`BUILD_DATE
 };
 
-wire [7:0] joyA,joyB,joyC,joyD;
+wire [20:0] joyA,joyB,joyC,joyD;
 wire [1:0] buttons;
 
 wire [31:0] status;
@@ -182,7 +182,6 @@ wire int_audio = 1;
 
 wire forced_scandoubler;
 wire ps2_kbd_clk, ps2_kbd_data;
-wire [10:0] ps2_key;
 
 reg  [31:0] sd_lba;
 reg         sd_rd = 0;
@@ -202,17 +201,17 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-   .conf_str({CONF_STR1,bk_ena ? "R" : "+",CONF_STR2,bk_ena ? "R" : "+",CONF_STR3}),
+	.conf_str({CONF_STR1,bk_ena ? "R" : "+",CONF_STR2,bk_ena ? "R" : "+",CONF_STR3}),
 
-   .buttons(buttons),
-   .forced_scandoubler(forced_scandoubler),
+	.buttons(buttons),
+	.forced_scandoubler(forced_scandoubler),
 
-   .joystick_0(joyA),
-   .joystick_1(joyB),
-   .joystick_2(joyC),
-   .joystick_3(joyD),
+	.joystick_0(joyA),
+	.joystick_1(joyB),
+	.joystick_2(joyC),
+	.joystick_3(joyD),
 
-   .status(status),
+	.status(status),
 
 	.ioctl_download(downloading),
 	.ioctl_addr(ioctl_addr),
@@ -233,22 +232,11 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.img_readonly(img_readonly),
 	.img_size(img_size),
 
-   .ps2_key(ps2_key),
-
 	.ps2_kbd_led_use(0),
 	.ps2_kbd_led_status(0)
 );
 
 
-wire [7:0] nes_joy_A = (reset_nes) ? 8'd0 : 
-							  { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], joyA[4] } | kbd_joy0;
-wire [7:0] nes_joy_B = (reset_nes) ? 8'd0 : 
-							  { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], joyB[4] } | kbd_joy1;
-wire [7:0] nes_joy_C = (reset_nes) ? 8'd0 : 
-							  { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], joyC[4] };
-wire [7:0] nes_joy_D = (reset_nes) ? 8'd0 : 
-							  { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], joyD[4] };
- 
 wire clock_locked;
 wire clk85;
 wire clk;
@@ -267,18 +255,16 @@ pll pll
 // reset after download
 reg [7:0] download_reset_cnt;
 wire download_reset = download_reset_cnt != 0;
-always @(posedge CLK_50M) begin
+always @(posedge clk) begin
 	if(downloading) download_reset_cnt <= 8'hFF;
-	else if(!loader_busy && download_reset_cnt != 0) download_reset_cnt <= download_reset_cnt - 8'd1;
+	else if(!loader_busy && download_reset_cnt) download_reset_cnt <= download_reset_cnt - 1'd1;
 end
 
 // hold machine in reset until first download starts
-reg init_reset;
-always @(posedge CLK_50M) begin
-	if(!clock_locked) init_reset <= 1'b1;
-	else if(downloading) init_reset <= 1'b0;
-end
-  
+reg init_reset_n = 0;
+always @(posedge clk) if(downloading) init_reset_n <= 1;
+
+
 wire  [8:0] cycle;
 wire  [8:0] scanline;
 wire [15:0] sample;
@@ -293,7 +279,16 @@ wire  [7:0] memory_dout;
 reg  [23:0] joypad_bits, joypad_bits2;
 reg   [7:0] powerpad_d3, powerpad_d4;
 reg   [1:0] last_joypad_clock;
-wire fds_swap = fds_swap_invert ^ (joy_swap ? nes_joy_B[2] : nes_joy_A[2]);
+
+wire [11:0] powerpad = joyA[20:9] | joyB[20:9] | joyC[20:9] | joyD[20:9];
+
+wire [7:0] nes_joy_A = { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], joyA[4] };
+wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], joyB[4] };
+wire [7:0] nes_joy_C = { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], joyC[4] };
+wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], joyD[4] };
+
+wire fds_btn = joyA[8] | joyB[8];
+wire fds_swap = fds_swap_invert ^ fds_btn;
 
 reg [1:0] nes_ce;
 
@@ -306,7 +301,7 @@ always @(posedge clk) begin
 		last_joypad_clock <= 0;
 	end else begin
 		if (joypad_strobe) begin
-			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'h0000, joy_swap ? nes_joy_B : nes_joy_A};
+			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'h0000, joy_swap ? nes_joy_B : nes_joy_A} | fds_btn;
 			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'h0000, joy_swap ? nes_joy_A : nes_joy_B};
 			powerpad_d4 <= {4'b0000, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
 			powerpad_d3 <= {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
@@ -334,12 +329,13 @@ wire loader_write;
 wire [31:0] loader_flags;
 reg [31:0] mapper_flags;
 wire loader_busy, loader_done, loader_fail;
+wire bios_download;
 
 GameLoader loader
 (
 	clk, loader_reset, downloading, filetype,
 	loader_input, loader_clk, mirroring_osd,
-	loader_addr, loader_write_data, loader_write,
+	loader_addr, loader_write_data, loader_write, bios_download,
 	loader_flags, loader_busy, loader_done, loader_fail
 );
 
@@ -357,7 +353,7 @@ always @(posedge clk) begin
 	end;
 end
  
-wire reset_nes = init_reset || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading;
+wire reset_nes = ~init_reset_n || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading;
 wire run_nes = (nes_ce == 3);	// keep running even when reset, so that the reset can actually do its job!
 
 wire [14:0] bram_addr;
@@ -391,8 +387,7 @@ assign SDRAM_CKE         = 1'b1;
 
 wire [7:0] xor_data;
 wire [7:0] bios_data;
-reg last_loader_write;
-wire bios_write = (loader_write && !last_loader_write && filetype == 8'h00);
+wire bios_write = (loader_write && bios_download);
 
 dpram #("fdspatch.mif", 13) biospatch
 (
@@ -418,7 +413,7 @@ always @(posedge clk) begin
 	if(loader_write) begin
 		loader_write_triggered <= 1'b1;
 		loader_addr_mem <= loader_addr;
-		loader_write_data_mem <= (downloading && filetype == 8'h00) ? loader_write_data ^ xor_data : loader_write_data;
+		loader_write_data_mem <= bios_download ? loader_write_data ^ xor_data : loader_write_data;
 	end
 
 	if(nes_ce == 3) begin
@@ -446,10 +441,10 @@ sdram sdram
 	.init         	( !clock_locked     			),
 
 	// cpu/chipset interface
-	.addr     		( downloading || loader_busy ? {3'b000, loader_addr_mem} : {3'b000, memory_addr} ),
+	.addr     		( (downloading || loader_busy) ? {3'b000, loader_addr_mem} : {3'b000, memory_addr} ),
 	
 	.we       		( memory_write || loader_write_mem	),
-	.din       		( downloading || loader_busy ? loader_write_data_mem : memory_dout ),
+	.din       		( (downloading || loader_busy) ? loader_write_data_mem : memory_dout ),
 	
 	.oeA         	( memory_read_cpu ),
 	.doutA       	( memory_din_cpu	),
@@ -488,23 +483,6 @@ video video
 	.palette(palette2_osd),
 
 	.ce_pix(CE_PIXEL)
-);
-
-wire [7:0] kbd_joy0;
-wire [7:0] kbd_joy1;
-wire [11:0] powerpad;
-
-keyboard keyboard
-(
-	.clk(clk),
-	.reset(reset_nes),
-
-	.ps2_key(ps2_key),
-
-	.joystick_0(kbd_joy0),
-	.joystick_1(kbd_joy1),
-	
-	.powerpad(powerpad)
 );
 
 
@@ -589,6 +567,7 @@ module GameLoader
 	output reg [21:0] mem_addr,
 	output [7:0]  mem_data,
 	output        mem_write,
+	output reg    bios_download,
 	output [31:0] mapper_flags,
 	output reg    busy,
 	output reg    done,
@@ -649,13 +628,16 @@ reg [3:0] clearclk; //Wait for SDRAM
 typedef enum bit [2:0] { STATE_LOADHEADER, STATE_LOADPRG, STATE_LOADCHR, STATE_LOADFDS, STATE_ERROR, STATE_CLEARRAM, STATE_COPYBIOS, STATE_DONE } mystate;
 mystate state;
 
+wire type_fds = (filetype == 2 || filetype==8'h80); //*.FDS or boot2.rom
+
 always @(posedge clk) begin
 	if (reset) begin
 		state <= STATE_LOADHEADER;
 		busy <= 0;
 		done <= 0;
 		ctr <= 0;
-		mem_addr <= (filetype[1:0] | filetype[7:6]) == 6'h02 ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
+		mem_addr <= type_fds ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
+		bios_download <= 0;
 	end else begin
 		case(state)
 		// Read 16 bytes of ines header
@@ -677,11 +659,12 @@ always @(posedge clk) begin
 					mem_addr <= 22'b00_0100_0000_0000_0001_0000;  // Address for FDS skip Header
 					state <= STATE_LOADFDS;
 					bytes_left <= 21'b1;
-				 end else if (filetype[7:0]==8'h00) begin // Bios
+				 end else if (!filetype) begin // Bios
 					state <= STATE_LOADFDS;
 					mem_addr <= 22'b00_0000_0000_0000_0001_0000;  // Address for BIOS skip Header
 					bytes_left <= 21'b1;
-				 end else if ((filetype[1:0] | filetype[7:6])==6'h02) begin // FDS
+					bios_download <= 1;
+				 end else if(type_fds) begin // FDS
 					state <= STATE_LOADFDS;
 					mem_addr <= 22'b00_0100_0000_0000_0010_0000;  // Address for FDS no Header
 					bytes_left <= 21'b1;
