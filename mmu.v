@@ -3548,7 +3548,7 @@ module MapperFDS(input clk, input ce, input reset,
     (
       .CLK(clk),
       .CE(ce),
-      .IDATA({1'b0, audio_in, audio_in[2:0]}),
+      .IDATA({audio_in, audio_in[3:0]}),
       .ODATA(audio)
     );
 
