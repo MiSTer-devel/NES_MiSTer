@@ -302,8 +302,9 @@ module NES(input clk, input reset, input ce,
   // Mapper IRQ seems to be delayed by one PPU clock.   
   // APU IRQ seems delayed by one APU clock.
   
-  wire [18:0] sample_apu_adj = {sample_apu, 2'b00} / 18'd5;
-
+  //wire [18:0] sample_apu_adj = {sample_apu, 2'b00} / 18'd5;
+  wire [16:0] sample_comb = sample_ext + sample_apu;
+  wire [19:0] sample_comb_reduced = {sample_comb, sample_comb[2:0]} / 20'd10;
   always @(posedge clk) if (reset) begin
     mapper_irq_delayed <= 0;
     apu_irq_delayed <= 0;
@@ -317,7 +318,7 @@ module NES(input clk, input reset, input ce,
       0: sample_sum <= 16'b0;
       1: sample_sum <= sample_ext;
       2: sample_sum <= sample_apu;
-      3: sample_sum <= (sample_ext / 2'd3) + sample_apu_adj[15:0];
+      3: sample_sum <= sample_comb_reduced[15:0];
       endcase
     end
   end
