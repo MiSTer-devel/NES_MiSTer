@@ -3554,12 +3554,12 @@ module MapperFDS(input clk, input ce, input reset,
 
     wire [11:0] audio_in;
 
-    lpf_aud fds_lpf
+    fds_lpf fds_lpf
     (
-      .CLK(clk),
-      .CE(ce),
-      .IDATA({audio_in, audio_in[3:0]}),
-      .ODATA(audio)
+      .clk(clk),
+      .reset(reset),
+      .in({1'b0, audio_in, audio_in[2:0]}),
+      .out(audio)
     );
 
 endmodule

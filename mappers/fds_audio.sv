@@ -55,11 +55,11 @@ wire [12:0] mod_acc_next = mod_accum[11:0] + mod_frequency;
 
 // Loopy's magical modulation math
 // NOTE: Division is used here to prevent loss of sign from selecting bits
-(* keep = 1 *) wire signed [11:0] temp = mod_bias * $signed({1'b0, sweep_gain});
-(* keep = 1 *) wire signed [11:0] temp2 = (|temp[3:0] & ~temp[11]) ? temp + 11'sd32 : temp;
-(* keep = 1 *) wire signed [11:0] temp3 = temp2 + 12'sd1024;
-(* keep = 1 *) wire signed [19:0] temp4 = ((temp3 / 11'sd16) * $signed({1'b0, wave_frequency}));
-(* keep = 1 *) wire [19:0] wave_pitch = temp4 > 0 ? temp4 : 19'd0;
+wire signed [11:0] temp = mod_bias * $signed({1'b0, sweep_gain});
+wire signed [11:0] temp2 = (|temp[3:0] & ~temp[11]) ? temp + 11'sd32 : temp;
+wire signed [11:0] temp3 = temp2 + 12'sd1024;
+wire signed [19:0] temp4 = ((temp3 / 11'sd16) * $signed({1'b0, wave_frequency}));
+wire [19:0] wave_pitch = temp4 > 0 ? temp4 : 19'd0;
 
 // Volume math
 wire [11:0] mul_out = wave_latch * (vol_pwm_lat[5] ? 6'd32 : vol_pwm_lat);
@@ -122,7 +122,7 @@ end else if (~old_m2 & m2) begin
 	if (~env_disable && env_speed) begin
 
 		//**** Volume Envelope ****//
-		if (~vol_disable && vol_speed) begin
+		if (~vol_disable) begin
 			if (vol_env_ticks >= {env_speed, 3'b111}) begin
 				vol_env_ticks <= 0;
 				if (vol_ticks == vol_speed) begin
@@ -138,7 +138,7 @@ end else if (~old_m2 & m2) begin
 		end
 
 		//**** Sweep Envelope ****//
-		if (~sweep_disable && sweep_speed) begin
+		if (~sweep_disable) begin
 			if (sweep_env_ticks >= {env_speed, 3'b111}) begin
 				sweep_env_ticks <= 0;
 				if (sweep_ticks == sweep_speed) begin
