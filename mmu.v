@@ -3548,7 +3548,7 @@ module MapperFDS(input clk, input ce, input reset,
 		ce, fds_swap, prg_allow, audio_in);
     assign chr_aout[21:19] = 3'b100;
     assign chr_aout[9:0] = chr_ain[9:0];
-	 assign vram_a10 = chr_aout[10];
+    assign vram_a10 = chr_aout[10];
     assign prg_aout[21:19] = 3'b000;
     //assign prg_aout[12:0] = prg_ain[12:0];
 
