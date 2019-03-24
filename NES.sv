@@ -130,17 +130,21 @@ parameter CONF_STR1 = {
 	"-;",
 	"FS,NES;",
 	"F,FDS;",
+};
+
+parameter CONF_STR2 = {
+	",BIOS;",
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert mirroring,OFF,ON;",
 	"-;",
 };
 
-parameter CONF_STR2 = {
+parameter CONF_STR3 = {
 	"6,Load Backup RAM;"
 };
 
-parameter CONF_STR3 = {
+parameter CONF_STR4 = {
 	"7,Save Backup RAM;",
 	"-;",
 	"O8,Aspect ratio,4:3,16:9;",
@@ -197,11 +201,11 @@ wire [63:0] img_size;
 wire [7:0]  filetype;
 wire [24:0] ioctl_addr;
 
-hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + 2)) hps_io
+hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + 3)) hps_io
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-	.conf_str({CONF_STR1,bk_ena ? "R" : "+",CONF_STR2,bk_ena ? "R" : "+",CONF_STR3}),
+	.conf_str({CONF_STR1,~bios_loaded ? "F" : "+",CONF_STR2,bk_ena ? "R" : "+",CONF_STR3,bk_ena ? "R" : "+",CONF_STR4}),
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
@@ -324,10 +328,11 @@ wire [7:0] loader_input = (loader_busy && !downloading) ? bios_data : file_input
 wire       loader_clk;
 wire [21:0] loader_addr;
 wire [7:0] loader_write_data;
-wire loader_reset = !download_reset; //loader_conf[0];
+reg  [7:0] old_filetype;
+wire loader_reset = !download_reset || ((old_filetype != filetype) && |filetype); //loader_conf[0];
 wire loader_write;
 wire [31:0] loader_flags;
-reg [31:0] mapper_flags;
+reg  [31:0] mapper_flags;
 wire loader_busy, loader_done, loader_fail;
 wire bios_download;
 
@@ -341,6 +346,7 @@ GameLoader loader
 
 always @(posedge clk) begin
 	if (loader_done) mapper_flags <= loader_flags;
+	old_filetype <= filetype;
 end
 
 reg led_blink;
@@ -387,7 +393,16 @@ assign SDRAM_CKE         = 1'b1;
 
 wire [7:0] xor_data;
 wire [7:0] bios_data;
-wire bios_write = (loader_write && bios_download);
+wire bios_write = (loader_write && bios_download && ~bios_loaded);
+reg bios_loaded = 0; // Only load bios once
+reg last_bios_download = 0;
+
+always @(posedge clk) begin
+	last_bios_download <= bios_download;
+	if(last_bios_download && ~bios_download) begin
+		bios_loaded = 1;
+	end
+end
 
 dpram #("fdspatch.mif", 13) biospatch
 (
@@ -582,7 +597,7 @@ reg [21:0] bytes_left;
 wire [7:0] prgrom = ines[4];	// Number of 16384 byte program ROM pages
 wire [7:0] chrrom = ines[5];	// Number of 8192 byte character ROM pages (0 indicates CHR RAM)
 wire has_chr_ram = (chrrom == 0);
-assign mem_data = (state == STATE_CLEARRAM) ? 8'h00 : indata;
+assign mem_data = (state == STATE_CLEARRAM || (~copybios && state == STATE_COPYBIOS)) ? 8'h00 : indata;
 assign mem_write = (((bytes_left != 0) && (state == STATE_LOADPRG || state == STATE_LOADCHR)
                     || (downloading && (state == STATE_LOADHEADER || state == STATE_LOADFDS))) && indata_clk)
 						 || ((bytes_left != 0) && ((state == STATE_CLEARRAM) || (state == STATE_COPYBIOS)) && clearclk == 4'h2);
@@ -624,10 +639,13 @@ wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
 assign mapper_flags = {7'b0, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
 
 reg [3:0] clearclk; //Wait for SDRAM
+reg copybios;
 
 typedef enum bit [2:0] { STATE_LOADHEADER, STATE_LOADPRG, STATE_LOADCHR, STATE_LOADFDS, STATE_ERROR, STATE_CLEARRAM, STATE_COPYBIOS, STATE_DONE } mystate;
 mystate state;
 
+wire type_bios = (filetype == 0 || filetype == 3 || filetype==8'hC0); //*.BIOS or boot.rom or boot0.rom or boot3.rom
+//wire type_nes = (filetype == 1 || filetype==8'h40); //*.NES or boot1.rom  //default
 wire type_fds = (filetype == 2 || filetype==8'h80); //*.FDS or boot2.rom
 
 always @(posedge clk) begin
@@ -638,6 +656,7 @@ always @(posedge clk) begin
 		ctr <= 0;
 		mem_addr <= type_fds ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
 		bios_download <= 0;
+		copybios <= 0;
 	end else begin
 		case(state)
 		// Read 16 bytes of ines header
@@ -659,7 +678,7 @@ always @(posedge clk) begin
 					mem_addr <= 22'b00_0100_0000_0000_0001_0000;  // Address for FDS skip Header
 					state <= STATE_LOADFDS;
 					bytes_left <= 21'b1;
-				 end else if (!filetype) begin // Bios
+				 end else if (type_bios) begin // Bios
 					state <= STATE_LOADFDS;
 					mem_addr <= 22'b00_0000_0000_0000_0001_0000;  // Address for BIOS skip Header
 					bytes_left <= 21'b1;
@@ -717,6 +736,7 @@ always @(posedge clk) begin
 				ines[15] <= 8'h00;
 				state <= STATE_CLEARRAM;
 				clearclk <= 4'h0;
+				copybios <= (|filetype); // Don't copybios for bootrom0
 			 end
 			end
 		STATE_CLEARRAM: begin // Read the next |bytes_left| bytes into |mem_addr|
@@ -747,6 +767,7 @@ always @(posedge clk) begin
 		STATE_DONE: begin // Read the next |bytes_left| bytes into |mem_addr|
 			 done <= 1;
 			 busy <= 0;
+			 bios_download <= 0;
 			end
 		endcase
 	end
