@@ -291,8 +291,8 @@ module NES(input clk, input reset, input ce,
   wire mapper_irq;
   wire has_chr_from_ppu_mapper;
   wire [15:0] sample_ext;
-  reg [15:0] sample_sum;
-  assign sample = sample_sum[15:0]; //loss of 1 bit of resolution.  Add control for when no external audio to boost back up?
+  reg [16:0] sample_sum;
+  assign sample = sample_sum[16:1]; //loss of 1 bit of resolution.  Add control for when no external audio to boost back up?
   MultiMapper multi_mapper(clk, cart_ce, ce, reset, mapper_ppu_flags, mapper_flags, 
                            prg_addr, prg_linaddr, prg_read, prg_write, prg_din, prg_dout_mapper, from_data_bus, prg_allow, prg_open_bus, prg_conflict,
                            chr_read, chr_write, chr_from_ppu, chr_addr, chr_linaddr, chr_from_ppu_mapper, has_chr_from_ppu_mapper, chr_allow,
@@ -301,10 +301,6 @@ module NES(input clk, input reset, input ce,
                              
   // Mapper IRQ seems to be delayed by one PPU clock.   
   // APU IRQ seems delayed by one APU clock.
-  
-  //wire [18:0] sample_apu_adj = {sample_apu, 2'b00} / 18'd5;
-  wire [16:0] sample_comb = sample_ext + sample_apu;
-  wire [19:0] sample_comb_reduced = {sample_comb, sample_comb[2:0]} / 20'd10;
   always @(posedge clk) if (reset) begin
     mapper_irq_delayed <= 0;
     apu_irq_delayed <= 0;
@@ -315,10 +311,10 @@ module NES(input clk, input reset, input ce,
       apu_irq_delayed <= apu_irq;
     if (ce | apu_ce) begin
       case ({int_audio, ext_audio})
-      0: sample_sum <= 16'b0;
-      1: sample_sum <= sample_ext;
-      2: sample_sum <= sample_apu;
-      3: sample_sum <= sample_comb_reduced[15:0];
+      0: sample_sum <= 17'b0;
+      1: sample_sum <= {1'b0,sample_ext};
+      2: sample_sum <= {1'b0,sample_apu};
+      3: sample_sum <= {1'b0,sample_ext} + {1'b0,sample_apu};
       endcase
     end
   end
