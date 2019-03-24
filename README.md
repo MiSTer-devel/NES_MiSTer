@@ -10,10 +10,14 @@ This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://git
  * Supports many popular mappers including VRC6-7, MMC0-5, and UNROM 512
 
 ## Installation
-Copy the NES_\*.rbf file to the root of the SD card. Create a **NES** folder on the root of the card, and place NES roms (\*.NES) inside this folder. The ROMs must have an iNES or NES2.0 header, which most already do. NES2.0 headers are prefered for the best accuracy. To have a game ROM load automatically upon starting the core, rename it **boot.rom** and place it in the **NES** folder.
+Copy the NES_\*.rbf file to the root of the SD card. Create a **NES** folder on the root of the card, and place NES roms (\*.NES) inside this folder. The ROMs must have an iNES or NES2.0 header, which most already do. NES2.0 headers are prefered for the best accuracy. To have a game ROM load automatically upon starting the core and place it in the **NES** folder.
+- boot0.rom = FDS BIOS file.  Will be used for any FDS images loaded
+- boot1.rom = NES Cart file.  Can be used with boot0.rom (BIOS) in place
+- boot2.rom = FDS image file.  Requires boot0.rom (BIOS)
+- boot3.rom = FDS BIOS file.  Use instead of boot0.rom.  Will be used for any FDS images loaded, and will start running without an FDS image on core start
 
 ### Famicom Disk System Usage
-Before loading \*.FDS files, first you must load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom and placed in the same folder as the ROMs (NES). After loading the core, the bios will be loaded and you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the SELECT button on the player 1 controller.  The Disk Swap OSD options inverts this behavior (press Select to swap disks). Currently, saves are not supported for FDS games.
+Before loading \*.FDS files, first you must load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom or boot3.rom and placed in the same folder as the ROMs (NES).  Alternatively, it can be loaded from the OSD if it boot0.rom and boot3.rom don't exist. After loading the core, the bios will be loaded and you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the SELECT button on the player 1 controller.  The Disk Swap OSD options inverts this behavior (press Select to swap disks). Currently, saves are not supported for FDS games.
 
 ## Saving and Loading
 The battery backed RAM (Save RAM) for the NES does not write to disk automatically. When loading a game, you must select **Load Backup RAM** from the OSD menu. After saving in your game, you must then write the RAM to the SD card by selecting **Save Backup RAM** from the menu. If you do not save your RAM to disk, the contents will be lost next time you restart the core or switch games.
