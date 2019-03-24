@@ -24,7 +24,6 @@
 # -------------------------------------------------------------------------- #
 
 set_global_assignment -name VERILOG_MACRO "LITE=1"
-#set_global_assignment -name VERILOG_MACRO "HDMI_LITE=1"
 
 set_global_assignment -name FAMILY "Cyclone V"
 set_global_assignment -name DEVICE 5CSEBA6U23I7
@@ -359,9 +358,9 @@ set_global_assignment -name CDF_FILE jtag.cdf
 set_global_assignment -name QIP_FILE sys/sys_q13.qip
 set_global_assignment -name QIP_FILE t65/t65.qip
 set_global_assignment -name QIP_FILE SOUND/OPLL/OPLL.qip
+set_global_assignment -name QIP_FILE sdram.qip
 set_global_assignment -name VHDL_FILE dpram.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE EEPROM_24C0x.sv
-set_global_assignment -name QIP_FILE sdram.qip
 set_global_assignment -name SYSTEMVERILOG_FILE video.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ppu.sv
 set_global_assignment -name SYSTEMVERILOG_FILE apu.sv
