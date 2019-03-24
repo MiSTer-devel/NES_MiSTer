@@ -25,11 +25,11 @@ module video
 reg pix_ce, pix_ce_n;
 
 always @(negedge clk) begin
-	reg [3:0] cnt = 0;
+	reg [1:0] cnt = 0;
 
 	cnt <= cnt + 1'd1;
-	pix_ce   <= !cnt[3] & !cnt[2:0];
-	pix_ce_n <=  cnt[3] & !cnt[2:0];
+	pix_ce   <= ~cnt[1] & ~cnt[0];
+	pix_ce_n <=  cnt[1] & ~cnt[0];
 end
 
 // Smooth palette from FirebrandX
@@ -279,7 +279,7 @@ wire  [4:0] vga_r = pixel[4:0];
 wire  [4:0] vga_g = pixel[9:5];
 wire  [4:0] vga_b = pixel[14:10];
 
-video_mixer #(.LINE_LENGTH(350), .HALF_DEPTH(0)) video_mixer
+video_mixer #(260, 0) video_mixer
 (
 	.*,
 	.clk_sys(clk),

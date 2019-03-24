@@ -114,7 +114,7 @@ assign LED_POWER = 0;
 assign VIDEO_ARX = status[8] ? 8'd16 : 8'd4;
 assign VIDEO_ARY = status[8] ? 8'd9  : 8'd3;
 
-assign CLK_VIDEO = clk85;
+assign CLK_VIDEO = clk;
 
 assign VGA_F1 = 0;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
@@ -488,7 +488,7 @@ assign VGA_SL = sl[1:0];
 video video
 (
 	.*,
-	.clk(clk85),
+	.clk(clk),
 
 	.count_v(scanline),
 	.count_h(cycle),
