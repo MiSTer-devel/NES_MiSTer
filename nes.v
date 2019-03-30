@@ -130,10 +130,10 @@ module NES(input clk, input reset, input ce,
            output joypad_strobe,// Set to 1 to strobe joypads. Then set to zero to keep the value.
            output [1:0] joypad_clock, // Set to 1 for each joypad to clock it.
            input [3:0] joypad_data, // Data for each joypad + 1 powerpad.
-			  input fds_swap,
+           input mic,               // Microphone RNG
+           input fds_swap,
            input [4:0] audio_channels, // Enabled audio channels
 
-           
            // Access signals for the SRAM.
            output [21:0] memory_addr,   // address to access
            output memory_read_cpu,      // read into CPU latch
@@ -334,7 +334,7 @@ module NES(input clk, input reset, input ce,
 		from_data_bus = 0;
     else if (apu_cs) begin
       if (joypad1_cs)
-        from_data_bus = {7'b0100000, joypad_data[0]};
+        from_data_bus = {5'b01000, mic, 1'b0, joypad_data[0]};
       else if (joypad2_cs)
         from_data_bus = {3'b010, joypad_data[3:2], 2'b00, joypad_data[1]};
       else
