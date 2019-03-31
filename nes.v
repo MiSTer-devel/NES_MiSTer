@@ -293,10 +293,10 @@ module NES(input clk, input reset, input ce,
   wire [15:0] sample_ext;
   reg [16:0] sample_sum;
   assign sample = sample_sum[16:1]; //loss of 1 bit of resolution.  Add control for when no external audio to boost back up?
-  MultiMapper multi_mapper(clk, cart_ce, ce, reset, mapper_ppu_flags, mapper_flags, 
+  cart_top multi_mapper(clk, cart_ce, ce, reset, mapper_ppu_flags, mapper_flags,
                            prg_addr, prg_linaddr, prg_read, prg_write, prg_din, prg_dout_mapper, from_data_bus, prg_allow, prg_open_bus, prg_conflict,
                            chr_read, chr_write, chr_from_ppu, chr_addr, chr_linaddr, chr_from_ppu_mapper, has_chr_from_ppu_mapper, chr_allow,
-									vram_a10, vram_ce, bram_addr, bram_din, bram_dout, bram_write, bram_override, mapper_irq, sample_ext, fds_swap);
+                           vram_a10, vram_ce, bram_addr, bram_din, bram_dout, bram_write, bram_override, mapper_irq, sample_ext, fds_swap);
   assign chr_to_ppu = has_chr_from_ppu_mapper ? chr_from_ppu_mapper : memory_din_ppu;
                              
   // Mapper IRQ seems to be delayed by one PPU clock.   
