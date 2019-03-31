@@ -3,7 +3,7 @@
 module MMC1(
 	input clk,
 	input ce,
-	input enable,
+	input reset,
 	input [31:0] flags,
 	input [15:0] prg_ain,
 	output [21:0] prg_aout,
@@ -51,14 +51,14 @@ wire [2:0] prg_size = flags[10:8];
 
 // Update shift register
 always @(posedge clk) 
-	if (~enable) begin
+	if (reset) begin
 		shift <= 5'b10000;
 		control <= 5'b0_11_00;
 		chr_bank_0 <= 0;
 		chr_bank_1 <= 0;
 		prg_bank <= 5'b00000;
 		delay_ctrl <= 0;
-	end else if (ce & enable) begin
+	end else if (ce) begin
 		if (!prg_write)
 			delay_ctrl <= 1'b0;
 		if (prg_write && prg_ain[15] && !delay_ctrl) begin
