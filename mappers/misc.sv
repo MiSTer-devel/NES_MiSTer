@@ -2,22 +2,47 @@
 
 // #15 -  100-in-1 Contra Function 16
 module Mapper15(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                   // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                  // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                  // Allow write
-	output vram_a10,                   // Value for A10 address line
-	output vram_ce                     // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+reg [15:0] flags_out = 0;
+
 
 // 15 bit  8 7  bit  0  Address bus
 // ---- ---- ---- ----
@@ -40,7 +65,7 @@ reg mirroring;
 reg [5:0] prg_rom_bank;
 
 always @(posedge clk) begin
-	if (reset) begin
+	if (~enable) begin
 		prg_rom_bank_mode <= 0;
 		prg_rom_bank_lowbit <= 0;
 		mirroring <= 0;
@@ -79,29 +104,54 @@ endmodule
 
 // Mapper 16, 159 Bandai
 module Mapper16(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                    // Read / write signals
-	input [7:0] prg_din,
-	output [7:0] prg_dout,
-	output prg_allow,                   // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                   // Allow write
-	output reg vram_a10,                // Value for A10 address line
-	output vram_ce,                     // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	// Special ports
 	output [14:0] mapper_addr,
-	input [7:0] mapper_data_in,
-	output [7:0] mapper_data_out,
-	output mapper_prg_write,
-	output mapper_ovr,
-	output reg irq
+	input   [7:0] mapper_data_in,
+	output  [7:0] mapper_data_out,
+	output        mapper_prg_write,
+	output        mapper_ovr
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? prg_dout : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire irq;
+reg [15:0] flags_out = 0;
+wire [7:0] prg_dout;
 
 reg [3:0] prg_bank;
 reg [7:0] chr_bank_0, chr_bank_1, chr_bank_2, chr_bank_3,
@@ -118,7 +168,7 @@ wire mapper159 = (flags[7:0] == 159);
 wire mapperalt = submapper5 | mapper159;
 
 always @(posedge clk) begin
-	if (reset) begin
+	if (~enable) begin
 		prg_bank <= 4'hF;
 		chr_bank_0 <= 0;
 		chr_bank_1 <= 0;
@@ -237,7 +287,7 @@ EEPROM_24C0x eeprom(
 	.type_24C01(mapper159),         //24C01 is 128 bytes, 24C02 is 256 bytes
 	.clk(clk),
 	.ce(ce),
-	.reset(reset),
+	.reset(~enable),
 	.SCL(eeprom_scl),               // Serial Clock
 	.SDA_in(eeprom_sda),            // Serial Data (same pin as below, split for convenience)
 	.SDA_out(sda_out),              // Serial Data (same pin as above, split for convenience)
@@ -255,24 +305,48 @@ endmodule
 
 // Mapper 18, Jaleco SS88006
 module Mapper18(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                   // Read / write signals
-	input [7:0] prg_din,
-	output [7:0] prg_dout,
-	output prg_allow,                            // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                      		// Allow write
-	output reg vram_a10,                         // Value for A10 address line
-	output vram_ce,                     			// True if the address should be routed to the internal 2kB VRAM.
-	output reg irq
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? prg_dout : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire irq;
+wire [7:0] prg_dout;
+wire vram_ce;
+reg [15:0] flags_out = 0;
 
 reg [7:0] prg_bank_0, prg_bank_1, prg_bank_2;
 reg [7:0] chr_bank_0, chr_bank_1, chr_bank_2, chr_bank_3,
@@ -286,7 +360,7 @@ reg [15:0] irq_counter;
 reg [1:0] ram_enable;
 
 always @(posedge clk)
-if (reset) begin
+if (~enable) begin
 	prg_bank_0 <= 8'hFF;
 	prg_bank_1 <= 8'hFF;
 	prg_bank_2 <= 8'hFF;
@@ -418,175 +492,48 @@ assign vram_ce = chr_ain[13];
 
 endmodule
 
-// Tepples/Multi-discrete mapper
-// This mapper can emulate other mappers,  such as mapper #0, mapper #2
-module Mapper28(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                       // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                      // Enable access to memory for the specified operation.
-	output prg_open_bus,                   // PRG Data not driven
-	output prg_conflict,                   // PRG Bus Conflict
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output reg [7:0] chr_dout,
-	output has_chr_dout,
-	output chr_allow,                      // Allow write
-	output reg vram_a10,                   // Value for A10 address line
-	output vram_ce                         // True if the address should be routed to the internal 2kB VRAM.
-);
-
-reg [6:0] a53prg;    // output PRG ROM (A14-A20 on ROM)
-reg [1:0] a53chr;    // output CHR RAM (A13-A14 on RAM)
-
-reg [3:0] inner;    // "inner" bank at 01h
-reg [5:0] mode;     // mode register at 80h
-reg [5:0] outer;    // "outer" bank at 81h
-reg [2:0] selreg;   // selector register
-reg [3:0] security; // selector register
-
-// Allow writes to 0x5000 only when launching through the proper mapper ID.
-wire [7:0] mapper = flags[7:0];
-wire allow_select = (mapper == 8'd28);
-wire extend_bit = (mapper == 97);
-
-always @(posedge clk)
-if (reset) begin
-	mode[5:2] <= 0;         // NROM mode, 32K mode
-	outer[5:0] <= 6'h3f;    // last bank
-	inner <= 0;
-	selreg <= 1;
-
-	// Set value for mirroring
-	if (mapper == 2 || mapper == 0 || mapper == 3 || mapper == 94 || mapper == 180 || mapper == 185)
-		mode[1:0] <= flags[14] ? 2'b10 : 2'b11;
-
-	// UNROM #2 - Current bank in $8000-$BFFF and fixed top half of outer bank in $C000-$FFFF
-	if (mapper == 2) begin
-		mode[5:2] <= 4'b1111; // 256K banks, UNROM mode
-	end
-
-	// CNROM #3 - Fixed PRG bank, switchable CHR bank.
-	if (mapper == 3)
-		selreg <= 0;
-
-	// CNROM #185 - Fixed PRG bank, Fixed CHR Bank, Security.
-	if (mapper == 185)
-		selreg <= 4;
-
-	// UNROM #180 - Fixed first PRG bank, Fixed CHR Bank.
-	if (mapper == 180) begin
-		selreg <= 1;
-		mode[5:2] <= 4'b1110;
-		outer[5:0] <= 6'h00;
-	end
-
-	// IREM TAM-S1 IC #97 - Fixed first PRG bank, Fixed CHR Bank, Mirroring.
-	if (mapper == 97) begin
-		selreg <= 6;
-		mode[5:2] <= 4'b1110;
-		outer[5:0] <= 6'h3F;
-	end
-
-	// IREM TAM-S1 IC #94 - Fixed last PRG bank, Fixed CHR Bank
-	if (mapper == 94) begin
-		selreg <= 7;
-		mode[5:2] <= 4'b1111;
-	end
-
-	// AxROM #7 - Switch 32kb rom bank + switchable nametables
-	if (mapper == 7) begin
-		mode[1:0] <= 2'b00;   // Switchable VRAM page.
-		mode[5:2] <= 4'b1100; // 256K banks, (B)NROM mode
-		outer[5:0] <= 6'h00;
-	end
-end else if (ce) begin
-	if ((prg_ain[15:12] == 4'h5) & prg_write && allow_select)
-			selreg <= {1'b0,prg_din[7], prg_din[0]};        // select register
-	if (prg_ain[15] & prg_write) begin
-		casez (selreg)
-			3'b000:  {mode[0], a53chr}  <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[1:0]};     // CHR RAM bank
-			3'b001:  {mode[0], inner}   <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[3:0]};     // "inner" bank
-			3'b010:  {mode}             <= {prg_din[5:0]};                                       // mode register
-			3'b011:  {outer}            <= {prg_din[5:0]};                                       // "outer" bank
-			3'b10?:  {security}         <= {prg_din[5:4],prg_din[1:0]};                          // security
-			3'b110:  {mode[1:0],inner}  <= {prg_din[7] ^ prg_din[6], prg_din[6], prg_din[3:0]};  // "inner" bank
-			3'b111:  {inner}            <= {prg_din[5:2]};                                       // "inner" bank
-		endcase
-	end
-end
-
-always begin
-	// mirroring mode
-	casez(mode[1:0])
-		2'b0? : vram_a10 = {mode[0]};        // 1 screen lower
-		2'b10 : vram_a10 = {chr_ain[10]};    // vertical
-		2'b11 : vram_a10 = {chr_ain[11]};    // horizontal
-	endcase
-
-	// PRG ROM bank size select
-	casez({mode[5:2], prg_ain[14]})
-		5'b00_0?_?: a53prg = {outer[5:0],             prg_ain[14]};  // 32K banks, (B)NROM mode
-		5'b01_0?_?: a53prg = {outer[5:1], inner[0],   prg_ain[14]};  // 64K banks, (B)NROM mode
-		5'b10_0?_?: a53prg = {outer[5:2], inner[1:0], prg_ain[14]};  // 128K banks, (B)NROM mode
-		5'b11_0?_?: a53prg = {outer[5:3], inner[2:0], prg_ain[14]};  // 256K banks, (B)NROM mode
-
-		5'b00_10_1,
-		5'b00_11_0: a53prg = {outer[5:0], inner[0]};                 // 32K banks, UNROM mode
-		5'b01_10_1,
-		5'b01_11_0: a53prg = {outer[5:1], inner[1:0]};               // 64K banks, UNROM mode
-		5'b10_10_1,
-		5'b10_11_0: a53prg = {outer[5:2], inner[2:0]};               // 128K banks, UNROM mode
-		5'b11_10_1,
-		5'b11_11_0: a53prg = {outer[5:3], inner[3:0]};               // 256K banks, UNROM mode
-
-		default: a53prg = {outer[5:0], extend_bit ? outer[0] : prg_ain[14]};  // 16K fixed bank
-	endcase
-
-	chr_dout = 8'hFF;//chr_ain[7:0]; // return open bus = LSB of address? below when CHR disabled by security
-end
-
-assign vram_ce = chr_ain[13];
-assign prg_aout = {1'b0, (a53prg & 7'b0011111), prg_ain[13:0]};
-assign prg_allow = prg_ain[15] && !prg_write;
-assign prg_conflict = prg_ain[15] && (mapper == 3) && (submapper != 1);
-assign prg_open_bus = (prg_ain[15:13] == 3'b011) && (mapper == 7);
-assign chr_allow = flags[15];
-assign chr_aout = {7'b10_0000_0, a53chr, chr_ain[12:0]};
-wire [4:0] submapper = flags[24:21];
-assign has_chr_dout = (mapper == 185) && (((submapper == 0) && (security[1:0] == 2'b00))
-		|| ((submapper == 4) && (security[1:0] != 2'b00))
-		|| ((submapper == 5) && (security[1:0] != 2'b01))
-		|| ((submapper == 6) && (security[1:0] != 2'b10))
-		|| ((submapper == 7) && (security[1:0] != 2'b11)));
-
-endmodule
-
-
 // 32 - IREM
 module Mapper32(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                   // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                            // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                      // Allow write
-	output reg vram_a10,                         // Value for A10 address line
-	output vram_ce                             // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+reg [15:0] flags_out = 0;
 
 reg [4:0] prgreg0;
 reg [4:0] prgreg1;
@@ -605,7 +552,7 @@ reg [4:0] prgsel;
 reg [7:0] chrsel;
 
 always @(posedge clk)
-if (reset) begin
+if (~enable) begin
 		prgmode <= 1'b0;
 end else if (ce) begin
 	if ((prg_ain[15:14] == 2'b10) & prg_write) begin
@@ -666,23 +613,48 @@ endmodule
 
 // Mapper 42, used for hacked FDS games converted to cartridge form
 module Mapper42(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                     // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                    // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                    // Allow write
-	output vram_a10,                     // Value for A10 address line
-	output vram_ce,                      // True if the address should be routed to the internal 2kB VRAM.
-	output reg irq
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire irq;
+reg [15:0] flags_out = 0;
+
 
 reg [3:0] prg_bank;
 reg [3:0] chr_bank;
@@ -692,7 +664,7 @@ reg irq_enable;
 reg [14:0] irq_counter;
 
 always @(posedge clk)
-if (reset) begin
+if (~enable) begin
 	prg_bank <= 0;
 	chr_bank <= 0;
 	mirroring <= flags[14];
@@ -747,23 +719,47 @@ endmodule
 
 // Mapper 65, IREM H3001
 module Mapper65(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                             // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                            // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                            // Allow write
-	output reg vram_a10,                         // Value for A10 address line
-	output vram_ce,                              // True if the address should be routed to the internal 2kB VRAM.
-	output reg irq
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire irq;
+reg [15:0] flags_out = 0;
 
 reg [7:0] prg_bank_0, prg_bank_1, prg_bank_2;
 reg [7:0] chr_bank_0, chr_bank_1, chr_bank_2, chr_bank_3,
@@ -775,7 +771,7 @@ reg [15:0] irq_reload;
 reg [15:0] irq_counter;
 
 always @(posedge clk)
-if (reset) begin
+if (~enable) begin
 	prg_bank_0 <= 8'h00;
 	prg_bank_1 <= 8'h01;
 	prg_bank_2 <= 8'hFE;
@@ -863,28 +859,54 @@ endmodule
 
 // 41 - Caltron 6-in-1
 module Mapper41(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                   // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                  // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                  // Allow write
-	output vram_a10,                   // Value for A10 address line
-	output vram_ce                     // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+reg [15:0] flags_out = 0;
+
 
 reg [2:0] prg_bank;
 reg [1:0] chr_outer_bank, chr_inner_bank;
 reg mirroring;
 
-always @(posedge clk) if (reset) begin
+always @(posedge clk)
+if (~enable) begin
 	prg_bank <= 0;
 	chr_outer_bank <= 0;
 	chr_inner_bank <= 0;
@@ -907,93 +929,48 @@ assign prg_allow = prg_ain[15] && !prg_write;
 
 endmodule
 
-
-// #105 - NES-EVENT. Retrofits an MMC3 with lots of extra logic.
-module NesEvent(
-	input clk,
-	input ce,
-	input reset,
-	input [15:0] prg_ain,
-	output reg [21:0] prg_aout,
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	input [3:0] mmc1_chr,                   // Upper 4 CHR output control bits from MMC chip
-	input [21:0] mmc1_aout,                 // PRG output address from MMC chip
-	output irq
-);
-
-// $A000-BFFF:   [...I OAA.]
-//      I = IRQ control / initialization toggle
-//      O = PRG Mode/Chip select
-//      A = PRG Reg 'A'
-// Mapper gets "initialized" by setting I bit to 0 then to 1.
-// On powerup and reset, the first 32k of PRG (from the first PRG chip) is selected at $8000 *no matter what*.
-// PRG cannot be swapped until the mapper has been "initialized" by setting the 'I' bit to 0, then to '1'.  This
-// toggling will "unlock" PRG swapping on the mapper.
-reg unlocked, old_val;
-reg [29:0] counter;
-
-reg [3:0] oldbits;
-always @(posedge clk) if (reset) begin
-	old_val <= 0;
-	unlocked <= 0;
-	counter <= 0;
-end else if (ce) begin
-	// Handle unlock.
-	if (mmc1_chr[3] && !old_val) unlocked <= 1;
-	old_val <= mmc1_chr[3];
-	// The 'I' bit in $A000 controls the IRQ counter.  When cleared, the IRQ counter counts up every cycle. When
-	// set, the IRQ counter is reset to 0 and stays there (does not count), and the pending IRQ is acknowledged.
-	counter <= mmc1_chr[3] ? 1'd0 : counter + 1'd1;
-
-	if (mmc1_chr != oldbits) begin
-	oldbits <= mmc1_chr;
-	end
-end
-
-// In the official tournament, 'C' was closed, and the others were open, so the counter had to reach $2800000.
-assign irq = (counter[29:25] == 5'b10100);
-
-always begin
-	if (!prg_ain[15]) begin
-		// WRAM is always routed as usual.
-		prg_aout = mmc1_aout;
-	end else if (!unlocked) begin
-		// Not initialized yet, mapper switch disabled.
-		prg_aout = {7'b00_0000_0, prg_ain[14:0]};
-	end else if (mmc1_chr[2] == 0) begin
-		// O=0: Use first PRG chip (first 128k), use 'A' PRG Reg, 32k swap
-		prg_aout = {5'b00_000, mmc1_chr[1:0], prg_ain[14:0]};
-	end else begin
-		// O=1: Use second PRG chip (second 128k), use 'B' PRG Reg, MMC1 style swap
-		prg_aout = mmc1_aout;
-	end
-end
-
-// 8kB CHR RAM.
-assign chr_aout = {9'b10_0000_000, chr_ain[12:0]};
-
-endmodule
-
-
 // 218 - Magic Floor
 module Mapper218(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                   // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                  // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                  // Allow write
-	output vram_a10,                   // Value for A10 address line
-	output vram_ce                     // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+reg [15:0] flags_out = 0;
 
 assign prg_aout = {7'b00_0000_0, prg_ain[14:0]};
 assign chr_allow =1'b1;
@@ -1006,22 +983,47 @@ endmodule
 
 // iNES Mapper 228 represents the board used by Active Enterprises for Action 52 and Cheetahmen II.
 module Mapper228(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                   // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                  // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                  // Allow write
-	output vram_a10,                   // Value for A10 address line
-	output vram_ce                     // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+reg [15:0] flags_out = 0;
+
 
 reg mirroring;
 reg [1:0] prg_chip;
@@ -1029,7 +1031,7 @@ reg [4:0] prg_bank;
 reg prg_bank_mode;
 reg [5:0] chr_bank;
 always @(posedge clk)
-if (reset) begin
+if (~enable) begin
 	{mirroring, prg_chip, prg_bank, prg_bank_mode} <= 0;
 	chr_bank <= 0;
 end else if (ce) begin
@@ -1052,27 +1054,52 @@ endmodule
 
 
 module Mapper234(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                   // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                  // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                  // Allow write
-	output vram_a10,                   // Value for A10 address line
-	output vram_ce                     // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+reg [15:0] flags_out = 0;
+
 
 reg [2:0] block, inner_chr;
 reg mode, mirroring, inner_prg;
 always @(posedge clk)
-if (reset) begin
+if (~enable) begin
 	block <= 0;
 	{mode, mirroring} <= 0;
 	inner_chr <= 0;
@@ -1106,22 +1133,47 @@ endmodule
 // 92 - Jaleco JF-19 -- no audio samples
 // 72 - Jaleco JF-17 -- no audio samples
 module Mapper72(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                   // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                  // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                  // Allow write
-	output vram_a10,                   // Value for A10 address line
-	output vram_ce                     // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+reg [15:0] flags_out = 0;
+
 
 reg [3:0] prg_bank;
 reg [3:0] chr_bank;
@@ -1131,7 +1183,7 @@ reg last_chr;
 wire mapper72 = (mapper == 72);
 
 always @(posedge clk)
-if (reset) begin
+if (~enable) begin
 	prg_bank <= 0;
 	chr_bank <= 0;
 	last_prg <= 0;

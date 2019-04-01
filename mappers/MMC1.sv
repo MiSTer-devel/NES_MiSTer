@@ -1,22 +1,48 @@
 // MMC1 mapper chip. Maps prg or chr addresses into a linear address.
+
 // If vram_ce is set, {vram_a10, chr_aout[9:0]} are used to access the NES internal VRAM instead.
 module MMC1(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                   // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                            // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                      // Allow write
-	output vram_a10,                             // Value for A10 address line
-	output vram_ce                             // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+reg [15:0] flags_out = 0;
+
 reg [4:0] shift;
 
 // CPPMM
@@ -51,7 +77,7 @@ wire [2:0] prg_size = flags[10:8];
 
 // Update shift register
 always @(posedge clk) 
-	if (reset) begin
+	if (~enable) begin
 		shift <= 5'b10000;
 		control <= 5'b0_11_00;
 		chr_bank_0 <= 0;
@@ -129,5 +155,119 @@ wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]};
 
 assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
 assign chr_allow = flags[15];
+
+endmodule
+
+
+// #105 - NES-EVENT. Retrofits an MMC1 with lots of extra logic.
+module NesEvent(
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+);
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+
+wire [21:0] chr_aout;
+reg [21:0] prg_aout;
+wire [21:0] mmc1_chr_addr;
+wire [3:0] mmc1_chr = mmc1_chr_addr[16:13]; // Upper 4 CHR output control bits from MMC chip
+wire [21:0] mmc1_aout;                 // PRG output address from MMC chip
+wire irq;
+
+MMC1 mmc1_nesevent(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (enable),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (mmc1_aout),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (mmc1_chr_addr),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_b)
+);
+
+// $A000-BFFF:   [...I OAA.]
+//      I = IRQ control / initialization toggle
+//      O = PRG Mode/Chip select
+//      A = PRG Reg 'A'
+// Mapper gets "initialized" by setting I bit to 0 then to 1.
+// On powerup and reset, the first 32k of PRG (from the first PRG chip) is selected at $8000 *no matter what*.
+// PRG cannot be swapped until the mapper has been "initialized" by setting the 'I' bit to 0, then to '1'.  This
+// toggling will "unlock" PRG swapping on the mapper.
+reg unlocked, old_val;
+reg [29:0] counter;
+
+reg [3:0] oldbits;
+always @(posedge clk)
+if (~enable) begin
+	old_val <= 0;
+	unlocked <= 0;
+	counter <= 0;
+end else if (ce) begin
+	// Handle unlock.
+	if (mmc1_chr[3] && !old_val) unlocked <= 1;
+	old_val <= mmc1_chr[3];
+	// The 'I' bit in $A000 controls the IRQ counter.  When cleared, the IRQ counter counts up every cycle. When
+	// set, the IRQ counter is reset to 0 and stays there (does not count), and the pending IRQ is acknowledged.
+	counter <= mmc1_chr[3] ? 1'd0 : counter + 1'd1;
+
+	if (mmc1_chr != oldbits) begin
+	oldbits <= mmc1_chr;
+	end
+end
+
+// In the official tournament, 'C' was closed, and the others were open, so the counter had to reach $2800000.
+assign irq = (counter[29:25] == 5'b10100);
+
+always begin
+	if (!prg_ain[15]) begin
+		// WRAM is always routed as usual.
+		prg_aout = mmc1_aout;
+	end else if (!unlocked) begin
+		// Not initialized yet, mapper switch disabled.
+		prg_aout = {7'b00_0000_0, prg_ain[14:0]};
+	end else if (mmc1_chr[2] == 0) begin
+		// O=0: Use first PRG chip (first 128k), use 'A' PRG Reg, 32k swap
+		prg_aout = {5'b00_000, mmc1_chr[1:0], prg_ain[14:0]};
+	end else begin
+		// O=1: Use second PRG chip (second 128k), use 'B' PRG Reg, MMC1 style swap
+		prg_aout = mmc1_aout;
+	end
+end
+
+// 8kB CHR RAM.
+assign chr_aout = {9'b10_0000_000, chr_ain[12:0]};
 
 endmodule

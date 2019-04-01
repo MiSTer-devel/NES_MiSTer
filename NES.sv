@@ -382,7 +382,7 @@ always @(posedge clk) nes_ce <= nes_ce + 1'd1;
 NES nes
 (
 	clk, reset_nes, run_nes,
-	mapper_flags,
+	downloading ? 25'd0 : mapper_flags,
 	sample, color,
 	joypad_strobe, joypad_clock, {powerpad_d4[0],powerpad_d3[0],joypad_bits2[0],joypad_bits[0]}, mic,
 	fds_swap,

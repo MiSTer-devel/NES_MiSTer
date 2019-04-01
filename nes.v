@@ -293,10 +293,50 @@ module NES(input clk, input reset, input ce,
   wire [15:0] sample_ext;
   reg [16:0] sample_sum;
   assign sample = sample_sum[16:1]; //loss of 1 bit of resolution.  Add control for when no external audio to boost back up?
-  cart_top multi_mapper(clk, cart_ce, ce, reset, mapper_ppu_flags, mapper_flags,
-                           prg_addr, prg_linaddr, prg_read, prg_write, prg_din, prg_dout_mapper, from_data_bus, prg_allow, prg_open_bus, prg_conflict,
-                           chr_read, chr_write, chr_from_ppu, chr_addr, chr_linaddr, chr_from_ppu_mapper, has_chr_from_ppu_mapper, chr_allow,
-                           vram_a10, vram_ce, bram_addr, bram_din, bram_dout, bram_write, bram_override, mapper_irq, sample_ext, fds_swap);
+  
+  cart_top multi_mapper (
+    // FPGA specific
+    .clk               (clk), 
+    .reset             (reset),
+    .flags             (mapper_flags),        // iNES header data (use 0 while loading)
+    .ppuflags          (mapper_ppu_flags),    // Cheat for MMC5
+    // Cart pins (slightly abstracted)
+    .ce                (cart_ce & ~reset),    // M2 (held in high impedance during reset)
+    .ppu_ce            (ce),                  // PPU Clock
+    .prg_ain           (prg_addr), 
+    .prg_aout          (prg_linaddr), 
+    .prg_read          (prg_read), 
+    .prg_write         (prg_write), 
+    .prg_din           (prg_din), 
+    .prg_dout          (prg_dout_mapper), 
+    .prg_from_ram      (from_data_bus), 
+    .prg_allow         (prg_allow), 
+    .chr_read          (chr_read),
+    .chr_write         (chr_write), 
+    .chr_din           (chr_from_ppu), 
+    .chr_ain           (chr_addr), 
+    .chr_aout          (chr_linaddr), 
+    .chr_dout          (chr_from_ppu_mapper), 
+    .chr_allow         (chr_allow),
+    .vram_a10          (vram_a10), 
+    .vram_ce           (vram_ce),
+    .irq               (mapper_irq),
+    .audio_in          (16'h0),              // Amplified and inverted APU audio
+    .audio             (sample_ext),
+    // Output flags
+    .has_chr_dout      (has_chr_from_ppu_mapper), 
+    .prg_open_bus      (prg_open_bus),
+    .prg_conflict      (prg_conflict),
+    // External hardware interface (EEPROM)
+    .mapper_addr       (bram_addr), 
+    .mapper_data_in    (bram_din), 
+    .mapper_data_out   (bram_dout), 
+    .mapper_prg_write  (bram_write), 
+    .mapper_ovr        (bram_override), 
+    // User input
+    .fds_swap          (fds_swap)
+  );
+
   assign chr_to_ppu = has_chr_from_ppu_mapper ? chr_from_ppu_mapper : memory_din_ppu;
                              
   // Mapper IRQ seems to be delayed by one PPU clock.   
