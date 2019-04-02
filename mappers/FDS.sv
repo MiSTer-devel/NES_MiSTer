@@ -221,36 +221,71 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	assign prg_allow = (nesprg_we & (Wstate==2 | (prgain[15]^(&prgain[14:13]))))
 					| (~nesprg_we & ((prgain[15] & !match3 & !match4 & !match7 & !match8 & !match9) | prgain[15:13]==3));
 
-	reg write_en;
-	reg vertical;
-	reg timer_irq_en;
-	reg timer_irq_repeat;
-	reg diskreset;
-	reg [15:0] timerlatch;
-	always@(posedge clk20) begin
-		if(ce & nesprg_we)
-		case(prgain)
-			16'h4020:
-				timerlatch[7:0]<=nesprgdin;
-			16'h4021:
-				timerlatch[15:8]<=nesprgdin;
-			16'h4022:
-				begin
-					timer_irq_repeat<=nesprgdin[0];
-					timer_irq_en<=nesprgdin[1];
-				end
-			//16'h4024: //disk data write
-			16'h4025:   //disk control
-				begin
-					diskreset<=nesprgdin[1];
-					write_en<=!nesprgdin[2];
-					vertical<=!nesprgdin[3];
-					//disk_irq_en<=nesprgdin[7];
-				end
-			16'h4027:   //powerpak extra: disk side
-					diskside_auto<=nesprgdin[1:0];
-		endcase
-	end
+    reg write_en;
+    reg vertical;
+    reg timer_irq_en;
+    reg timer_irq_repeat;
+    reg diskreset;
+    reg disk_reg_en;
+    reg [15:0] timerlatch;
+    reg [15:0] timer;
+    always@(posedge clk20) begin
+        if (ce) begin
+
+            if (timer_irq_en) begin
+                if (timer == 0) begin
+                    timer_irq <= 1;
+                    timer <= timerlatch;
+                    if (~timer_irq_repeat) begin
+                        timer_irq_en <= 0;
+                    end
+                end else begin
+                    timer <= timer - 1'd1;
+                end
+            end
+
+            if(nesprg_we)
+                case(prgain)
+                    16'h4020:
+                        timerlatch[7:0]<=nesprgdin;
+                    16'h4021:
+                        timerlatch[15:8]<=nesprgdin;
+                    16'h4022:
+                        begin
+                            timer_irq_repeat<=nesprgdin[0];
+                            timer_irq_en<=nesprgdin[1] & disk_reg_en;
+
+                            if (nesprgdin[1] & disk_reg_en) begin
+                                timer <= timerlatch;
+                            end else begin
+                                timer_irq <= 0;
+                            end
+                        end
+                    16'h4023: begin
+                            disk_reg_en <=nesprgdin[0];
+                            if (~nesprgdin[0]) begin
+                                timer_irq_en <= 0;
+                                timer_irq <= 0;
+                            end
+                        end
+                    //16'h4024: //disk data write
+                    16'h4025:   //disk control
+                        begin
+                            diskreset<=nesprgdin[1];
+                            write_en<=!nesprgdin[2];
+                            vertical<=!nesprgdin[3];
+                            //disk_irq_en<=nesprgdin[7];
+                        end
+                    16'h4027:   //powerpak extra: disk side
+                            diskside_auto<=nesprgdin[1:0];
+                endcase
+        end
+
+        if (m2) begin
+            if (~nesprg_we & prgain==16'h4030)
+                timer_irq <= 0;
+        end
+    end
 
 	//watch for disk read/write
 	always@(posedge clk20) begin
@@ -264,25 +299,6 @@ module MAPFDS(              //signal descriptions in powerpak.v
 		else                                                    Rstate<=0;
 
 		if(Wstate==2) saved<=1;
-		end
-	end
-
-	//timer irq
-	reg [15:0] timer;
-	wire timer_irq_trip=timer_irq_en & timer==1;
-	always@(posedge clk20) begin
-		if (ce) begin
-		if((nesprg_we & prgain==16'h4022) | (timer_irq_trip & timer_irq_repeat))
-			timer<=timerlatch;
-		else if(timer_irq_en & timer!=0)
-			timer<=timer-1'd1;
-		end
-
-		if (m2) begin
-		if(~nesprg_we & prgain==16'h4030)
-			timer_irq<=0;
-		else if(timer_irq_trip)
-			timer_irq<=1;
 		end
 	end
 
