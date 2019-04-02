@@ -376,6 +376,7 @@ reg [17:0] mod_accum;
 reg        mod_step;
 reg  [2:0] mod_table[0:31];
 reg signed [6:0] mod_bias;
+reg signed [6:0] mod_incr;
 reg        mod_disable;
 
 // Wave Table
@@ -431,12 +432,24 @@ always_comb begin
 			'h4092: data_out = {2'b01, sweep_gain};
 			'h4093: data_out = {1'b0, mod_accum[11:5]};
 			'h4094: data_out = wave_pitch[11:4];
-			'h4095: data_out = {cycles, 1'b0, mod_table[mod_accum[17:13]]};
+			'h4095: data_out = {cycles, mod_incr[3:0]};
 			'h4096: data_out = {2'b01, wave_table[wave_accum[23:18]]};
 			'h4097: data_out = {1'b0, mod_bias};
 			default: data_out = 8'b0100_0000;
 		endcase
 	end
+
+	case (mod_table[mod_accum[17:13]])
+		3'h0: mod_incr = 0;
+		3'h1: mod_incr = 7'sd1;
+		3'h2: mod_incr = 7'sd2;
+		3'h3: mod_incr = 7'sd4;
+		3'h4: mod_incr = -7'sd4;
+		3'h5: mod_incr = -7'sd4;
+		3'h6: mod_incr = -7'sd2;
+		3'h7: mod_incr = -7'sd1;
+		default: mod_incr = 0;
+	endcase
 end
 
 always_ff @(posedge clk) begin
@@ -499,16 +512,11 @@ end else if (~old_m2 & m2) begin
 
 	//**** Modulation ****//
 	if ((&cycles && mod_acc_next[12]) || mod_step) begin
-		case (mod_table[mod_accum[17:13]])
-			3'h0: mod_bias <= mod_bias;
-			3'h1: mod_bias <= mod_bias + 7'sd1;
-			3'h2: mod_bias <= mod_bias + 7'sd2;
-			3'h3: mod_bias <= mod_bias + 7'sd4;
-			3'h4: mod_bias <= 7'h0;
-			3'h5: mod_bias <= mod_bias - 7'sd4;
-			3'h6: mod_bias <= mod_bias - 7'sd2;
-			3'h7: mod_bias <= mod_bias - 7'sd1;
-		endcase
+		if (mod_table[mod_accum[17:13]] == 3'h4) begin
+			mod_bias <= 0;
+		end else begin
+			mod_bias <= mod_bias + mod_incr;
+		end
 	end
 
 	//**** Latches ****//
