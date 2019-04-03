@@ -260,11 +260,9 @@ reg latch_0, latch_1;
 
 // Update registers
 always @(posedge clk) 
-if (~enable)
-	{prg_bank, chr_bank_0a, chr_bank_0b, chr_bank_1a, chr_bank_1b, mirroring} <= 0;
-else if (ce) begin
+if (ce) begin
 	if (~enable)
-		prg_bank <= 4'b1110;	  
+		prg_bank <= 4'b1110;
 	else if (prg_write && prg_ain[15]) begin
 		case(prg_ain[14:12])
 			2: prg_bank <= prg_din[3:0];     // $A000
@@ -282,9 +280,7 @@ end
 // PPU reads $1FD8 through $1FDF: latch 1 is set to $FD for subsequent reads
 // PPU reads $1FE8 through $1FEF: latch 1 is set to $FE for subsequent reads
 always @(posedge clk)
-if (~enable)
-	{latch_0, latch_1} <= 0;
-else if (ce && chr_read) begin
+if (ce & chr_read) begin
 	latch_0 <= (chr_ain & 14'h3ff8) == 14'h0fd8 ? 1'd0 : (chr_ain & 14'h3ff8) == 14'h0fe8 ? 1'd1 : latch_0;
 	latch_1 <= (chr_ain & 14'h3ff8) == 14'h1fd8 ? 1'd0 : (chr_ain & 14'h3ff8) == 14'h1fe8 ? 1'd1 : latch_1;
 end

@@ -661,10 +661,13 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
 //  end
 
  
-  always @(posedge clk) if (ce) begin
+  always @(posedge clk) 
+  if (ce) begin
 //    if (!is_in_vblank && write)
 //      $write("%d/%d: $200%d <= %x\n", scanline, cycle, ain, din);
-    if (write) begin
+    if (reset) begin
+      vbl_enable <= 0;
+    end else if (write) begin
       case (ain)
       0: begin // PPU Control Register 1
       // t:....BA.. ........ = d:......BA

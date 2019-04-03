@@ -154,7 +154,7 @@ assign audio_b      = enable ? audio_in : 16'hZ;
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
 wire chr_allow;
-wire vram_a10;
+reg vram_a10;
 wire vram_ce;
 reg [15:0] flags_out = 0;
 
@@ -493,7 +493,7 @@ assign audio_b      = enable ? audio_in : 16'hZ;
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
 wire chr_allow;
-wire vram_a10;
+reg vram_a10;
 wire vram_ce;
 reg [15:0] flags_out = 0;
 
@@ -722,7 +722,7 @@ assign audio_b      = enable ? audio_in : 16'hZ;
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
 wire chr_allow;
-wire vram_a10;
+reg vram_a10;
 wire vram_ce;
 reg [15:0] flags_out = 0;
 

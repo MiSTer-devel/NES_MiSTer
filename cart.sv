@@ -22,20 +22,20 @@ module cart_top (
 	input             reset,
 	input      [19:0] ppuflags,       // Misc flags from PPU for MMC5 cheating
 	input      [31:0] flags,          // Misc flags from ines header {prg_size(3), chr_size(3), mapper(8)}
-	input      [15:0] prg_ain,
+	input      [15:0] prg_ain,        // Better known as "CPU Address in"
 	output reg [21:0] prg_aout,       // PRG Input / Output Address Lines
 	input             prg_read,       // PRG Read / write signals
 	input             prg_write,
-	input       [7:0] prg_din,
-	output reg  [7:0] prg_dout,       // PRG Data
+	input       [7:0] prg_din,        // CPU Data In
+	output reg  [7:0] prg_dout,       // CPU Data Out
 	input       [7:0] prg_from_ram,   // PRG Data from RAM
 	output reg        prg_allow,      // PRG Allow write access
 	output reg        prg_open_bus,   // PRG Data Not Driven
 	output reg        prg_conflict,   // PRG Data is ROM & prg_din
 	input             chr_read,       // Read from CHR
 	input             chr_write,      // Write to CHR
-	input       [7:0] chr_din,
-	input      [13:0] chr_ain,
+	input       [7:0] chr_din,        // PPU Data In
+	input      [13:0] chr_ain,        // Better known as "PPU Address in"
 	output reg [21:0] chr_aout,       // CHR Input / Output Address Lines
 	output reg  [7:0] chr_dout,       // Value to override CHR data with
 	output reg        has_chr_dout,   // True if CHR data should be overridden
@@ -53,13 +53,38 @@ module cart_top (
 	input             fds_swap        // FDS Disk Swap Pause
 );
 
-tri prg_allow_b, vram_a10_b, vram_ce_b, chr_allow_b, irq_b;
-tri [21:0] prg_addr_b, chr_addr_b;
-tri [15:0] flags_out_b, audio_out_b;
-tri [7:0] prg_dout_b, chr_dout_b;
+// module cart_top (
+// 	output       CIC_toMB,
+// 	input        CIC_toPak,
+// 	input        CIC_CLK,
+// 	input        CIC_RST_n,
+// 	input  [7:0] PPU_data_in,
+// 	input  [7:0] PPU_data_out,
+// 	input [13:0] PPU_addr,
+// 	input        PPU_a13_n,
+// 	input        PPU_rd_n,
+// 	input        PPU_wr_n,
+// 	output       CIRAM_a10,
+// 	output       CIRAM_ce_n,
+// 	input        ROMSEL_n,       // ~(cpu_addr[15] & m2)
+// 	output       IRQ_n,
+// 	input        CPU_rnw,        // 
+// 	input [14:0] CPU_addr,       // CPU Bus Address
+// 	input  [7:0] CPU_data_in,    // CPU BUS Data inout.
+// 	output [7:0] CPU_data_out,   // CPU BUS Data inout.
+// 	input        M2,             // CPU phi2 (slightly delayed)
+// 	input        clk_sys         // Only on 72 pin connectors, 21mhz NTSC or 27mhz PAL
+// );
+
+trireg prg_allow_b, vram_a10_b, vram_ce_b, chr_allow_b, irq_b;
+trireg [21:0] prg_addr_b, chr_addr_b;
+trireg [15:0] flags_out_b, audio_out_b;
+trireg [7:0] prg_dout_b, chr_dout_b;
 
 // This mapper used to be default if no other mapper was found
 // It seems MMC0 is handled by map28. Does it have any purpose?
+// flags_out_b will be high if no other mappers are selected, so we use that.
+wire [15:0] mmc0_flags;
 MMC0 mmc0(
 	.clk        (clk),
 	.ce         (ce),
@@ -78,14 +103,14 @@ MMC0 mmc0(
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
 	.irq_b      (irq_b),
-	.flags_out_b(flags_out_b),
+	.flags_out_b(mmc0_flags),
 	.audio_in   (audio_in),
 	.audio_b    (audio_out_b)
 );
 
 //*****************************************************************************//
 // Name   : MMC1                                                               //
-// Mappers: 1                                                                  //
+// Mappers: 1, 155                                                             //
 // Status : Working                                                            //
 // Notes  :                                                                    //
 // Games  : Simon's Quest                                                      //
@@ -93,7 +118,7 @@ MMC0 mmc0(
 MMC1 mmc1(
 	.clk        (clk),
 	.ce         (ce),
-	.enable     (me[1]),
+	.enable     (me[155] | me[1]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
@@ -214,7 +239,7 @@ Mapper32 map32(
 //*****************************************************************************//
 MMC2 mmc2(
 	.clk        (clk),
-	.ce         (ppu_ce),
+	.ce         (ppu_ce), // PPU_CE
 	.enable     (me[9]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
@@ -249,7 +274,7 @@ wire mmc3_en = me[118] | me[119] | me[47] | me[206] | me[112] | me[88] | me[154]
 
 MMC3 mmc3 (
 	.clk        (clk),
-	.ce         (ppu_ce),
+	.ce         (ppu_ce), // PPU CE
 	.enable     (mmc3_en),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
@@ -279,7 +304,7 @@ MMC3 mmc3 (
 //*****************************************************************************//
 MMC4 mmc4(
 	.clk        (clk),
-	.ce         (ppu_ce),
+	.ce         (ppu_ce), // PPU_CE
 	.enable     (me[10]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
@@ -337,11 +362,11 @@ MMC5 mmc5(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : CPROM                                                              //
+// Mappers: 13                                                                 //
+// Status : Working                                                            //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Videomation                                                        //
 //*****************************************************************************//
 Mapper13 map13(
 	.clk        (clk),
@@ -367,11 +392,11 @@ Mapper13 map13(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Mapper 15                                                          //
+// Mappers: 15                                                                 //
+// Status : Working                                                            //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Bao Xiao San Guo                                                   //
 //*****************************************************************************//
 Mapper15 map15(
 	.clk        (clk),
@@ -397,11 +422,11 @@ Mapper15 map15(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Bandai 16                                                          //
+// Mappers: 159, 16                                                            //
+// Status : Working/EEPROM needs testing                                       //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : SD Gundam Gaiden, Dragon Ball 3                                    //
 //*****************************************************************************//
 wire map16_prg_write, map16_ovr;
 wire [7:0] map16_data_out;
@@ -436,11 +461,11 @@ Mapper16 map16(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Jaleco 18                                                          //
+// Mappers: 18                                                                 //
+// Status : Needs Evaluation                                                   //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Pizza Pop!, Plasma Ball, USA Ice Hockey in FC                      //
 //*****************************************************************************//
 Mapper18 map18(
 	.clk        (clk),
@@ -466,11 +491,11 @@ Mapper18 map18(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : BNROM                                                              //
+// Mappers: 34                                                                 //
+// Status : Working                                                            //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Mashou, Deadly Towers                                              //
 //*****************************************************************************//
 Mapper34 map34(
 	.clk        (clk),
@@ -496,11 +521,11 @@ Mapper34 map34(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Mapper 41                                                          //
+// Mappers: 41                                                                 //
+// Status : Working                                                            //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Caltron 6-in-1                                                     //
 //*****************************************************************************//
 Mapper41 map41(
 	.clk        (clk),
@@ -526,11 +551,11 @@ Mapper41 map41(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
-// Notes  :                                                                    //
-// Games  :                                                                    //
+// Name   : Mapper 42                                                          //
+// Mappers: 42                                                                 //
+// Status : Not working                                                        //
+// Notes  : Used for converted FDS carts.                                      //
+// Games  : Love Warrior Nicol, Green Beret (unl)                              //
 //*****************************************************************************//
 Mapper42 map42(
 	.clk        (clk),
@@ -556,11 +581,11 @@ Mapper42 map42(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Irem H3001                                                         //
+// Mappers: 65                                                                 //
+// Status : Needs evaluation                                                   //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Spartan X 2, Daiku no Gen-san 2                                    //
 //*****************************************************************************//
 Mapper65 map65(
 	.clk        (clk),
@@ -586,11 +611,11 @@ Mapper65 map65(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : GxROM                                                              //
+// Mappers: 11, 38, 66, 86, 87, 101, 140                                       //
+// Status : 38/66 - Working, 38/87/101/140 - Needs eval, 86 - No Audio Samples //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Doraemon, Dragon Power                                             //
 //*****************************************************************************//
 wire mapper66_en = me[11] | me[38] | me[86] | me[87] | me[101] | me[140] | me[66];
 Mapper66 map66(
@@ -617,11 +642,11 @@ Mapper66 map66(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Sunsoft-3                                                          //
+// Mappers: 67, 190                                                            //
+// Status : Needs Evaluation                                                   //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Fantasy Zone II, Mito Koumon                                       //
 //*****************************************************************************//
 Mapper67 map67(
 	.clk        (clk),
@@ -647,11 +672,11 @@ Mapper67 map67(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Sunsoft-4                                                          //
+// Mappers: 68                                                                 //
+// Status : Working                                                            //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : After Burner (J), Majaraja                                         //
 //*****************************************************************************//
 Mapper68 map68(
 	.clk        (clk),
@@ -677,11 +702,11 @@ Mapper68 map68(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
-// Notes  :                                                                    //
-// Games  :                                                                    //
+// Name   : Sunsoft FME-7                                                      //
+// Mappers: 69                                                                 //
+// Status : Working*                                                           //
+// Notes  : Audio needs better mixing/processing                               //
+// Games  : Gimmick!, Barcode World, Hebereke                                  //
 //*****************************************************************************//
 Mapper69 map69(
 	.clk        (clk),
@@ -707,11 +732,11 @@ Mapper69 map69(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Codemasters/Camerica                                               //
+// Mappers: 71, 232                                                            //
+// Status : Working                                                            //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Micro Machines, Big Nose the Caveman                               //
 //*****************************************************************************//
 Mapper71 map71(
 	.clk        (clk),
@@ -737,11 +762,11 @@ Mapper71 map71(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Jaleco JF-17                                                       //
+// Mappers: 72, 92                                                             //
+// Status : 72/92 - Needs evaluation/No audio samples.                         //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Pro Tennis (J), Pinball Quest (J), Pro Soccer (J)                  //
 //*****************************************************************************//
 Mapper72 map72(
 	.clk        (clk),
@@ -767,11 +792,11 @@ Mapper72 map72(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Mapper 77                                                          //
+// Mappers: 77                                                                 //
+// Status : Needs Evaluation                                                   //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Napoleon Senki                                                     //
 //*****************************************************************************//
 Mapper77 map77(
 	.clk        (clk),
@@ -799,7 +824,7 @@ Mapper77 map77(
 //*****************************************************************************//
 // Name   : Holy Diver                                                         //
 // Mappers: 78, 70, 152                                                        //
-// Status : /Needs testing overall                                             //
+// Status : Needs testing overall                                             //
 // Notes  : Submapper 1 Requires NES 2.0                                       //
 // Games  : Holy Diver, Uchuusent                                              //
 //*****************************************************************************//
@@ -827,11 +852,11 @@ Mapper78 map78(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : NINA                                                               //
+// Mappers: 79, 113                                                            //
+// Status : Working                                                            //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Tiles of Fate, Dudes with Attitude, Krazy Kreatures                //
 //*****************************************************************************//
 Mapper79 map79(
 	.clk        (clk),
@@ -857,11 +882,11 @@ Mapper79 map79(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Sunsoft                                                            //
+// Mappers: 89, 93, 184                                                        //
+// Status : Needs Evaluation                                                   //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Tenka no Goikenban                                                 //
 //*****************************************************************************//
 Mapper89 map89(
 	.clk        (clk),
@@ -887,11 +912,11 @@ Mapper89 map89(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Magic Dragon                                                       //
+// Mappers: 107                                                                //
+// Status : Needs Evaluation                                                   //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Magic Dragon                                                       //
 //*****************************************************************************//
 Mapper107 map107(
 	.clk        (clk),
@@ -917,15 +942,15 @@ Mapper107 map107(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
-// Notes  :                                                                    //
-// Games  :                                                                    //
+// Name   : Mapper 165                                                         //
+// Mappers: 165                                                                //
+// Status : Corrupt Graphics                                                   //
+// Notes  : Possibly merge-able with MMC3, only used for one bootleg game      //
+// Games  : Fire Emblem Gaiden (unl)                                           //
 //*****************************************************************************//
 Mapper165 map165(
 	.clk        (clk),
-	.ce         (ppu_ce),
+	.ce         (ppu_ce), // PPU_CE
 	.enable     (me[165]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
@@ -947,11 +972,11 @@ Mapper165 map165(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
-// Notes  :                                                                    //
-// Games  :                                                                    //
+// Name   : Magic Floor                                                        //
+// Mappers: 218                                                                //
+// Status : Working                                                            //
+// Notes  : Appears unused in modern packs?                                    //
+// Games  : Magic Floor                                                        //
 //*****************************************************************************//
 Mapper218 map218(
 	.clk        (clk),
@@ -977,11 +1002,11 @@ Mapper218 map218(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Active Enterprises                                                 //
+// Mappers: 228                                                                //
+// Status : Working                                                            //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Cheetamen                                                          //
 //*****************************************************************************//
 Mapper228 map228(
 	.clk        (clk),
@@ -1007,11 +1032,13 @@ Mapper228 map228(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
-// Notes  :                                                                    //
-// Games  :                                                                    //
+// Name   : Maxi 15                                                            //
+// Mappers: 234                                                                //
+// Status : Needs Evaluation                                                   //
+// Notes  : The fact that this mapper needs a different cpu data in concerns me//
+//          either this indicates the mapper is not correctly written or that  //
+//          the system itself is not behaving correctly.                       //
+// Games  : Maxi-15 Pack (unl)                                                 //
 //*****************************************************************************//
 Mapper234 map234(
 	.clk        (clk),
@@ -1022,7 +1049,7 @@ Mapper234 map234(
 	.prg_aout_b (prg_addr_b),
 	.prg_read   (prg_read),
 	.prg_write  (prg_write),
-	.prg_din    (prg_din),
+	.prg_din    (prg_from_ram),
 	.prg_dout_b (prg_dout_b),
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
@@ -1037,11 +1064,11 @@ Mapper234 map234(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
-// Notes  :                                                                    //
-// Games  :                                                                    //
+// Name   : RAMBO1 (Tengen MMC3)                                               //
+// Mappers: 64, 158                                                            //
+// Status : Significant graphical errors                                       //
+// Notes  : Consider merging with MMC3                                         //
+// Games  : Shinobi, Rolling Thunder, Klax                                     //
 //*****************************************************************************//
 Rambo1 rambo1(
 	.clk        (clk),
@@ -1067,11 +1094,11 @@ Rambo1 rambo1(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
-// Notes  :                                                                    //
-// Games  :                                                                    //
+// Name   : NesEvent                                                           //
+// Mappers: 105                                                                //
+// Status : Working                                                            //
+// Notes  : This wraps the MMC1 mapper, consider merging more elegantly        //
+// Games  : Nintedo World Championships 1990 (start hack)                      //
 //*****************************************************************************//
 NesEvent nesev(
 	.clk        (clk),
@@ -1098,11 +1125,11 @@ NesEvent nesev(
 	
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Konami VRC-1                                                       //
+// Mappers: 75                                                                 //
+// Status : Needs Evaluation                                                   //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : King Kong 2, Exciting Boxing, Tetsuwan Atom                        //
 //*****************************************************************************//
 VRC1 vrc1(
 	.clk        (clk),
@@ -1128,11 +1155,11 @@ VRC1 vrc1(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Konami VRC-3                                                       //
+// Mappers: 73                                                                 //
+// Status : Needs Evaluation                                                   //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Salamander (j)                                                     //
 //*****************************************************************************//
 VRC3 vrc3(
 	.clk        (clk),
@@ -1158,11 +1185,11 @@ VRC3 vrc3(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
+// Name   : Konami VRC2/4                                                      //
+// Mappers: 21, 22, 23, 25                                                     //
+// Status : Needs Evaluation                                                   //
 // Notes  :                                                                    //
-// Games  :                                                                    //
+// Games  : Wai Wai World 2, Twinbee 3, Contra (j), Gradius II (j)             //
 //*****************************************************************************//
 VRC24 vrc24(
 	.clk        (clk),
@@ -1188,11 +1215,11 @@ VRC24 vrc24(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
-// Notes  :                                                                    //
-// Games  :                                                                    //
+// Name   : Konami VRC-6                                                       //
+// Mappers: 24, 26                                                             //
+// Status : Working. Audio needs evaluation. Startup instability.              //
+// Notes  : External audio needs to be mixed correctly.                        //
+// Games  : Akamajou Densetsu, Esper Dream 2, Mouryou Senki Madara             //
 //*****************************************************************************//
 VRC6 vrc6(
 	.clk        (clk),
@@ -1218,11 +1245,11 @@ VRC6 vrc6(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
-// Notes  :                                                                    //
-// Games  :                                                                    //
+// Name   : Konami VRC-7                                                       //
+// Mappers: 85                                                                 //
+// Status : Working.                                                           //
+// Notes  : Audio mixing needs evaluation                                      //
+// Games  : Lagrange Point, Tiny Toon Aventures 2 (j)                          //
 //*****************************************************************************//
 VRC7 vrc7(
 	.clk        (clk),
@@ -1248,11 +1275,11 @@ VRC7 vrc7(
 );
 
 //*****************************************************************************//
-// Name   :                                                                    //
-// Mappers:                                                                    //
-// Status :                                                                    //
-// Notes  :                                                                    //
-// Games  :                                                                    //
+// Name   : Namco 163                                                          //
+// Mappers: 19, 210                                                            //
+// Status : Needs Evaluation                                                   //
+// Notes  : This mapper requires submappers for correct operation              //
+// Games  : Digital Devil Story, Battle Fleet, Famista                         //
 //*****************************************************************************//
 N106 n106(
 	.clk        (clk),
@@ -1309,20 +1336,14 @@ MapperFDS mapfds(
 	.fds_swap   (fds_swap)
 );
 
-// Mask
-reg [5:0] prg_mask;
-reg [6:0] chr_mask;
-
-
-
-reg [255:0] me = 0;
-
-always @(posedge clk) begin
-	me <= 255'd0;
-	me[flags[7:0]] <= 1'b1;
-end
+wire [5:0] prg_mask;
+wire [6:0] chr_mask;
+wire [255:0] me;
 
 always @* begin
+	me = 255'd0;
+	me[flags[7:0]] = 1'b1;
+
 	case(flags[10:8])
 		0: prg_mask = 6'b000000;
 		1: prg_mask = 6'b000001;
@@ -1344,16 +1365,18 @@ always @* begin
 		7: chr_mask = 7'b1111111;
 	endcase
 
-	{prg_conflict, prg_open_bus, has_chr_dout} = {flags_out_b[2], flags_out_b[1], flags_out_b[0]};
-	chr_dout = flags_out_b[0] ? chr_dout_b : 8'hFF;
+	// Mapper output to cart pins
+	{prg_aout,   prg_allow,   chr_aout,   vram_a10,   vram_ce,   chr_allow,   prg_dout,   chr_dout,   irq,   audio} =
+	{prg_addr_b, prg_allow_b, chr_addr_b, vram_a10_b, vram_ce_b, chr_allow_b, prg_dout_b, chr_dout_b, irq_b, audio_out_b};
 
 	// Currently only used for Mapper 16 EEPROM. Expand if needed.
 	{mapper_addr, mapper_data_out, mapper_prg_write, mapper_ovr} = (me[159] | me[16]) ?
 		{map16_mapper_addr, map16_data_out, map16_prg_write, map16_ovr} : 25'd0;
+		
+	// Behavior helper flags
+	{prg_conflict, prg_open_bus, has_chr_dout} = {flags_out_b[2], flags_out_b[1], flags_out_b[0]};
 
-	{prg_aout,   prg_allow,   chr_aout,   vram_a10,   vram_ce,   chr_allow,   prg_dout,   irq,   audio} = 
-	{prg_addr_b, prg_allow_b, chr_addr_b, vram_a10_b, vram_ce_b, chr_allow_b, prg_dout_b, irq_b, audio_out_b};
-
+	// Address translation for SDRAM
 	if (prg_aout[21:20] == 2'b00)
 		prg_aout[19:0] = {prg_aout[19:14] & prg_mask, prg_aout[13:0]};
 
@@ -1367,86 +1390,3 @@ always @* begin
 end
 
 endmodule
-
-
-
-
-
-// 11 = Working
-// 13 = Working
-// 15 = Working
-// 16 = Working/EEPROM needs testing
-// 18 = Needs testing
-// 19 = Needs testing
-// 20 = Needs testing
-// 21 = Needs testing
-// 22 = Needs testing
-// 23 = Needs testing
-// 24 = Needs testing
-// 25 = Needs testing
-// 26 = Needs testing
-// 28 = Working
-// 30 = No Self Flashing/Needs testing
-// 33 = Needs testing
-// 34 = Working
-// 37 = Needs testing
-// 38 = Needs testing
-// 41 = Working
-// 42 = Working
-// 47 = Working
-// 48 = Needs testing
-// 64 = Tons of GFX bugs
-// 65 = Needs testing
-// 66 = Working
-// 67 = Needs testing
-// 68 = Working
-// 69 = Working
-// 70 = Needs testing
-// 71 = Working
-// 72 = Needs testing/No Audio Samples
-// 73 = Needs testing
-// 74 = Needs testing
-// 75 = Needs testing
-// 76 = Needs testing
-// 77 = Needs testing
-// 78 = 
-// 79 = Working
-// 80 = Needs testing
-// 82 = Needs testing
-// 85 = Needs testing/Audio needs testing
-// 86 = Needs testing/No Audio Samples
-// 87 = Needs testing
-// 88 = Needs testing
-// 89 = Needs testing
-// 92 = Needs testing/No Audio Samples
-// 93 = Needs testing
-// 94 = Needs testing
-// 95 = Needs testing
-// 97 = Needs testing
-// 101 = Needs testing
-// 105 = Working
-// 107 = Needs testing
-// 112 = Needs testing
-// 113 = Working
-// 119 = Working
-// 140 = Needs testing
-// 152 = Needs testing
-// 154 = Needs testing
-// 155 = Needs testing
-// 158 = Tons of GFX bugs
-// 159 = Needs testing
-// 165 = GFX corrupted
-// 180 = Needs testing
-// 184 = Needs testing
-// 185 = Needs testing
-// 190 = Not Tested
-// 191 = Not Tested
-// 192 = Not Tested
-// 194 = Not Tested
-// 195 = Not Tested
-// 206 = Not Tested
-// 207 = Needs testing
-// 210 = Needs testing
-// 218 = Working
-// 228 = Working
-// 234 = Not Tested

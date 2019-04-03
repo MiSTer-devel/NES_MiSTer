@@ -153,6 +153,7 @@ if (~enable) begin
 	irq <= 0;
 	prg_bank <= 0;
 	irq_enable <= 0;
+	irq_latch <= 0;
 end else if (ce) begin
 	irq_enable[3] <= 1'b0;
 	if (prg_ain[15] & prg_write) begin
@@ -239,7 +240,7 @@ assign audio_b      = enable ? audio_in : 16'hZ;
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
 wire chr_allow;
-wire vram_a10;
+reg vram_a10;
 wire vram_ce;
 wire irq;
 reg [15:0] flags_out = 0;
@@ -257,9 +258,9 @@ wire mapper23 = (flags[7:0] == 23);
 //wire mapper25 = (flags[7:0] == 25); //default
 wire mapperVRC4 = (flags[7:0] != 22) && (flags[24:21] != 3);
 wire [1:0] registers = {mapper21 ?  {(prg_ain[7]|prg_ain[2]),(prg_ain[6]|prg_ain[1])} :
-						mapper22 ?  {(prg_ain[0]),           (prg_ain[1])           } :
-						mapper23 ?  {(prg_ain[3]|prg_ain[1]),(prg_ain[2]|prg_ain[0])} :
-								/*mapper25*/{(prg_ain[2]|prg_ain[0]),(prg_ain[3]|prg_ain[1])}};
+                        mapper22 ?  {(prg_ain[0]),           (prg_ain[1])           } :
+                        mapper23 ?  {(prg_ain[3]|prg_ain[1]),(prg_ain[2]|prg_ain[0])} :
+                        /*mapper25*/{(prg_ain[2]|prg_ain[0]),(prg_ain[3]|prg_ain[1])}};
 
 always @(posedge clk)
 	if (~enable) begin
@@ -353,6 +354,57 @@ wire irqa  = {prg_ain[15:12],registers[1:0]}==6'b1111_11; // 0xF003
 wire irqout;
 assign irq = irqout & mapperVRC4;
 vrcIRQ vrc4irq(clk,enable,prg_write,{irqlh,irqll},irqc,irqa,prg_din,irqout,ce);
+
+endmodule
+
+module VRC6X(
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+);
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? prg_dout : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire [7:0] prg_dout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire irq;
+wire [15:0] audio;
+reg [15:0] flags_out = 0;
+
+
+
+
 
 endmodule
 
@@ -506,9 +558,12 @@ wire prg_ain43 = prg_ain[4] ^ prg_ain[3];
 reg ramw, soff;
 
 always@(posedge clk) begin
-	if (~enable)
+	if (~enable) begin
 		soff <= 1'b0;
-	if(ce && prg_write) begin
+		{chrbank0, chrbank1, chrbank2, chrbank3, chrbank4, chrbank5, chrbank6, chrbank7} <= 0;
+		{prgbank8, prgbankA, prgbankC} <= 0;
+		{ramw, soff} <= 0;
+	end else if(ce && prg_write) begin
 		casex({prg_ain[15:12],prg_ain43})
 			5'b10000:prgbank8<=prg_din[5:0]; //8000
 			5'b10001:prgbankA<=prg_din[5:0]; //8008/10
@@ -558,7 +613,9 @@ vrcIRQ vrc7irq(clk,enable,prg_write,{irql,irql},irqc,irqa,prg_din,irq,ce);
 
 reg [3:0] ce_count;
 always@(posedge clk) begin
-	if (ce)
+	if (~enable)
+		ce_count <= 0;
+	else if (ce)
 		ce_count <= 0;
 	else
 		ce_count <= ce_count + 4'd1;
@@ -683,6 +740,10 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 			6:chrbank=chrbank6;
 			7:chrbank=chrbank7;
 		endcase
+		if (~enable) begin
+			prgbankin = 0;
+			chrbank = 0;
+		end
 	end
 
 	vrcIRQ vrc6irq(clk20,enable,nesprg_we,{irql,irql},irqc,irqa,nesprgdin,irq,ce);
