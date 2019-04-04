@@ -146,7 +146,7 @@ module ClockGen(input clk, input ce, input reset,
     // The pre render flag is set while we're on scanline -1.
     is_pre_render <= exiting_vblank;
     
-    //if (exiting_vblank) second_frame <= !second_frame;
+    if (exiting_vblank) second_frame <= !second_frame;
   end
   
 endmodule // ClockGen
