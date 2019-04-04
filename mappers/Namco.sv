@@ -1,25 +1,49 @@
 // Namco mappers
 
 module N106(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                   // Read / write signals
-	input [7:0] prg_din,
-	output [7:0] prg_dout,
-	output prg_allow,                  // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                  // Allow write
-	output vram_a10,                   // Value for A10 address line
-	output vram_ce,                    // True if the address should be routed to the internal 2kB VRAM.
-	output irq,
-	output [15:0] audio
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? prg_dout : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire irq;
+reg [15:0] flags_out = 0;
+wire [7:0] prg_dout;
+wire [15:0] audio;
 
 wire nesprg_oe;
 wire [7:0] neschrdout;
@@ -39,7 +63,7 @@ always @(posedge clk) begin
 	m2[0] <= ce;
 end
 
-MAPN106 n106(m2[7], m2_n, clk, reset, prg_write, nesprg_oe, 0,
+MAPN106 n106(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
 	1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], ramprgaout, irq, vram_ce, exp6,

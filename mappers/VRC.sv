@@ -2,22 +2,47 @@
 
 // VRC1 (75)
 module VRC1(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,            // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,           // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,           // Allow write
-	output reg vram_a10,        // Value for A10 address line
-	output vram_ce              // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+reg vram_a10;
+wire vram_ce;
+reg [15:0] flags_out = 0;
+
 reg [3:0] prg_bank0, prg_bank1, prg_bank2;
 reg [4:0] chr_bank0, chr_bank1;
 reg [1:0] mirroring;
@@ -25,7 +50,7 @@ reg [3:0] prg_tmp;
 reg [4:0] chr_tmp;
 
 always @(posedge clk)
-	if (reset) begin
+	if (~enable) begin
 		// Set value for mirroring
 		mirroring[1:0] <= {flags[16], !flags[14]};
 	end else if (ce) begin
@@ -74,23 +99,48 @@ endmodule
 
 // VRC3 (73)
 module VRC3(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                             // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                            // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                            // Allow write
-	output vram_a10,                             // Value for A10 address line
-	output vram_ce,                              // True if the address should be routed to the internal 2kB VRAM.
-	output reg irq
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+reg irq;
+reg [15:0] flags_out = 0;
+
 
 reg [2:0] prg_bank;
 reg [4:0] irq_enable;
@@ -98,11 +148,12 @@ reg [15:0] irq_latch;
 reg [15:0] irq_counter;
 
 always @(posedge clk)
-if (reset) begin
+if (~enable) begin
 	// Set value for mirroring
 	irq <= 0;
 	prg_bank <= 0;
 	irq_enable <= 0;
+	irq_latch <= 0;
 end else if (ce) begin
 	irq_enable[3] <= 1'b0;
 	if (prg_ain[15] & prg_write) begin
@@ -152,23 +203,48 @@ endmodule
 
 // VRC2 and VRC4
 module VRC24(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                             // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                            // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                            // Allow write
-	output reg vram_a10,                         // Value for A10 address line
-	output vram_ce,                              // True if the address should be routed to the internal 2kB VRAM.
-	output irq
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+reg vram_a10;
+wire vram_ce;
+wire irq;
+reg [15:0] flags_out = 0;
+
 
 reg [4:0] prg_bank0, prg_bank1;
 reg [8:0] chr_bank0, chr_bank1, chr_bank2, chr_bank3, chr_bank4, chr_bank5, chr_bank6, chr_bank7;
@@ -182,12 +258,12 @@ wire mapper23 = (flags[7:0] == 23);
 //wire mapper25 = (flags[7:0] == 25); //default
 wire mapperVRC4 = (flags[7:0] != 22) && (flags[24:21] != 3);
 wire [1:0] registers = {mapper21 ?  {(prg_ain[7]|prg_ain[2]),(prg_ain[6]|prg_ain[1])} :
-						mapper22 ?  {(prg_ain[0]),           (prg_ain[1])           } :
-						mapper23 ?  {(prg_ain[3]|prg_ain[1]),(prg_ain[2]|prg_ain[0])} :
-								/*mapper25*/{(prg_ain[2]|prg_ain[0]),(prg_ain[3]|prg_ain[1])}};
+                        mapper22 ?  {(prg_ain[0]),           (prg_ain[1])           } :
+                        mapper23 ?  {(prg_ain[3]|prg_ain[1]),(prg_ain[2]|prg_ain[0])} :
+                        /*mapper25*/{(prg_ain[2]|prg_ain[0]),(prg_ain[3]|prg_ain[1])}};
 
 always @(posedge clk)
-	if (reset) begin
+	if (~enable) begin
 		// Set value for mirroring
 		mirroring[1:0] <= {1'b0, !flags[14]};
 		prg_invert <= 0;
@@ -277,30 +353,105 @@ wire irqc  = {prg_ain[15:12],registers[1:0]}==6'b1111_10; // 0xF002
 wire irqa  = {prg_ain[15:12],registers[1:0]}==6'b1111_11; // 0xF003
 wire irqout;
 assign irq = irqout & mapperVRC4;
-vrcIRQ vrc4irq(clk,reset,prg_write,{irqlh,irqll},irqc,irqa,prg_din,irqout,ce);
+vrcIRQ vrc4irq(clk,enable,prg_write,{irqlh,irqll},irqc,irqa,prg_din,irqout,ce);
+
+endmodule
+
+module VRC6X(
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+);
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? prg_dout : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire [7:0] prg_dout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire irq;
+wire [15:0] audio;
+reg [15:0] flags_out = 0;
+
+
+
+
 
 endmodule
 
 module VRC6(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                             // Read / write signals
-	input [7:0] prg_din,
-	output [7:0] prg_dout,
-	output prg_allow,                            // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                            // Allow write
-	output vram_a10,                             // Value for A10 address line
-	output vram_ce,                              // True if the address should be routed to the internal 2kB VRAM.
-	output irq,
-	output [15:0] audio
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? prg_dout : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire [7:0] prg_dout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire irq;
+wire [15:0] audio;
+reg [15:0] flags_out = 0;
 
 wire nesprg_oe;
 wire [7:0] neschrdout;
@@ -320,7 +471,7 @@ always @(posedge clk) begin
 	m2[0] <= ce;
 end
 
-MAPVRC6 vrc6(m2[7], m2_n, clk, reset, prg_write, nesprg_oe, 0,
+MAPVRC6 vrc6(m2[7], m2_n, clk, enable, prg_write, nesprg_oe, 0,
 	1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], ramprgaout, irq, vram_ce, exp6,
@@ -340,24 +491,48 @@ assign prg_allow = (prg_ain[15] && !prg_write) || prg_is_ram;
 endmodule
 
 module VRC7(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,                             // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,                            // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,                            // Allow write
-	output vram_a10,                             // Value for A10 address line
-	output vram_ce,                              // True if the address should be routed to the internal 2kB VRAM.
-	output irq,
-	output [15:0] audio
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire irq;
+reg [15:0] flags_out = 0;
+wire [15:0] audio;
 
 assign chr_aout[21:18] = 4'b1000;
 assign chr_aout[9:0] = chr_ain[9:0];
@@ -383,9 +558,12 @@ wire prg_ain43 = prg_ain[4] ^ prg_ain[3];
 reg ramw, soff;
 
 always@(posedge clk) begin
-	if (reset)
+	if (~enable) begin
 		soff <= 1'b0;
-	if(ce && prg_write) begin
+		{chrbank0, chrbank1, chrbank2, chrbank3, chrbank4, chrbank5, chrbank6, chrbank7} <= 0;
+		{prgbank8, prgbankA, prgbankC} <= 0;
+		{ramw, soff} <= 0;
+	end else if(ce && prg_write) begin
 		casex({prg_ain[15:12],prg_ain43})
 			5'b10000:prgbank8<=prg_din[5:0]; //8000
 			5'b10001:prgbankA<=prg_din[5:0]; //8008/10
@@ -431,11 +609,13 @@ wire irql = {prg_ain[15:12],prg_ain43}==5'b11101; // 0xE008 or 0xE010
 wire irqc = {prg_ain[15:12],prg_ain43}==5'b11110; // 0xF000
 wire irqa = {prg_ain[15:12],prg_ain43}==5'b11111; // 0xF008 or 0xF010
 
-vrcIRQ vrc7irq(clk,reset,prg_write,{irql,irql},irqc,irqa,prg_din,irq,ce);
+vrcIRQ vrc7irq(clk,enable,prg_write,{irql,irql},irqc,irqa,prg_din,irq,ce);
 
 reg [3:0] ce_count;
 always@(posedge clk) begin
-	if (ce)
+	if (~enable)
+		ce_count <= 0;
+	else if (ce)
 		ce_count <= 0;
 	else
 		ce_count <= ce_count + 4'd1;
@@ -445,7 +625,7 @@ wire ack;
 wire ce_ym2143 = ce | (ce_count==4'd5);
 wire [13:0] ym2143audio;
 wire wr_audio = prg_write && (prg_ain[15:6]==10'b1001_0000_00) && (prg_ain[4:0]==5'b1_0000); //0x9010 or 0x9030
-eseopll ym2143vrc7 (clk,reset, ce_ym2143,wr_audio,ce_ym2143,ack,wr_audio,{15'b0,prg_ain[5]},prg_din,ym2143audio);
+eseopll ym2143vrc7 (clk,~enable, ce_ym2143,wr_audio,ce_ym2143,ack,wr_audio,{15'b0,prg_ain[5]},prg_din,ym2143audio);
 
 //No clipping. Lower volume.
 //wire [12:0] ym2143audiounsigned = ym2143audio[12:0] ^ 13'b1_0000_0000_0000; // 10 bits * 6 channels = Max 13 bits.
@@ -465,7 +645,7 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 	input m2_n,
 	input clk20,
 
-	input reset,
+	input enable,
 	input nesprg_we,
 	output nesprg_oe,
 	input neschr_rd,
@@ -518,7 +698,10 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 	wire irqc = {ain[15:12],ain[1:0]}==6'b111101;
 	wire irqa = {ain[15:12],ain[1:0]}==6'b111110;
 	always@(posedge clk20) begin
-		if(ce && nesprg_we) begin
+		if (~enable)
+			{prgbank8, prgbankC, mirror, chrbank0, chrbank1, chrbank2,
+				chrbank3, chrbank4, chrbank5, chrbank6, chrbank7} <= 0;
+		else if(ce && nesprg_we) begin
 			casex({ain[15:12],ain[1:0]})
 				6'b1000xx:prgbank8<=nesprgdin[4:0]; //800x
 				6'b1100xx:prgbankC<=nesprgdin[5:0]; //C00x
@@ -557,9 +740,13 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 			6:chrbank=chrbank6;
 			7:chrbank=chrbank7;
 		endcase
+		if (~enable) begin
+			prgbankin = 0;
+			chrbank = 0;
+		end
 	end
 
-	vrcIRQ vrc6irq(clk20,reset,nesprg_we,{irql,irql},irqc,irqa,nesprgdin,irq,ce);
+	vrcIRQ vrc6irq(clk20,enable,nesprg_we,{irql,irql},irqc,irqa,nesprgdin,irq,ce);
 
 //mirroring
 	assign ramchraout[10]=!chrain[13] ? chrbank[10] : ((mirror==0 & chrain[10]) | (mirror==1 & chrain[11]) | (mirror==3));
@@ -594,7 +781,7 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 	wire [3:0] vrc6sq1_out;
 	wire [3:0] vrc6sq2_out;
 	wire [4:0] vrc6saw_out;
-	vrc6sound snd(clk20, ce, reset, nesprg_we, ain, nesprgdin, vrc6sq1_out, vrc6sq2_out, vrc6saw_out);
+	vrc6sound snd(clk20, ce, enable, nesprg_we, ain, nesprgdin, vrc6sq1_out, vrc6sq2_out, vrc6saw_out);
 //    vrc6sound snd(m2, reset, nesprg_we, ain, nesprgdin, vrc6_out);
 //    pdm #(6) pdm_mod(clk20, vrc6_out, exp6);
 
@@ -608,7 +795,7 @@ endmodule
 
 module vrcIRQ(
 	input clk20,
-	input reset,
+	input enable,
 	input nesprg_we,
 	input [1:0] irqlatch_add,
 	input irqctrl_add,
@@ -621,7 +808,9 @@ module vrcIRQ(
 reg [7:0] irqlatch;
 reg irqM,irqE,irqA;
 always@(posedge clk20) begin
-	if(ce && nesprg_we) begin
+	if (~enable)
+		{irqM, irqA, irqlatch} <= 0;
+	else if(ce && nesprg_we) begin
 		if (irqlatch_add == 2'b11)
 			irqlatch<=nesprgdin;                      //F000
 		else if (irqlatch_add == 2'b10)
@@ -641,7 +830,9 @@ reg [1:0] line;
 wire irqclk=irqM|(scalar==0);
 wire setE=nesprg_we & irqctrl_add & nesprgdin[1];
 always@(posedge clk20) begin
-	if(setE) begin
+	if (~enable)
+		{irqcnt, scalar, line} <= 0;
+	else if(setE) begin
 		scalar<=113;
 		line<=0;
 		irqcnt<=irqlatch;
@@ -660,8 +851,9 @@ always@(posedge clk20) begin
 		end
 	end
 end
+
 always@(posedge clk20) begin
-	if(reset) begin
+	if(~enable) begin
 		irqE<=0;
 		timeout<=0;
 	end else if (ce) begin
@@ -686,7 +878,7 @@ module vrc6sound(
 //	input m2,
 	input clk,
 	input ce,
-	input reset,
+	input enable,
 	input wr,
 	input [15:0] ain,
 	input [7:0] din,
@@ -709,8 +901,8 @@ reg [3:0] duty0cnt, duty1cnt;
 reg [2:0] duty2cnt;
 reg [7:0] acc;
 
-always@(posedge clk, posedge reset) begin
-	if(reset) begin
+always@(posedge clk) begin
+	if(~enable) begin
 		en0<=0;
 		en1<=0;
 		en2<=0;

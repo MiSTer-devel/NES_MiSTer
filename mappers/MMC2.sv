@@ -2,23 +2,47 @@
 
 // MMC2 mapper chip. PRG ROM: 128kB. Bank Size: 8kB. CHR ROM: 128kB
 module MMC2(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,          // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,         // Enable access to memory for the specified operation.
-	input chr_read,
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,         // Allow write
-	output vram_a10,          // Value for A10 address line
-	output vram_ce            // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+
+reg [15:0] flags_out = 0;
 
 // PRG ROM bank select ($A000-$AFFF)
 // 7  bit  0
@@ -75,7 +99,10 @@ reg mirroring;
 reg latch_0, latch_1;
 	
 // Update registers
-always @(posedge clk) if (ce) begin
+always @(posedge clk)
+if (~enable)
+	{prg_bank, chr_bank_0a, chr_bank_0b, chr_bank_1a, chr_bank_1b, mirroring} <= 0;
+else if (ce) begin
 	if (prg_write && prg_ain[15]) begin
 		case(prg_ain[14:12])
 			2: prg_bank <= prg_din[3:0];     // $A000
@@ -92,7 +119,10 @@ end
 // PPU reads $0FE8: latch 0 is set to $FE for subsequent reads
 // PPU reads $1FD8 through $1FDF: latch 1 is set to $FD for subsequent reads
 // PPU reads $1FE8 through $1FEF: latch 1 is set to $FE for subsequent reads
-always @(posedge clk) if (ce && chr_read) begin
+always @(posedge clk)
+if (~enable)
+	{latch_0, latch_1} <= 0;
+else if (ce && chr_read) begin
 	latch_0 <= (chr_ain & 14'h3fff) == 14'h0fd8 ? 1'd0 : (chr_ain & 14'h3fff) == 14'h0fe8 ? 1'd1 : latch_0;
 	latch_1 <= (chr_ain & 14'h3ff8) == 14'h1fd8 ? 1'd0 : (chr_ain & 14'h3ff8) == 14'h1fe8 ? 1'd1 : latch_1;
 end
@@ -132,23 +162,47 @@ endmodule
 
 // MMC4 mapper chip. PRG ROM: 256kB. Bank Size: 16kB. CHR ROM: 128kB
 module MMC4(
-	input clk,
-	input ce,
-	input reset,
-	input [31:0] flags,
-	input [15:0] prg_ain,
-	output [21:0] prg_aout,
-	input prg_read,
-	input prg_write,             // Read / write signals
-	input [7:0] prg_din,
-	output prg_allow,            // Enable access to memory for the specified operation.
-	input chr_read,
-	input [13:0] chr_ain,
-	output [21:0] chr_aout,
-	output chr_allow,            // Allow write
-	output vram_a10,             // Value for A10 address line
-	output vram_ce               // True if the address should be routed to the internal 2kB VRAM.
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 );
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? prg_dout : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? audio_in : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire [7:0] prg_dout = 0;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+reg [15:0] flags_out = 0;
 
 // PRG ROM bank select ($A000-$AFFF)
 // 7  bit  0
@@ -205,9 +259,10 @@ reg mirroring;
 reg latch_0, latch_1;
 
 // Update registers
-always @(posedge clk) if (ce) begin
-	if (reset)
-		prg_bank <= 4'b1110;	  
+always @(posedge clk) 
+if (ce) begin
+	if (~enable)
+		prg_bank <= 4'b1110;
 	else if (prg_write && prg_ain[15]) begin
 		case(prg_ain[14:12])
 			2: prg_bank <= prg_din[3:0];     // $A000
@@ -224,7 +279,8 @@ end
 // PPU reads $0FE8 through $0FEF: latch 0 is set to $FE for subsequent reads
 // PPU reads $1FD8 through $1FDF: latch 1 is set to $FD for subsequent reads
 // PPU reads $1FE8 through $1FEF: latch 1 is set to $FE for subsequent reads
-always @(posedge clk) if (ce && chr_read) begin
+always @(posedge clk)
+if (ce & chr_read) begin
 	latch_0 <= (chr_ain & 14'h3ff8) == 14'h0fd8 ? 1'd0 : (chr_ain & 14'h3ff8) == 14'h0fe8 ? 1'd1 : latch_0;
 	latch_1 <= (chr_ain & 14'h3ff8) == 14'h1fd8 ? 1'd0 : (chr_ain & 14'h3ff8) == 14'h1fe8 ? 1'd1 : latch_1;
 end

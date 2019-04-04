@@ -293,10 +293,52 @@ module NES(input clk, input reset, input ce,
   wire [15:0] sample_ext;
   reg [16:0] sample_sum;
   assign sample = sample_sum[16:1]; //loss of 1 bit of resolution.  Add control for when no external audio to boost back up?
-  cart_top multi_mapper(clk, cart_ce, ce, reset, mapper_ppu_flags, mapper_flags,
-                           prg_addr, prg_linaddr, prg_read, prg_write, prg_din, prg_dout_mapper, from_data_bus, prg_allow, prg_open_bus, prg_conflict,
-                           chr_read, chr_write, chr_from_ppu, chr_addr, chr_linaddr, chr_from_ppu_mapper, has_chr_from_ppu_mapper, chr_allow,
-                           vram_a10, vram_ce, bram_addr, bram_din, bram_dout, bram_write, bram_override, mapper_irq, sample_ext, fds_swap);
+  
+  cart_top multi_mapper (
+    // FPGA specific
+    .clk               (clk),
+    .reset             (reset),
+    .flags             (mapper_flags),            // iNES header data (use 0 while loading)
+    // Cart pins (slightly abstracted)
+    .ce                (cart_ce),        // M2 (held in high impedance during reset)
+    .prg_ain           (prg_addr),                // CPU Address in (a15 abstracted from ROMSEL)
+    .prg_read          (prg_read),                // CPU RnW split
+    .prg_write         (prg_write),               // CPU RnW split
+    .prg_din           (prg_din),                 // CPU Data bus in (split from bid)
+    .prg_dout          (prg_dout_mapper),         // CPU Data bus out (split from bid)
+    .chr_ain           (chr_addr),                // PPU address in
+    .chr_read          (chr_read),                // PPU read (inverted, active high)
+    .chr_write         (chr_write),               // PPU write (inverted, active high)
+    .chr_din           (chr_from_ppu),            // PPU data bus in (split from bid)
+    .chr_dout          (chr_from_ppu_mapper),     // PPU data bus in (split from bid)
+    .vram_a10          (vram_a10),                // CIRAM a10 line
+    .vram_ce           (vram_ce),                 // CIRAM chip enable
+    .irq               (mapper_irq),              // IRQ (inverted, active high)
+    .audio_in          (16'h0),                   // Amplified and inverted APU audio
+    .audio             (sample_ext),              // Mixed audio output from cart
+    // SDRAM Communication
+    .prg_aout          (prg_linaddr),             // SDRAM adjusted PRG RAM address
+    .prg_allow         (prg_allow),               // Simulates internal CE/Locking
+    .chr_aout          (chr_linaddr),             // SDRAM adjusted CHR RAM address
+    .chr_allow         (chr_allow),               // Simulates internal CE/Locking
+    // External hardware interface (EEPROM)
+    .mapper_addr       (bram_addr),
+    .mapper_data_in    (bram_din),
+    .mapper_data_out   (bram_dout),
+    .mapper_prg_write  (bram_write),
+    .mapper_ovr        (bram_override),
+    // Cheats
+    .prg_from_ram      (from_data_bus),           // Hacky cpu din <= get rid of this!
+    .ppuflags          (mapper_ppu_flags),        // Cheat for MMC5
+    .ppu_ce            (ce),                      // PPU Clock (cheat for MMC5/2/4)
+    // Behavior helper flags
+    .has_chr_dout      (has_chr_from_ppu_mapper), // Output specific data for CHR rather than from SDRAM
+    .prg_open_bus      (prg_open_bus),            // Simulate open bus
+    .prg_conflict      (prg_conflict),            // Simulate bus conflicts
+    // User input
+    .fds_swap          (fds_swap)                 // Used to trigger FDS disk changes
+  );
+
   assign chr_to_ppu = has_chr_from_ppu_mapper ? chr_from_ppu_mapper : memory_din_ppu;
                              
   // Mapper IRQ seems to be delayed by one PPU clock.   
@@ -331,7 +373,7 @@ module NES(input clk, input reset, input ce,
   
   always @* begin
     if (reset)
-		from_data_bus = 0;
+      from_data_bus = 0;
     else if (apu_cs) begin
       if (joypad1_cs)
         from_data_bus = {5'b01000, mic, 1'b0, joypad_data[0]};
