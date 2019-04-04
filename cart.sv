@@ -68,7 +68,7 @@ module cart_top (
 // 	output       CIRAM_ce_n,
 // 	input        ROMSEL_n,       // ~(cpu_addr[15] & m2)
 // 	output       IRQ_n,
-// 	input        CPU_rnw,        // 
+// 	input        CPU_rnw,        //
 // 	input [14:0] CPU_addr,       // CPU Bus Address
 // 	input  [7:0] CPU_data_in,    // CPU BUS Data inout.
 // 	output [7:0] CPU_data_out,   // CPU BUS Data inout.
@@ -76,10 +76,10 @@ module cart_top (
 // 	input        clk_sys         // Only on 72 pin connectors, 21mhz NTSC or 27mhz PAL
 // );
 
-trireg prg_allow_b, vram_a10_b, vram_ce_b, chr_allow_b, irq_b;
-trireg [21:0] prg_addr_b, chr_addr_b;
-trireg [15:0] flags_out_b, audio_out_b;
-trireg [7:0] prg_dout_b, chr_dout_b;
+tri0 prg_allow_b, vram_a10_b, vram_ce_b, chr_allow_b, irq_b;
+tri0 [21:0] prg_addr_b, chr_addr_b;
+tri0 [15:0] flags_out_b, audio_out_b;
+tri1 [7:0] prg_dout_b, chr_dout_b;
 
 // This mapper used to be default if no other mapper was found
 // It seems MMC0 is handled by map28. Does it have any purpose?
@@ -99,6 +99,7 @@ MMC0 mmc0(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -129,6 +130,7 @@ MMC1 mmc1(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -160,6 +162,7 @@ Mapper28 map28(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_dout_b (chr_dout_b), // Special port
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
@@ -191,6 +194,7 @@ Mapper30 map30(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -221,6 +225,7 @@ Mapper32 map32(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -251,6 +256,7 @@ MMC2 mmc2(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -286,6 +292,7 @@ MMC3 mmc3 (
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -316,6 +323,7 @@ MMC4 mmc4(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -346,6 +354,7 @@ MMC5 mmc5(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -382,6 +391,7 @@ Mapper13 map13(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -412,6 +422,7 @@ Mapper15 map15(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -445,6 +456,7 @@ Mapper16 map16(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -481,6 +493,7 @@ Mapper18 map18(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -511,6 +524,7 @@ Mapper34 map34(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -541,6 +555,7 @@ Mapper41 map41(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -571,6 +586,7 @@ Mapper42 map42(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -601,6 +617,7 @@ Mapper65 map65(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -632,6 +649,7 @@ Mapper66 map66(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -662,6 +680,7 @@ Mapper67 map67(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -692,6 +711,7 @@ Mapper68 map68(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -722,6 +742,7 @@ Mapper69 map69(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -752,6 +773,7 @@ Mapper71 map71(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -782,6 +804,7 @@ Mapper72 map72(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -812,6 +835,7 @@ Mapper77 map77(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -842,6 +866,7 @@ Mapper78 map78(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -872,6 +897,7 @@ Mapper79 map79(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -902,6 +928,7 @@ Mapper89 map89(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -932,6 +959,7 @@ Mapper107 map107(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -962,13 +990,16 @@ Mapper165 map165(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
 	.audio_in   (audio_in),
-	.audio_b    (audio_out_b)
+	.audio_b    (audio_out_b),
+	//special ports
+	.chr_read(chr_read)
 );
 
 //*****************************************************************************//
@@ -992,6 +1023,8 @@ Mapper218 map218(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1022,6 +1055,7 @@ Mapper228 map228(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1054,6 +1088,7 @@ Mapper234 map234(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1084,6 +1119,7 @@ Rambo1 rambo1(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1114,6 +1150,7 @@ NesEvent nesev(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1121,8 +1158,8 @@ NesEvent nesev(
 	.flags_out_b(flags_out_b),
 	.audio_in   (audio_in),
 	.audio_b    (audio_out_b)
-);	
-	
+);
+
 
 //*****************************************************************************//
 // Name   : Konami VRC-1                                                       //
@@ -1145,6 +1182,7 @@ VRC1 vrc1(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1175,6 +1213,7 @@ VRC3 vrc3(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1205,6 +1244,7 @@ VRC24 vrc24(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1235,6 +1275,7 @@ VRC6 vrc6(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1265,6 +1306,7 @@ VRC7 vrc7(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1295,6 +1337,7 @@ N106 n106(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1325,6 +1368,7 @@ MapperFDS mapfds(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),
@@ -1372,7 +1416,7 @@ always @* begin
 	// Currently only used for Mapper 16 EEPROM. Expand if needed.
 	{mapper_addr, mapper_data_out, mapper_prg_write, mapper_ovr} = (me[159] | me[16]) ?
 		{map16_mapper_addr, map16_data_out, map16_prg_write, map16_ovr} : 25'd0;
-		
+
 	// Behavior helper flags
 	{prg_conflict, prg_open_bus, has_chr_dout} = {flags_out_b[2], flags_out_b[1], flags_out_b[0]};
 
