@@ -47,51 +47,45 @@ reg [15:0] flags_out = 0;
 wire irq;
 wire [15:0] audio;
 
-	 wire nesprg_oe;
-    wire [7:0] neschrdout;
-	 wire neschr_oe;
-	 wire wram_oe;
-	 wire wram_we;
-	 wire prgram_we;
-	 wire chrram_oe;
-	 wire prgram_oe;
-	 wire exp6;
-	 reg [7:0] m2;
-	 wire m2_n = 1;//~ce;  //m2_n not used as clk.  Invert m2 (ce).
-  always @(posedge clk) begin
-    m2[7:1] <= m2[6:0];
-	 m2[0] <= ce;
-  end
-	 
-//module MAPFDS(              //signal descriptions in powerpak.v
-//    input m2, input m2_n, input clk20, input reset, input nesprg_we, output nesprg_oe, input neschr_rd,
-//    input neschr_wr, input [15:0] prgain, input [13:0] chrain, input [7:0] nesprgdin, input [7:0] ramprgdin, output reg [7:0] nesprgdout,
-//    output [7:0] neschrdout, output neschr_oe, output chrram_we, output chrram_oe, output wram_oe, output wram_we, output prgram_we,
-//    output prgram_oe, output [18:10] ramchraout, output [18:13] ramprgaout, output irq, output ciram_ce, output exp6,
-//    input cfg_boot, input [18:12] cfg_chrmask, input [18:13] cfg_prgmask, input cfg_vertical, input cfg_fourscreen, input cfg_chrram,
-//    input ce, output prg_allow, output [11:0] snd_level);
-    MAPFDS fds(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0, 
+	wire nesprg_oe;
+		wire [7:0] neschrdout;
+	wire neschr_oe;
+	wire wram_oe;
+	wire wram_we;
+	wire prgram_we;
+	wire chrram_oe;
+	wire prgram_oe;
+	wire exp6;
+	reg [7:0] m2;
+	wire m2_n = 1;//~ce;  //m2_n not used as clk.  Invert m2 (ce).
+	always @(posedge clk) begin
+		m2[7:1] <= m2[6:0];
+	m2[0] <= ce;
+	end
+
+
+		MAPFDS fds(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
 		1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
 		neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
-		prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6, 
+		prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6,
 		0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
 		ce, fds_swap, prg_allow, audio_exp);
-    assign chr_aout[21:19] = 3'b100;
-    assign chr_aout[9:0] = chr_ain[9:0];
-    assign vram_a10 = chr_aout[10];
-    assign prg_aout[21:19] = 3'b000;
-    //assign prg_aout[12:0] = prg_ain[12:0];
+		assign chr_aout[21:19] = 3'b100;
+		assign chr_aout[9:0] = chr_ain[9:0];
+		assign vram_a10 = chr_aout[10];
+		assign prg_aout[21:19] = 3'b000;
+		//assign prg_aout[12:0] = prg_ain[12:0];
 
-    wire [11:0] audio_exp;
+		wire [11:0] audio_exp;
 
-    // XXX: This needs to be replaced with a proper ~2000hz LPF
-    lpf_aud fds_lpf
-    (
-      .CLK(clk),
-      .CE(ce),
-      .IDATA({1'b0, audio_exp, audio_exp[2:0]}),
-      .ODATA(audio)
-    );
+		// XXX: This needs to be replaced with a proper ~2000hz LPF
+		lpf_aud fds_lpf
+		(
+			.CLK(clk),
+			.CE(ce),
+			.IDATA({1'b0, audio_exp, audio_exp[2:0]}),
+			.ODATA(audio)
+		);
 
 endmodule
 
@@ -129,20 +123,21 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	output irq,
 	output ciram_ce,
 	output exp6,
-	
+
 	input cfg_boot,
 	input [18:12] cfg_chrmask,
 	input [18:13] cfg_prgmask,
 	input cfg_vertical,
 	input cfg_fourscreen,
 	input cfg_chrram,
-	
+
 	input ce,// add
 	input fds_swap,
 	output prg_allow,
 	output [11:0] snd_level,
 	input [1:0] diskside_manual
 );
+
 	localparam WRITE_LO=16'hF4CD, WRITE_HI=16'hF4CE, READ_LO=16'hF4D0, READ_HI=16'hF4D1;
 
 	assign neschrdout = 0;
@@ -171,11 +166,11 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	reg [15:0] diskpos;
 	reg [17:0] sideoffset;
 	wire [17:0] romoffset;
-	
+
 //	Loopy's patched bios use a trick to catch requested diskside for games
 // using standard bios load process.
 // Unlicensed games sometimes doesn't use standard bios load process. This
-// break automatic diskside trick. 
+// break automatic diskside trick.
 // diskside_manual to be manage from OSD user input allow to add diskswap capabilities.
 // (automatic fds_swap should be preferably stopped before changing diskside_manual)
 
@@ -190,7 +185,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
 		3:sideoffset=18'h2ffa4;
 	endcase
 	assign romoffset=diskpos + sideoffset;
-	
+
 // Unlicensed fds games use NMI trick to skip protection. Rationale is to load
 // a file starting @$2000 with $90 or $80 to enable NMI. This file should be at
 // least 256 bytes length to allow NMI to occure before end of load. PC is then
@@ -198,198 +193,210 @@ module MAPFDS(              //signal descriptions in powerpak.v
 // But with loopy's patched bios the 256 bytes file is loaded too fast and no NMI
 // occure early enough.
 // Here proposed solution is to create an infinite loop at the end of normal
-// load subroutine if @$2000 was written during load subroutine. Infinite loop 
+// load subroutine if @$2000 was written during load subroutine. Infinite loop
 // give enough time for NMI to occure. (Generaly observed NMI enabling file is
 // the last file of 'normal' loading process to be loaded).
-	
+
 	// manage infinite loop trap at the end ($E233) of LoadFiles subroutine
 //	 reg previous_is_E1F9;
 	reg infinite_loop_on_E233 = 0;
 	reg within_loader = 0;
 //	 reg loader_write_in_2000 = 0;
-	always@(posedge clk20)
-			if(reset) begin
-				// on reset activate infinite loop trap
-			end	
-			else begin 
-					if ((m2) && (ramprgaout[18]==1'b0))begin
-								
-						// detect enter / leave LoadFile subroutine
-						if(prgain==16'hE1FA) within_loader <= 1;
-						if(prgain==16'hE235) within_loader <= 0;
-						
-						// deactivate infinite loop at LoadFile subroutine
-						if(prgain==16'hE1FA) infinite_loop_on_E233 <= 0;
-						
-						// activate infinite loop if @$2000 is accessed during FileLoad subroutine
-						if((prgain==16'h2000) && (within_loader == 1)) infinite_loop_on_E233 <= 1;
-					end
-					
-			end 
-
-	//NES data out
-	wire match0=prgain==16'h4030;       //IRQ status
-	wire match1=prgain==16'h4032;       //drive status
-	wire match2=prgain==16'h4033;       //power / exp
-	wire match3=((prgain==READ_LO)|(prgain==WRITE_LO))&!(Wstate==2 | Rstate==2);
-	wire match4=((prgain==READ_HI)|(prgain==WRITE_HI))&!(Wstate==2 | Rstate==2);
-	wire match5=prgain==16'h4208;       //powerpak save flag
-	wire match6=prgain[15:8]==8'h40 && |prgain[7:6];    //4040..40FF
-	wire match7=(prgain==16'hE233) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
-	wire match8=(prgain==16'hE234) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
-	wire match9=(prgain==16'hE235) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
-	always@*
-		case(1)
-			match0: nesprgdout={7'd0, timer_irq};
-			match1: nesprgdout={5'd0, disk_eject, diskend, disk_eject};
-			match2: nesprgdout=8'b10000000;
-			match3: nesprgdout=romoffset[7:0];
-			match4: nesprgdout={3'b111,romoffset[12:8]};
-			match5: nesprgdout={7'd0,saved};
-			match6: nesprgdout=audio_dout;
-			match7: nesprgdout=8'h4C;  // when infinite loop is active replace jsr $E778 with jmp $E233 
-			match8: nesprgdout=8'h33;
-			match9: nesprgdout=8'hE2;
-			default: nesprgdout=ramprgdin;
-		endcase
-	assign prg_allow = (nesprg_we & (Wstate==2 | (prgain[15]^(&prgain[14:13]))))
-					| (~nesprg_we & ((prgain[15] & !match3 & !match4 & !match7 & !match8 & !match9) | prgain[15:13]==3));
-
-    reg write_en;
-    reg vertical;
-    reg timer_irq_en;
-    reg timer_irq_repeat;
-    reg diskreset;
-    reg disk_reg_en;
-    reg [15:0] timerlatch;
-    reg [15:0] timer;
-    always@(posedge clk20) begin
-        if (ce) begin
-
-            if (timer_irq_en) begin
-                if (timer == 0) begin
-                    timer_irq <= 1;
-                    timer <= timerlatch;
-                    if (~timer_irq_repeat) begin
-                        timer_irq_en <= 0;
-                    end
-                end else begin
-                    timer <= timer - 1'd1;
-                end
-            end
-
-            if(nesprg_we)
-                case(prgain)
-                    16'h4020:
-                        timerlatch[7:0]<=nesprgdin;
-                    16'h4021:
-                        timerlatch[15:8]<=nesprgdin;
-                    16'h4022:
-                        begin
-                            timer_irq_repeat<=nesprgdin[0];
-                            timer_irq_en<=nesprgdin[1] & disk_reg_en;
-
-                            if (nesprgdin[1] & disk_reg_en) begin
-                                timer <= timerlatch;
-                            end else begin
-                                timer_irq <= 0;
-                            end
-                        end
-                    16'h4023: begin
-                            disk_reg_en <=nesprgdin[0];
-                            if (~nesprgdin[0]) begin
-                                timer_irq_en <= 0;
-                                timer_irq <= 0;
-                            end
-                        end
-                    //16'h4024: //disk data write
-                    16'h4025:   //disk control
-                        begin
-                            diskreset<=nesprgdin[1];
-                            write_en<=!nesprgdin[2];
-                            vertical<=!nesprgdin[3];
-                            //disk_irq_en<=nesprgdin[7];
-                        end
-                    16'h4027:   //powerpak extra: disk side
-                            diskside_auto<=nesprgdin[1:0];
-                endcase
-        end
-
-        if (m2) begin
-            if (~nesprg_we & prgain==16'h4030)
-                timer_irq <= 0;
-        end
-    end
-
-	//watch for disk read/write
-	always@(posedge clk20) begin
-		if (m2) begin
-		if(write_en & ~nesprg_we & (prgain==WRITE_LO))          Wstate<=1;
-		else if(~nesprg_we & (prgain==WRITE_HI) & Wstate==1)    Wstate<=2;
-		else                                                    Wstate<=0;
-
-		if(~nesprg_we & (prgain==READ_LO))                      Rstate<=1;
-		else if(~nesprg_we & (prgain==READ_HI) & Rstate==1)     Rstate<=2;
-		else                                                    Rstate<=0;
-
-		if(Wstate==2) saved<=1;
+always@(posedge clk20)
+		if(reset) begin
+			// on reset activate infinite loop trap
 		end
-	end
+		else begin
+				if ((m2) && (ramprgaout[18]==1'b0))begin
 
-	//disk pointer
-	always@(posedge clk20) begin
-		if (m2) begin
-		if(diskreset)                   diskpos<=0;
-		else if(Rstate==2 & !diskend)   diskpos<=diskpos+1'd1;
+					// detect enter / leave LoadFile subroutine
+					if(prgain==16'hE1FA) within_loader <= 1;
+					if(prgain==16'hE235) within_loader <= 0;
+
+					// deactivate infinite loop at LoadFile subroutine
+					if(prgain==16'hE1FA) infinite_loop_on_E233 <= 0;
+
+					// activate infinite loop if @$2000 is accessed during FileLoad subroutine
+					if((prgain==16'h2000) && (within_loader == 1)) infinite_loop_on_E233 <= 1;
+				end
+
 		end
-	end
 
-	assign irq=timer_irq; // | disk_irq
+//NES data out
+wire match0=prgain==16'h4030;       //IRQ status
+wire match1=prgain==16'h4032;       //drive status
+wire match2=prgain==16'h4033;       //power / exp
+wire match3=((prgain==READ_LO)|(prgain==WRITE_LO))&!(Wstate==2 | Rstate==2);
+wire match4=((prgain==READ_HI)|(prgain==WRITE_HI))&!(Wstate==2 | Rstate==2);
+wire match5=prgain==16'h4208;       //powerpak save flag
+wire match6=prgain[15:8]==8'h40 && |prgain[7:6];    //4040..40FF
+wire match7=(prgain==16'hE233) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
+wire match8=(prgain==16'hE234) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
+wire match9=(prgain==16'hE235) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
+always@*
+	case(1)
+		match0: nesprgdout={7'd0, timer_irq};
+		match1: nesprgdout={5'd0, disk_eject, diskend, disk_eject};
+		match2: nesprgdout=8'b10000000;
+		match3: nesprgdout=romoffset[7:0];
+		match4: nesprgdout={3'b111,romoffset[12:8]};
+		match5: nesprgdout={7'd0,saved};
+		match6: nesprgdout=audio_dout;
+		match7: nesprgdout=8'h4C;  // when infinite loop is active replace jsr $E778 with jmp $E233
+		match8: nesprgdout=8'h33;
+		match9: nesprgdout=8'hE2;
+		default: nesprgdout=ramprgdin;
+	endcase
+assign prg_allow = (nesprg_we & (Wstate==2 | (prgain[15]^(&prgain[14:13]))))
+				| (~nesprg_we & ((prgain[15] & !match3 & !match4 & !match7 & !match8 & !match9) | prgain[15:13]==3));
 
-	//disk eject:   toggle flag continuously except when select button is held
-	reg [2:0] control_cnt;
-	reg [21:0] clkcount;
-	//reg button;
-	assign disk_eject=clkcount[21] | fds_swap;
+	reg write_en;
+	reg vertical;
+	reg timer_irq_en;
+	reg timer_irq_repeat;
+	reg diskreset;
+	reg disk_reg_en;
+	reg [15:0] timerlatch;
+	reg [15:0] timer;
 	always@(posedge clk20) begin
 		if (ce) begin
+			if (timer_irq_en) begin
+				if (timer == 0) begin
+					timer_irq <= 1;
+					timer <= timerlatch;
+					if (~timer_irq_repeat) begin
+						timer_irq_en <= 0;
+					end
+				end else begin
+					timer <= timer - 1'd1;
+				end
+		end
+
+		if(nesprg_we)
+			case(prgain)
+				16'h4020: timerlatch[7:0]<=nesprgdin;
+
+				16'h4021: timerlatch[15:8]<=nesprgdin;
+
+				16'h4022: begin
+					timer_irq_repeat<=nesprgdin[0];
+					timer_irq_en<=nesprgdin[1] & disk_reg_en;
+
+					if (nesprgdin[1] & disk_reg_en) begin
+						timer <= timerlatch;
+					end else begin
+						timer_irq <= 0;
+					end
+				end
+
+				16'h4023: begin
+					disk_reg_en <=nesprgdin[0];
+					if (~nesprgdin[0]) begin
+						timer_irq_en <= 0;
+						timer_irq <= 0;
+					end
+				end
+
+				//16'h4024: //disk data write
+				16'h4025: begin // disk control
+					diskreset<=nesprgdin[1];
+					write_en<=!nesprgdin[2];
+					vertical<=!nesprgdin[3];
+					//disk_irq_en<=nesprgdin[7];
+				end
+
+				16'h4027:   //powerpak extra: disk side
+					diskside_auto<=nesprgdin[1:0];
+			endcase
+	end
+
+	if (m2) begin
+		if (~nesprg_we & prgain==16'h4030)
+			timer_irq <= 0;
+	end
+end
+
+//watch for disk read/write
+always@(posedge clk20) begin
+	if (m2) begin
+		if(write_en & ~nesprg_we & (prgain==WRITE_LO))
+			Wstate<=1;
+		else if(~nesprg_we & (prgain==WRITE_HI) & Wstate==1)
+			Wstate<=2;
+		else 
+			Wstate<=0;
+
+		if(~nesprg_we & (prgain==READ_LO))
+			Rstate<=1;
+		else if(~nesprg_we & (prgain==READ_HI) & Rstate==1)
+			Rstate<=2;
+		else
+			Rstate<=0;
+
+		if(Wstate==2)
+			saved<=1;
+	end
+end
+
+//disk pointer
+always@(posedge clk20) begin
+	if (m2) begin
+		if(diskreset)
+			diskpos<=0;
+		else if(Rstate==2 & !diskend)
+			diskpos<=diskpos+1'd1;
+	end
+end
+
+assign irq=timer_irq; // | disk_irq
+
+//disk eject:   toggle flag continuously except when select button is held
+reg [2:0] control_cnt;
+reg [21:0] clkcount;
+
+assign disk_eject=clkcount[21] | fds_swap;
+
+always@(posedge clk20) begin
+	if (ce) begin
 		clkcount<=clkcount+1'd1;
 		if(prgain==16'h4016) begin
 			if(nesprg_we)                           control_cnt<=0;
 			else if(~nesprg_we & control_cnt!=7)    control_cnt<=control_cnt+1'd1;
 			//if(~nesprg_we & control_cnt==2)          button<=|nesprgdin[1:0];
 		end
-		end
 	end
+end
 
-	//bankswitch control: 6000-DFFF = sram, E000-FFFF = bios or disk
-	reg [18:13] prgbank;
-	wire [18:13] diskbank={1'b1,romoffset[17:13]};
-	always@* begin
-		if(prgain[15:13]==7)
-			prgbank=diskbank & {6{Rstate==2|Wstate==2}};
-		else
-			prgbank={4'b0001,prgain[14:13]};
-	end
-	assign ramprgaout={prgbank,prgain[12:0]};
+//bankswitch control: 6000-DFFF = sram, E000-FFFF = bios or disk
+reg [18:13] prgbank;
+wire [18:13] diskbank={1'b1,romoffset[17:13]};
 
-	//mirroring
-	assign ramchraout[18:11]={6'd0,chrain[12:11]};
-	assign ramchraout[10]=!chrain[13]? chrain[10]: ((vertical & chrain[10]) | (!vertical & chrain[11]));
-	assign ciram_ce=chrain[13];
+always@* begin
+	if(prgain[15:13]==7)
+		prgbank=diskbank & {6{Rstate==2|Wstate==2}};
+	else
+		prgbank={4'b0001,prgain[14:13]};
+end
 
-	//expansion audio
-	fds_audio fds_audio
-	(
-		.clk(clk20),
-		.m2(ce),
-		.reset(reset),
-		.wr(nesprg_we),
-		.addr_in(prgain),
-		.data_in(nesprgdin),
-		.data_out(audio_dout),
-		.audio_out(snd_level)
-	);
+assign ramprgaout={prgbank,prgain[12:0]};
+
+//mirroring
+assign ramchraout[18:11]={6'd0,chrain[12:11]};
+assign ramchraout[10]=!chrain[13]? chrain[10]: ((vertical & chrain[10]) | (!vertical & chrain[11]));
+assign ciram_ce=chrain[13];
+
+//expansion audio
+fds_audio fds_audio
+(
+	.clk(clk20),
+	.m2(ce),
+	.reset(reset),
+	.wr(nesprg_we),
+	.addr_in(prgain),
+	.data_in(nesprgdin),
+	.data_out(audio_dout),
+	.audio_out(snd_level)
+);
 
 endmodule
 

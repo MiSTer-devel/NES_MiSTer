@@ -997,9 +997,7 @@ Mapper165 map165(
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
 	.audio_in   (audio_in),
-	.audio_b    (audio_out_b),
-	//special ports
-	.chr_read(chr_read)
+	.audio_b    (audio_out_b)
 );
 
 //*****************************************************************************//
@@ -1023,7 +1021,6 @@ Mapper218 map218(
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
-	.chr_read   (chr_read),
 	.chr_read   (chr_read),
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
