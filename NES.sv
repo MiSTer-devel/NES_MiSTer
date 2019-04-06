@@ -102,9 +102,9 @@ module emu
 
 assign USER_OUT = '1;
 
-assign AUDIO_S   = 0;
-assign AUDIO_L   = sample;
-assign AUDIO_R   = sample;
+assign AUDIO_S   = 1'b1;
+assign AUDIO_L   = {~sample[15], sample[14:0]};
+assign AUDIO_R   = AUDIO_L;
 assign AUDIO_MIX = 0;
 
 assign LED_USER  = downloading | (loader_fail & led_blink) | bk_state;

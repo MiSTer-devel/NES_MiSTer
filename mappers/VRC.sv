@@ -357,57 +357,6 @@ vrcIRQ vrc4irq(clk,enable,prg_write,{irqlh,irqll},irqc,irqa,prg_din,irqout,ce);
 
 endmodule
 
-module VRC6X(
-	input        clk,         // System clock
-	input        ce,          // M2 ~cpu_clk
-	input        enable,      // Mapper enabled
-	input [31:0] flags,       // Cart flags
-	input [15:0] prg_ain,     // prg address
-	inout [21:0] prg_aout_b,  // prg address out
-	input        prg_read,    // prg read
-	input        prg_write,   // prg write
-	input  [7:0] prg_din,     // prg data in
-	inout  [7:0] prg_dout_b,  // prg data out
-	inout        prg_allow_b, // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,     // chr address in
-	inout [21:0] chr_aout_b,  // chr address out
-	input        chr_read,    // chr ram read
-	inout        chr_allow_b, // chr allow write
-	inout        vram_a10_b,  // Value for A10 address line
-	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
-	inout        irq_b,       // IRQ
-	input [15:0] audio_in,    // Inverted audio from APU
-	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
-);
-
-assign prg_aout_b   = enable ? prg_aout : 22'hZ;
-assign prg_dout_b   = enable ? prg_dout : 8'hZ;
-assign prg_allow_b  = enable ? prg_allow : 1'hZ;
-assign chr_aout_b   = enable ? chr_aout : 22'hZ;
-assign chr_allow_b  = enable ? chr_allow : 1'hZ;
-assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
-assign vram_ce_b    = enable ? vram_ce : 1'hZ;
-assign irq_b        = enable ? irq : 1'hZ;
-assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio : 16'hZ;
-
-wire [21:0] prg_aout, chr_aout;
-wire [7:0] prg_dout;
-wire prg_allow;
-wire chr_allow;
-wire vram_a10;
-wire vram_ce;
-wire irq;
-wire [15:0] audio;
-reg [15:0] flags_out = 0;
-
-
-
-
-
-endmodule
-
 module VRC6(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk
@@ -476,7 +425,12 @@ MAPVRC6 vrc6(m2[7], m2_n, clk, enable, prg_write, nesprg_oe, 0,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], ramprgaout, irq, vram_ce, exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-	ce, audio, flags[1]);
+	ce, exp_audio, flags[1]);
+
+wire [15:0] exp_audio;
+wire [16:0] mixed_audio = audio_in + (((exp_audio >> 2) + (exp_audio >> 3)) + (exp_audio >> 4));
+assign audio = mixed_audio[16:1];
+
 
 assign chr_aout[21:19] = 3'b100;
 assign chr_aout[9:0] = chr_ain[9:0];
@@ -680,7 +634,7 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 	input cfg_chrram,
 
 	input ce,// add
-	output [15:0] snd_level,
+	output [15:0] audio,
 	input mapper26
 
 );
@@ -782,14 +736,9 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 	wire [3:0] vrc6sq2_out;
 	wire [4:0] vrc6saw_out;
 	vrc6sound snd(clk20, ce, enable, nesprg_we, ain, nesprgdin, vrc6sq1_out, vrc6sq2_out, vrc6saw_out);
-//    vrc6sound snd(m2, reset, nesprg_we, ain, nesprgdin, vrc6_out);
-//    pdm #(6) pdm_mod(clk20, vrc6_out, exp6);
 
-ApuLookupTable lookup(clk20,
-					{4'b0, vrc6sq1_out}+
-							{4'b0, vrc6sq2_out},
-							{3'b0, vrc6saw_out},
-					snd_level);
+	wire [5:0] exp_audio = vrc6sq1_out + vrc6sq2_out + vrc6saw_out;
+	assign audio = {exp_audio, exp_audio, exp_audio[5:2]};
 
 endmodule
 
@@ -873,7 +822,6 @@ assign irq=timeout & irqE;
 
 endmodule
 
-
 module vrc6sound(
 //	input m2,
 	input clk,
@@ -882,7 +830,6 @@ module vrc6sound(
 	input wr,
 	input [15:0] ain,
 	input [7:0] din,
-//	output [5:0] out        //range=0..0x3D
 	output [3:0] outSq1,       //range=0..0x0F
 	output [3:0] outSq2,       //range=0..0x0F
 	output [4:0] outSaw        //range=0..0x1F
