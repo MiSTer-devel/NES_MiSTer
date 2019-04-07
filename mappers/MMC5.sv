@@ -54,8 +54,8 @@ wire irq;
 wire prg_open_bus, prg_conflict, has_chr_dout;
 wire [15:0] audio;
 
-// NOTE: The volume is equal but the polarity is reversed.
-wire [16:0] audio_out = audio + audio_in;
+// NOTE: The apu volume is 75% of MMC5 and the polarity is reversed.
+wire [16:0] audio_out = audio + (audio_in[15:1] + audio_in[15:2] + audio_in[15:2]);
 
 reg [1:0] prg_mode, chr_mode;
 reg prg_protect_1, prg_protect_2;

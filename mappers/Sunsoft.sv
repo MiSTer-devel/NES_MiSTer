@@ -146,7 +146,7 @@ SS5b_audio snd_5b (
 
 wire [15:0] exp_out;
 wire [15:0] exp_adj = (|exp_out[15:14] ? 16'hFFFF : {exp_out[13:0], exp_out[1:0]});
-wire [16:0] audio_mix = audio_in + ((exp_adj >> 1) + (exp_adj >> 2) + (exp_adj >> 3));
+wire [16:0] audio_mix = audio_in + exp_adj;
 
 assign audio = 16'hFFFF - audio_mix[16:1];
 
@@ -154,12 +154,12 @@ endmodule
 
 // Sunsoft 5B audio by Kitrinx
 module SS5b_audio (
-	input        clk,
-	input        ce,    // Negedge M2 (aka CPU ce)
-	input        enable,
-	input        wren,
-	input [15:0] addr_in,
-	input  [7:0] data_in,
+	input         clk,
+	input         ce,    // Negedge M2 (aka CPU ce)
+	input         enable,
+	input         wren,
+	input  [15:0] addr_in,
+	input   [7:0] data_in,
 	output [15:0] audio_out
 );
 
@@ -291,9 +291,9 @@ always_comb begin
 end
 
 assign audio_out =
-	{output_a ? ss5b_amp_lut[envelope_a] : 8'h0, 6'b0} +
-	{output_b ? ss5b_amp_lut[envelope_b] : 8'h0, 6'b0} +
-	{output_c ? ss5b_amp_lut[envelope_c] : 8'h0, 6'b0} ;
+	{output_a ? ss5b_amp_lut[envelope_a] : 8'h0, 5'b0} +
+	{output_b ? ss5b_amp_lut[envelope_b] : 8'h0, 5'b0} +
+	{output_c ? ss5b_amp_lut[envelope_c] : 8'h0, 5'b0} ;
 
 // Logarithmic amplification table in 1.5db steps
 wire [7:0] ss5b_amp_lut[0:31] = '{
@@ -304,9 +304,6 @@ wire [7:0] ss5b_amp_lut[0:31] = '{
 };
 
 endmodule
-
-
-
 
 // Mapper 190, Magic Kid GooGoo
 // Mapper 67, Sunsoft-3
