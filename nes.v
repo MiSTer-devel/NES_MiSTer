@@ -154,7 +154,8 @@ module NES(input clk, input reset, input ce,
            input int_audio,
            input ext_audio,
            output apu_ce_o,
-           input scandouble
+           input scandouble,
+           output [2:0] emphasis
            );
   reg [7:0] from_data_bus;
   wire [7:0] cpu_dout;
@@ -279,7 +280,7 @@ module NES(input clk, input reset, input ce,
           ppu_cs && mr_ppu, ppu_cs && mw_ppu,
           nmi,
           chr_read, chr_write, chr_addr, chr_to_ppu, chr_from_ppu,
-          scanline, cycle, mapper_ppu_flags, scandouble);
+          scanline, cycle, mapper_ppu_flags, scandouble, emphasis);
 
   // -- Memory mapping logic
   wire [15:0] prg_addr = addr;

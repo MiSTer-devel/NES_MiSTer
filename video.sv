@@ -11,6 +11,7 @@ module video
 	input  [2:0] scale,
 	input        hide_overscan,
 	input  [3:0] palette,
+	input  [2:0] emphasis,
 
 	output       ce_pix,
 
@@ -275,9 +276,26 @@ always @(posedge clk) begin
 	end
 end
 
-wire  [4:0] vga_r = pixel[4:0];
-wire  [4:0] vga_g = pixel[9:5];
-wire  [4:0] vga_b = pixel[14:10];
+wire dark_r, dark_g, dark_b;
+// bits are in order {B, G, R} color emphasis
+always_comb begin
+	{dark_r, dark_g, dark_b} = 3'b000;
+
+	if (~&color[3:0] & |emphasis) begin
+		if (~&emphasis) begin
+			dark_r = ~emphasis[2];
+			dark_g = ~emphasis[1];
+			dark_b = ~emphasis[0];
+		end else begin
+			{dark_r, dark_g, dark_b} = 3'b111;
+		end
+	end
+
+end
+
+wire  [4:0] vga_r = dark_r ? pixel[4:1] + pixel[4:2] : pixel[4:0];
+wire  [4:0] vga_g = dark_g ? pixel[9:6] + pixel[9:7] : pixel[9:5];
+wire  [4:0] vga_b = dark_b ? pixel[14:11] + pixel[14:12] : pixel[14:10];
 
 video_mixer #(260, 0) video_mixer
 (

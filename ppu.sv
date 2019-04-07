@@ -507,7 +507,8 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
            output [8:0] scanline,
            output [8:0] cycle,
            output [19:0] mapper_ppu_flags,
-           input scandouble); // This should be removed ASAP. Disabling alternate lines wrecks NMI sync
+           input scandouble,
+           output [2:0] emphasis); // This should be removed ASAP. Disabling alternate lines wrecks NMI sync
   // These are stored in control register 0
   reg obj_patt; // Object pattern table
   reg bg_patt;  // Background pattern table
@@ -519,7 +520,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
   reg object_clip;        // 0: Left side 8 pixels object clipping
   reg enable_playfield;   // Enable playfield display
   reg enable_objects;     // Enable objects display
-  //reg [2:0] color_intensity; // Color intensity
+  reg [2:0] color_intensity; // Color intensity
   
   initial begin
     obj_patt = 0;
@@ -531,7 +532,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
     object_clip = 0;
     enable_playfield = 0;
     enable_objects = 0;
-    //color_intensity = 0;
+    color_intensity = 0;
   end
   
   reg nmi_occured;         // True if NMI has occured but not cleared.
@@ -550,6 +551,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
   ClockGen clock(clk, ce, reset, is_rendering, scanline, cycle, is_in_vblank, end_of_line, at_last_cycle_group,
                  exiting_vblank, entering_vblank, is_pre_render_line, scandouble);
   
+  assign emphasis = color_intensity;
   
   // The loopy module handles updating of the loopy address
   wire [14:0] loopy;
@@ -686,7 +688,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
         object_clip <= din[2];
         enable_playfield <= din[3];
         enable_objects <= din[4];
-        //color_intensity <= din[7:5];
+        color_intensity <= din[7:5];
         //if (!din[3] && scanline == 59) $write("Disabling playfield at cycle %d\n", cycle);
       end
       endcase

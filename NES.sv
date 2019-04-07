@@ -427,8 +427,10 @@ NES nes
 	bram_write, bram_override,
 	cycle, scanline,
 	int_audio, ext_audio, apu_ce,
-	scale || forced_scandoubler
+	scale || forced_scandoubler, emphasis
 );
+
+wire [2:0] emphasis;
 
 assign SDRAM_CKE         = 1'b1;
 
@@ -537,6 +539,7 @@ video video
 	.scale(scale),
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
+	.emphasis(emphasis),
 
 	.ce_pix(CE_PIXEL)
 );
