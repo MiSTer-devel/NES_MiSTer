@@ -152,7 +152,9 @@ module NES(input clk, input reset, input ce,
            output [8:0] cycle,
            output [8:0] scanline,
            input int_audio,
-           input ext_audio
+           input ext_audio,
+           output apu_ce_o,
+           input scandouble
            );
   reg [7:0] from_data_bus;
   wire [7:0] cpu_dout;
@@ -277,7 +279,7 @@ module NES(input clk, input reset, input ce,
           ppu_cs && mr_ppu, ppu_cs && mw_ppu,
           nmi,
           chr_read, chr_write, chr_addr, chr_to_ppu, chr_from_ppu,
-          scanline, cycle, mapper_ppu_flags);
+          scanline, cycle, mapper_ppu_flags, scandouble);
 
   // -- Memory mapping logic
   wire [15:0] prg_addr = addr;
@@ -291,16 +293,31 @@ module NES(input clk, input reset, input ce,
   wire mapper_irq;
   wire has_chr_from_ppu_mapper;
   wire [15:0] sample_ext;
-  reg [16:0] sample_sum;
-  assign sample = sample_sum[16:1]; //loss of 1 bit of resolution.  Add control for when no external audio to boost back up?
+  //assign sample = {int_audio, ext_audio}sample_sum[16:1]; //loss of 1 bit of resolution.  Add control for when no external audio to boost back up?
   
+  assign sample = sample_a;
+  reg [15:0] sample_a;
+
+  always @* begin
+    case (audio_en)
+      0: sample_a = 16'd0;
+      1: sample_a = sample_ext;
+      2: sample_a = sample_inverted;
+      3: sample_a = sample_ext;
+    endcase
+  end
+
+  wire [15:0] sample_inverted = 16'hFFFF - sample_apu;
+  wire [1:0] audio_en = {int_audio, ext_audio};
+  wire [15:0] audio_mappers = (audio_en == 2'd1) ? 16'd0 : sample_inverted;
+
   cart_top multi_mapper (
     // FPGA specific
     .clk               (clk),
     .reset             (reset),
     .flags             (mapper_flags),            // iNES header data (use 0 while loading)
     // Cart pins (slightly abstracted)
-    .ce                (cart_ce),        // M2 (held in high impedance during reset)
+    .ce                (cart_ce & ~reset),        // M2 (held in high impedance during reset)
     .prg_ain           (prg_addr),                // CPU Address in (a15 abstracted from ROMSEL)
     .prg_read          (prg_read),                // CPU RnW split
     .prg_write         (prg_write),               // CPU RnW split
@@ -314,7 +331,7 @@ module NES(input clk, input reset, input ce,
     .vram_a10          (vram_a10),                // CIRAM a10 line
     .vram_ce           (vram_ce),                 // CIRAM chip enable
     .irq               (mapper_irq),              // IRQ (inverted, active high)
-    .audio_in          (16'h0),                   // Amplified and inverted APU audio
+    .audio_in          (audio_mappers),           // Amplified and inverted APU audio
     .audio             (sample_ext),              // Mixed audio output from cart
     // SDRAM Communication
     .prg_aout          (prg_linaddr),             // SDRAM adjusted PRG RAM address
@@ -339,6 +356,8 @@ module NES(input clk, input reset, input ce,
     .fds_swap          (fds_swap)                 // Used to trigger FDS disk changes
   );
 
+  assign apu_ce_o = apu_ce;
+
   assign chr_to_ppu = has_chr_from_ppu_mapper ? chr_from_ppu_mapper : memory_din_ppu;
                              
   // Mapper IRQ seems to be delayed by one PPU clock.   
@@ -351,14 +370,6 @@ module NES(input clk, input reset, input ce,
       mapper_irq_delayed <= mapper_irq;
     if (apu_ce)
       apu_irq_delayed <= apu_irq;
-    if (ce | apu_ce) begin
-      case ({int_audio, ext_audio})
-      0: sample_sum <= 17'b0;
-      1: sample_sum <= {1'b0,sample_ext};
-      2: sample_sum <= {1'b0,sample_apu};
-      3: sample_sum <= {1'b0,sample_ext} + {1'b0,sample_apu};
-      endcase
-    end
   end
    
   // -- Multiplexes CPU and PPU accesses into one single RAM

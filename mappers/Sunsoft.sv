@@ -129,88 +129,181 @@ assign chr_allow = flags[15];
 assign chr_aout = {4'b10_00, chrout, chr_ain[9:0]};
 assign vram_ce = chr_ain[13];
 
-//Taken from Loopy's Power Pak mapper source
-//audio
-	wire [6:0] fme7_out;
-	wire [15:0] fme7_sample;
-	FME7_sound snd0(clk, ce, ~enable, prg_write, prg_ain, prg_din, fme7_out);
-	//FME7_sound snd0(m2, reset, nesprg_we, prgain, nesprgdin, fme7_out);
-	//pdm #(7) pdm_mod(clk20, fme7_out, exp6);
+SS5b_audio snd_5b (
+	.clk(clk),
+	.ce(ce),
+	.enable(enable),
+	.wren(prg_write),
+	.addr_in(prg_ain),
+	.data_in(prg_din),
+	.audio_out(exp_out)
+);
 
-//Need a better lookup table for this
-//This is just the NES APU lookup table, which is designed for 2 4-bit square waves, not 3
-ApuLookupTable lookup(clk,
-	{4'b0, fme7_out[5:1]}, //fme7_out range: 0-2D
-	{8'b0},                //No triange, noise or DMC
-	fme7_sample);
-assign audio = {fme7_sample[14:0], 1'b0};    // Double.  Volume will be slightly higher, rather than slightly lower than expected
+// Sunsoft 5B audio amplifies each channel logarithmicly before mixing. It's then mixed
+// with APU audio (reverse polarity) and then reverses the polarity of the audio again.
+// The expansion audio is much louder than APU audio, so we reduce it to 68% prior to
+// mixing.
+
+wire [15:0] exp_out;
+wire [15:0] exp_adj = (|exp_out[15:14] ? 16'hFFFF : {exp_out[13:0], exp_out[1:0]});
+wire [16:0] audio_mix = audio_in + exp_adj;
+
+assign audio = 16'hFFFF - audio_mix[16:1];
 
 endmodule
 
-//Taken from Loopy's Power Pak mapper source map45.v
-module FME7_sound(
-	input clk,
-	input ce,
-	input reset,
-	input wr,
-	input [15:0] ain,
-	input [7:0] din,
-	output [6:0] out
+// Sunsoft 5B audio by Kitrinx
+module SS5b_audio (
+	input         clk,
+	input         ce,    // Negedge M2 (aka CPU ce)
+	input         enable,
+	input         wren,
+	input  [15:0] addr_in,
+	input   [7:0] data_in,
+	output [15:0] audio_out
 );
-	reg [3:0] regC;
-	reg [11:0] freq0,freq1,freq2;
-	reg [2:0] en;
-	reg [3:0] vol0,vol1,vol2;
-	reg [11:0] count0,count1,count2;
-	reg [4:0] duty0,duty1,duty2;
 
-	always@(posedge clk) begin
-		if(reset) begin
-			en <= 0;
-		end else if (ce) begin
-			if(wr) begin
-				if(ain[15:13]==3'b110)  //C000
-					regC<=din[3:0];
-				if(ain[15:13]==3'b111)  //E000
-				case(regC)
-					0:freq0[7:0]<=din;
-					1:freq0[11:8]<=din[3:0];
-					2:freq1[7:0]<=din;
-					3:freq1[11:8]<=din[3:0];
-					4:freq2[7:0]<=din;
-					5:freq2[11:8]<=din[3:0];
-					7:en<=din[2:0];
-					8:vol0<=din[3:0];
-					9:vol1<=din[3:0];
-					10:vol2<=din[3:0];
-				endcase
-			end
-			if(count0==freq0) begin
-				count0<=0;
-				duty0<=duty0+1'd1;
-			end else
-				count0<=count0+1'd1;
+reg [3:0] reg_select;
 
-			if(count1==freq1) begin
-				count1<=0;
-				duty1<=duty1+1'd1;
-			end else
-				count1<=count1+1'd1;
-			if(count2==freq2) begin
-				count2<=0;
-				duty2<=duty2+1'd1;
-			end else
-				count2<=count2+1'd1;
+// Register bank
+reg [7:0] internal[0:15];
+
+// Register abstraction to readable wires
+
+// Periods
+wire [11:0] period_a     = {internal[1][3:0], internal[0]};
+wire [11:0] period_b     = {internal[3][3:0], internal[2]};
+wire [11:0] period_c     = {internal[5][3:0], internal[4]};
+wire [4:0]  period_n     = internal[6][4:0];
+
+// Enables
+wire        tone_dis_a   = internal[7][0];
+wire        tone_dis_b   = internal[7][1];
+wire        tone_dis_c   = internal[7][2];
+wire        noise_dis_a  = internal[7][3];
+wire        noise_dis_b  = internal[7][4];
+wire        noise_dis_c  = internal[7][5];
+
+// Envelope
+// wire        env_enable_a = internal[8][4];
+ wire  [3:0] env_vol_a    = internal[8][3:0];
+// wire        env_enable_b = internal[9][4];
+ wire  [3:0] env_vol_b    = internal[9][3:0];
+// wire        env_enable_c = internal[10][4];
+ wire  [3:0] env_vol_c    = internal[10][3:0];
+// wire [15:0] env_period   = {internal[12], internal[11]};
+// wire        env_continue = internal[13][3];
+// wire        env_attack   = internal[13][2];
+// wire        env_alt      = internal[13][1];
+// wire        env_hold     = internal[13][0];
+
+reg [4:0] cycles;
+reg [11:0] tone_a_cnt, tone_b_cnt, tone_c_cnt, noise_cnt;
+
+reg [4:0] tone_a, tone_b, tone_c;
+
+wire [12:0] tone_a_next = tone_a_cnt + 1'b1;
+wire [12:0] tone_b_next = tone_b_cnt + 1'b1;
+wire [12:0] tone_c_next = tone_c_cnt + 1'b1;
+wire [12:0] noise_next = noise_cnt + 1'b1;
+
+reg [16:0] noise_lfsr = 17'h1;
+reg [5:0] envelope_a, envelope_b, envelope_c;
+
+always_ff @(posedge clk)
+if (~enable) begin
+	internal <= '{
+		8'd0, 8'd0, 8'd0, 8'd0, 8'd0, 8'd0, 8'd0, 8'd0,
+		8'd0, 8'd0, 8'd0, 8'd0, 8'd0, 8'd0, 8'd0, 8'd0};
+
+	{tone_a, tone_b, tone_c, envelope_a, envelope_b, envelope_c, cycles, noise_lfsr} <= 0;
+	{tone_a_cnt, tone_b_cnt, tone_c_cnt, noise_cnt} <= 0;
+end else if (ce) begin
+	cycles <= cycles + 1'b1;
+
+	// Write registers
+	if (wren) begin
+		if (addr_in[15:13] == 3'b110)  // C000
+			reg_select <= data_in[3:0];
+		if (addr_in[15:13] == 3'b111)  // E000
+			internal[reg_select] <= data_in;
+	end
+
+	tone_a_cnt <= tone_a_next[11:0];
+	tone_b_cnt <= tone_b_next[11:0];
+	tone_c_cnt <= tone_c_next[11:0];
+
+	if (tone_a_next >= period_a) begin
+		tone_a_cnt <= 12'd0;
+		tone_a <= tone_a + 1'b1;
+	end
+
+	if (tone_b_next >= period_b) begin
+		tone_b_cnt<= 12'd0;
+		tone_b <= tone_b + 1'b1;
+	end
+
+	if (tone_c_next >= period_c) begin
+		tone_c_cnt <= 12'd0;
+		tone_c <= tone_c + 1'b1;
+	end
+
+	// XXX: Implement modulation envelope if needed (not used in any games)
+	envelope_a <= {env_vol_a, 1'b1};
+	envelope_b <= {env_vol_b, 1'b1};
+	envelope_c <= {env_vol_c, 1'b1};
+
+	if (&cycles) begin
+		// Advance noise LFSR every 32 cycles
+		noise_cnt <= noise_next[11:0];
+
+		if (noise_next >= period_n) begin
+			noise_lfsr <= {noise_lfsr[15:0], noise_lfsr[16] ^ noise_lfsr[13]};
+			noise_cnt <= 12'd0;
 		end
 	end
 
-	wire [3:0] ch0={4{~en[0] & duty0[4]}} & vol0;
-	wire [3:0] ch1={4{~en[1] & duty1[4]}} & vol1;
-	wire [3:0] ch2={4{~en[2] & duty2[4]}} & vol2;
-	assign out=ch0+ch1+ch2;
+end
+
+wire output_a, output_b, output_c;
+
+always_comb begin
+	case ({tone_dis_a, noise_dis_a})
+		2'b00: output_a = noise_lfsr[0] & tone_a[4];
+		2'b01: output_a = tone_a[4];
+		2'b10: output_a = noise_lfsr[0];
+		2'b11: output_a = 1'b0;
+	endcase
+
+	case ({tone_dis_b, noise_dis_b})
+		2'b00: output_b = noise_lfsr[0] & tone_b[4];
+		2'b01: output_b = tone_b[4];
+		2'b10: output_b = noise_lfsr[0];
+		2'b11: output_b = 1'b0;
+	endcase
+
+	case ({tone_dis_c, noise_dis_c})
+		2'b00: output_c = noise_lfsr[0] & tone_c[4];
+		2'b01: output_c = tone_c[4];
+		2'b10: output_c = noise_lfsr[0];
+		2'b11: output_c = 1'b0;
+	endcase
+end
+
+assign audio_out =
+	{output_a ? ss5b_amp_lut[envelope_a] : 8'h0, 5'b0} +
+	{output_b ? ss5b_amp_lut[envelope_b] : 8'h0, 5'b0} +
+	{output_c ? ss5b_amp_lut[envelope_c] : 8'h0, 5'b0} ;
+
+// Logarithmic amplification table in 1.5db steps
+wire [7:0] ss5b_amp_lut[0:31] = '{
+	8'd0,  8'd0,  8'd1,  8'd1,  8'd1,   8'd1,   8'd2,   8'd2,
+	8'd3,  8'd3,  8'd4,  8'd5,  8'd6,   8'd7,   8'd9,   8'd11,
+	8'd13, 8'd15, 8'd18, 8'd22, 8'd26,  8'd31,  8'd37,  8'd44,
+	8'd53, 8'd63, 8'd74, 8'd89, 8'd105, 8'd125, 8'd149, 8'd177
+};
 
 endmodule
-
 
 // Mapper 190, Magic Kid GooGoo
 // Mapper 67, Sunsoft-3
@@ -247,7 +340,7 @@ assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
 assign irq_b        = enable ? irq : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio_in : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
 
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
@@ -388,7 +481,7 @@ assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
 assign irq_b        = enable ? 1'b0 : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio_in : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
 
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;

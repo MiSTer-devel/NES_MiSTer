@@ -35,7 +35,7 @@ assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
 assign irq_b        = enable ? irq : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio : 16'hZ;
+assign audio_b      = enable ? 16'hFFFF - audio[16:1] : 16'hZ;
 
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
@@ -45,47 +45,50 @@ wire vram_ce;
 wire [7:0] prg_dout;
 reg [15:0] flags_out = 0;
 wire irq;
-wire [15:0] audio;
 
-	wire nesprg_oe;
-		wire [7:0] neschrdout;
-	wire neschr_oe;
-	wire wram_oe;
-	wire wram_we;
-	wire prgram_we;
-	wire chrram_oe;
-	wire prgram_oe;
-	wire exp6;
-	reg [7:0] m2;
-	wire m2_n = 1;//~ce;  //m2_n not used as clk.  Invert m2 (ce).
-	always @(posedge clk) begin
-		m2[7:1] <= m2[6:0];
+wire nesprg_oe;
+wire [7:0] neschrdout;
+wire neschr_oe;
+wire wram_oe;
+wire wram_we;
+wire prgram_we;
+wire chrram_oe;
+wire prgram_oe;
+wire exp6;
+reg [7:0] m2;
+wire m2_n = 1;//~ce;  //m2_n not used as clk.  Invert m2 (ce).
+
+always @(posedge clk) begin
+	m2[7:1] <= m2[6:0];
 	m2[0] <= ce;
-	end
+end
 
+MAPFDS fds(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
+	1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
+	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
+	prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6,
+	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
+	ce, fds_swap, prg_allow, audio_exp);
 
-		MAPFDS fds(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
-		1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
-		neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
-		prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6,
-		0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-		ce, fds_swap, prg_allow, audio_exp);
-		assign chr_aout[21:19] = 3'b100;
-		assign chr_aout[9:0] = chr_ain[9:0];
-		assign vram_a10 = chr_aout[10];
-		assign prg_aout[21:19] = 3'b000;
-		//assign prg_aout[12:0] = prg_ain[12:0];
+assign chr_aout[21:19] = 3'b100;
+assign chr_aout[9:0] = chr_ain[9:0];
+assign vram_a10 = chr_aout[10];
+assign prg_aout[21:19] = 3'b000;
+//assign prg_aout[12:0] = prg_ain[12:0];
 
-		wire [11:0] audio_exp;
+wire [11:0] audio_exp;
 
-		// XXX: This needs to be replaced with a proper ~2000hz LPF
-		lpf_aud fds_lpf
-		(
-			.CLK(clk),
-			.CE(ce),
-			.IDATA({1'b0, audio_exp, audio_exp[2:0]}),
-			.ODATA(audio)
-		);
+// XXX: This needs to be replaced with a proper ~2000hz LPF
+lpf_aud fds_lpf
+(
+	.CLK(clk),
+	.CE(ce),
+	.IDATA(16'hFFFF - {1'b0, audio_exp[11:0], audio_exp[11:9]}),
+	.ODATA(audio_exp_f)
+);
+
+wire [15:0] audio_exp_f;
+wire [16:0] audio = audio_in + audio_exp_f;
 
 endmodule
 
@@ -167,7 +170,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	reg [17:0] sideoffset;
 	wire [17:0] romoffset;
 
-//	Loopy's patched bios use a trick to catch requested diskside for games
+// Loopy's patched bios use a trick to catch requested diskside for games
 // using standard bios load process.
 // Unlicensed games sometimes doesn't use standard bios load process. This
 // break automatic diskside trick.

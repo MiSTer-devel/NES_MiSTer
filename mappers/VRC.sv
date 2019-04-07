@@ -34,7 +34,7 @@ assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
 assign irq_b        = enable ? 1'b0 : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio_in : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
 
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
@@ -131,7 +131,7 @@ assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
 assign irq_b        = enable ? irq : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio_in : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
 
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
@@ -235,7 +235,7 @@ assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
 assign irq_b        = enable ? irq : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio_in : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
 
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
@@ -357,57 +357,6 @@ vrcIRQ vrc4irq(clk,enable,prg_write,{irqlh,irqll},irqc,irqa,prg_din,irqout,ce);
 
 endmodule
 
-module VRC6X(
-	input        clk,         // System clock
-	input        ce,          // M2 ~cpu_clk
-	input        enable,      // Mapper enabled
-	input [31:0] flags,       // Cart flags
-	input [15:0] prg_ain,     // prg address
-	inout [21:0] prg_aout_b,  // prg address out
-	input        prg_read,    // prg read
-	input        prg_write,   // prg write
-	input  [7:0] prg_din,     // prg data in
-	inout  [7:0] prg_dout_b,  // prg data out
-	inout        prg_allow_b, // Enable access to memory for the specified operation.
-	input [13:0] chr_ain,     // chr address in
-	inout [21:0] chr_aout_b,  // chr address out
-	input        chr_read,    // chr ram read
-	inout        chr_allow_b, // chr allow write
-	inout        vram_a10_b,  // Value for A10 address line
-	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
-	inout        irq_b,       // IRQ
-	input [15:0] audio_in,    // Inverted audio from APU
-	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
-);
-
-assign prg_aout_b   = enable ? prg_aout : 22'hZ;
-assign prg_dout_b   = enable ? prg_dout : 8'hZ;
-assign prg_allow_b  = enable ? prg_allow : 1'hZ;
-assign chr_aout_b   = enable ? chr_aout : 22'hZ;
-assign chr_allow_b  = enable ? chr_allow : 1'hZ;
-assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
-assign vram_ce_b    = enable ? vram_ce : 1'hZ;
-assign irq_b        = enable ? irq : 1'hZ;
-assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio : 16'hZ;
-
-wire [21:0] prg_aout, chr_aout;
-wire [7:0] prg_dout;
-wire prg_allow;
-wire chr_allow;
-wire vram_a10;
-wire vram_ce;
-wire irq;
-wire [15:0] audio;
-reg [15:0] flags_out = 0;
-
-
-
-
-
-endmodule
-
 module VRC6(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk
@@ -476,7 +425,16 @@ MAPVRC6 vrc6(m2[7], m2_n, clk, enable, prg_write, nesprg_oe, 0,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], ramprgaout, irq, vram_ce, exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-	ce, audio, flags[1]);
+	ce, exp_audio, flags[1]);
+
+// VRC6 audio is much louder than APU audio, so match the levels we have to reduce it 
+// to about 43% to match the audio ratio of the original Famicom with AD3. Note that the
+// VRC6 audio is opposite polarity from APU audio.
+
+wire [15:0] exp_audio;
+wire [16:0] mixed_audio = audio_in + (((exp_audio >> 2) + (exp_audio >> 3)) + (exp_audio >> 4));
+assign audio = mixed_audio[16:1];
+
 
 assign chr_aout[21:19] = 3'b100;
 assign chr_aout[9:0] = chr_ain[9:0];
@@ -623,17 +581,22 @@ end
 
 wire ack;
 wire ce_ym2143 = ce | (ce_count==4'd5);
-wire [13:0] ym2143audio;
+wire signed [13:0] ym2143audio;
 wire wr_audio = prg_write && (prg_ain[15:6]==10'b1001_0000_00) && (prg_ain[4:0]==5'b1_0000); //0x9010 or 0x9030
 eseopll ym2143vrc7 (clk,~enable, ce_ym2143,wr_audio,ce_ym2143,ack,wr_audio,{15'b0,prg_ain[5]},prg_din,ym2143audio);
 
-//No clipping. Lower volume.
-//wire [12:0] ym2143audiounsigned = ym2143audio[12:0] ^ 13'b1_0000_0000_0000; // 10 bits * 6 channels = Max 13 bits.
-//assign audio[15:0] = soff ? 16'h8000 : {ym2143audiounsigned, 3'b0};
-//Clipping possible.  Higher volume.
+// The strategy here:
+// VRC7 sound is very low, and the top two bit is seldom (if ever) used. It's output as signed, so
+// what we do is convert to unsigned, then drop the top bit, clipping if needed. It's still very
+// low compared to NES audio, so we drop the bottom bit of NES audio, mix the two, then boost the
+// mixed result times two, again clipping if needed. The result is audio mixed more or less correctly
+// and at a similar level to the audio from regular games. I do not know the polarity of
+// VRC7 audio.
 
-wire [11:0] ym2143audiounsigned = ym2143audio[13:12]==3'b10 ? 12'h000 : ym2143audio[13:11]==3'b01 ? 12'hFFF : ym2143audio[11:0] ^ 12'b1000_0000_0000; // Cheat one bit (some clipping)
-assign audio[15:0] = soff ? 16'h8000 : {ym2143audiounsigned, 4'b0};
+wire [13:0] audio_exp = ym2143audio + 13'd4095;
+wire [15:0] audio_clip = audio_exp[13] ? 16'hFFFF : {audio_exp[12:0], audio_exp[13:11]};
+wire [16:0] audio_mixed = audio_in[15:1] + audio_clip;
+assign audio = soff ? 16'h8000 : (audio_mixed[16] ? 16'hFFFF : audio_mixed[15:0]);
 
 endmodule
 
@@ -680,7 +643,7 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 	input cfg_chrram,
 
 	input ce,// add
-	output [15:0] snd_level,
+	output [15:0] audio,
 	input mapper26
 
 );
@@ -771,7 +734,6 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 	assign prgram_oe=~cfg_boot & m2_n & ~nesprg_we & prgain[15];
 
 	wire config_rd = 0;
-	//gamegenie gg(m2, reset, nesprg_we, prgain, nesprgdin, ramprgdin, nesprgdout, config_rd);
 	assign nesprgdout=8'b0;
 	assign nesprg_oe=wram_oe | prgram_oe | config_rd;
 
@@ -782,14 +744,10 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 	wire [3:0] vrc6sq2_out;
 	wire [4:0] vrc6saw_out;
 	vrc6sound snd(clk20, ce, enable, nesprg_we, ain, nesprgdin, vrc6sq1_out, vrc6sq2_out, vrc6saw_out);
-//    vrc6sound snd(m2, reset, nesprg_we, ain, nesprgdin, vrc6_out);
-//    pdm #(6) pdm_mod(clk20, vrc6_out, exp6);
 
-ApuLookupTable lookup(clk20,
-					{4'b0, vrc6sq1_out}+
-							{4'b0, vrc6sq2_out},
-							{3'b0, vrc6saw_out},
-					snd_level);
+	// VRC6 sound is mixed before amplification, and them amplified linearly
+	wire [5:0] exp_audio = vrc6sq1_out + vrc6sq2_out + vrc6saw_out;
+	assign audio = {exp_audio, exp_audio, exp_audio[5:2]};
 
 endmodule
 
@@ -873,16 +831,13 @@ assign irq=timeout & irqE;
 
 endmodule
 
-
 module vrc6sound(
-//	input m2,
 	input clk,
 	input ce,
 	input enable,
 	input wr,
 	input [15:0] ain,
 	input [7:0] din,
-//	output [5:0] out        //range=0..0x3D
 	output [3:0] outSq1,       //range=0..0x0F
 	output [3:0] outSq2,       //range=0..0x0F
 	output [4:0] outSaw        //range=0..0x1F
@@ -960,7 +915,7 @@ wire [4:0] duty1pos=duty1cnt+{1'b1,~duty1};
 wire [3:0] ch0=((~duty0pos[4]|mode0)&en0)?vol0:4'd0;
 wire [3:0] ch1=((~duty1pos[4]|mode1)&en1)?vol1:4'd0;
 wire [4:0] ch2=en2?acc[7:3]:5'd0;
-//    assign out=ch0+ch1+ch2;
+
 assign outSq1=ch0;
 assign outSq2=ch1;
 assign outSaw=ch2;

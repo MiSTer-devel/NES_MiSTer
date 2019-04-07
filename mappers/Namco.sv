@@ -33,7 +33,7 @@ assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
 assign irq_b        = enable ? irq : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio : 16'hZ;
+assign audio_b      = enable ? audio_mix[16:1] : 16'hZ;
 
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
@@ -69,6 +69,8 @@ MAPN106 n106(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
 	prgram_oe, chr_aout[18:10], ramprgaout, irq, vram_ce, exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
 	ce, (flags[7:0]==210), flags[24:21], audio[15:5]);
+
+wire [16:0] audio_mix = audio_in + audio;
 
 assign chr_aout[21:19] = 3'b100;
 assign chr_aout[9:0] = chr_ain[9:0];

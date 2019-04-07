@@ -108,7 +108,8 @@ module ClockGen(input clk, input ce, input reset,
                 output at_last_cycle_group,
                 output exiting_vblank,
                 output entering_vblank,
-                output reg is_pre_render);
+                output reg is_pre_render,
+                input scandouble);
   reg second_frame;
   
   // Scanline 0..239 = picture scan lines
@@ -145,8 +146,8 @@ module ClockGen(input clk, input ce, input reset,
     scanline <= exiting_vblank ? 9'b111111111 : scanline + 1'd1;
     // The pre render flag is set while we're on scanline -1.
     is_pre_render <= exiting_vblank;
-    
-    if (exiting_vblank) second_frame <= !second_frame;
+
+    if (exiting_vblank & ~scandouble) second_frame <= !second_frame;
   end
   
 endmodule // ClockGen
@@ -505,7 +506,8 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
            output [7:0] vram_dout,
            output [8:0] scanline,
            output [8:0] cycle,
-           output [19:0] mapper_ppu_flags);
+           output [19:0] mapper_ppu_flags,
+           input scandouble); // This should be removed ASAP. Disabling alternate lines wrecks NMI sync
   // These are stored in control register 0
   reg obj_patt; // Object pattern table
   reg bg_patt;  // Background pattern table
@@ -546,7 +548,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
   wire is_rendering = (enable_playfield || enable_objects) && !is_in_vblank && scanline != 240;
   
   ClockGen clock(clk, ce, reset, is_rendering, scanline, cycle, is_in_vblank, end_of_line, at_last_cycle_group,
-                 exiting_vblank, entering_vblank, is_pre_render_line);
+                 exiting_vblank, entering_vblank, is_pre_render_line, scandouble);
   
   
   // The loopy module handles updating of the loopy address
