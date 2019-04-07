@@ -92,6 +92,7 @@ reg last_chr_read;
 //reg display_enable;
 //wire ppu_in_frame = ppuflags[0] & display_enable;
 wire ppu_in_frame = ppuflags[0];
+reg old_ppu_sprite16;
 wire ppu_sprite16 = ppuflags[1];
 //reg ppu_sprite16;
 wire [8:0] ppu_cycle = ppuflags[10:2];
@@ -140,8 +141,10 @@ always @(posedge clk) begin
 		endcase
 
 		// Remember which set of CHR was written to last.
+		// chr_last is set to 0 when changing bank with sprites set to 8x8
 		if (prg_ain[9:4] == 6'b010010) //(prg_ain[9:0] >= 10'h120 && prg_ain[9:0] < 10'h130)
-			chr_last <= prg_ain[3];
+			chr_last <= prg_ain[3] & ppu_sprite16;
+
 	end
 		//Not currently passing prg_write when ppu_cs
 		//if (prg_write && prg_ain == 16'h2000) begin // $2000
@@ -151,6 +154,10 @@ always @(posedge clk) begin
 		//  display_enable <= (prg_din[4:3] != 2'b0);
 		//end
 
+		// chr_last is set to 0 when changing sprite size to 8x8
+		old_ppu_sprite16 <= ppu_sprite16;
+		if (old_ppu_sprite16 != ppu_sprite16 && ~ppu_sprite16)
+			chr_last <= 0;
 	end
 
 	// Mode 0/1 - Not readable (returns open bus), can only be written while the PPU is rendering (otherwise, 0 is written)
@@ -186,11 +193,12 @@ end
 // Determine IRQ handling
 reg last_scanline, irq_trig;
 always @(posedge clk) if (ce || ppu_ce) begin
-	if (ce && prg_read && prg_ain == 16'h5204)
+	irq_trig <= (irq_scanline != 0 && irq_scanline < 240 && ppu_scanline == {1'b0, irq_scanline});
+	last_scanline <= ppu_scanline[0];
+
+	if ((ce && prg_read && prg_ain == 16'h5204) || ~ppu_in_frame)
 		irq_pending <= 0;
-		irq_trig <= (irq_scanline != 0 && irq_scanline < 240 && ppu_scanline == {1'b0, irq_scanline});
-		last_scanline <= ppu_scanline[0];
-	if (ppu_scanline[0] != last_scanline && irq_trig)
+	else if (ppu_scanline[0] != last_scanline && irq_trig)
 		irq_pending <= 1;
 end
 
