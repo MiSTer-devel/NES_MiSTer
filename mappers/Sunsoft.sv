@@ -139,6 +139,11 @@ SS5b_audio snd_5b (
 	.audio_out(exp_out)
 );
 
+// Sunsoft 5B audio amplifies each channel logarithmicly before mixing. It's then mixed
+// with APU audio (reverse polarity) and then reverses the polarity of the audio again.
+// The expansion audio is much louder than APU audio, so we reduce it to 68% prior to
+// mixing.
+
 wire [15:0] exp_out;
 wire [15:0] exp_adj = (|exp_out[15:14] ? 16'hFFFF : {exp_out[13:0], exp_out[1:0]});
 wire [16:0] audio_mix = audio_in + ((exp_adj >> 1) + (exp_adj >> 2) + (exp_adj >> 3));
@@ -338,7 +343,7 @@ assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
 assign irq_b        = enable ? irq : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio_in : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
 
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
@@ -479,7 +484,7 @@ assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
 assign irq_b        = enable ? 1'b0 : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio_in : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
 
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;

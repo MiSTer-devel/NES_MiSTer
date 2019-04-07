@@ -103,7 +103,7 @@ module emu
 assign USER_OUT = '1;
 
 assign AUDIO_S   = 1'b1;
-assign AUDIO_L   = {~sample[15], sample[14:0]};
+assign AUDIO_L   = |mute_cnt ? 16'd0 : sample_signed[15:0];
 assign AUDIO_R   = AUDIO_L;
 assign AUDIO_MIX = 0;
 
@@ -182,6 +182,36 @@ wire int_audio = ~status[31];
 wire ext_audio = 1;
 wire int_audio = 1;
 `endif
+
+// Remove DC offset and convert to signed
+jt49_dcrm2 #(.sw(16)) dc_filter (
+	.clk  (clk),
+	.cen  (apu_ce & &filter_cnt),
+	.rst  (reset_nes),
+	.din  (sample),
+	.dout (sample_signed)
+);
+
+wire apu_ce;
+wire signed [15:0] sample_signed;
+
+reg [21:0] mute_cnt = 22'h3FFFFF;
+
+// Pause audio to avoid loud "POP"
+always_ff @(posedge clk) begin
+	if (reset_nes)
+		mute_cnt <= 22'h3FFFFF;
+	else if (|mute_cnt)
+		mute_cnt <= mute_cnt - 1'b1;
+end
+
+// Filter CE impacts frequency response
+reg [3:0] filter_cnt;
+always_ff @(posedge clk) begin
+	if (apu_ce)
+		filter_cnt<= filter_cnt + 1'b1;
+end
+
 
 
 wire forced_scandoubler;
@@ -394,7 +424,7 @@ NES nes
    bram_addr, bram_din, bram_dout,
 	bram_write, bram_override,
 	cycle, scanline,
-	int_audio, ext_audio
+	int_audio, ext_audio, apu_ce
 );
 
 assign SDRAM_CKE         = 1'b1;

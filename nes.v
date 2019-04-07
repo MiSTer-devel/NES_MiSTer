@@ -152,7 +152,8 @@ module NES(input clk, input reset, input ce,
            output [8:0] cycle,
            output [8:0] scanline,
            input int_audio,
-           input ext_audio
+           input ext_audio,
+           output apu_ce_o
            );
   reg [7:0] from_data_bus;
   wire [7:0] cpu_dout;
@@ -353,6 +354,8 @@ module NES(input clk, input reset, input ce,
     // User input
     .fds_swap          (fds_swap)                 // Used to trigger FDS disk changes
   );
+
+  assign apu_ce_o = apu_ce;
 
   assign chr_to_ppu = has_chr_from_ppu_mapper ? chr_from_ppu_mapper : memory_din_ppu;
                              

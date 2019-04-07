@@ -40,7 +40,7 @@ assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
 assign irq_b        = enable ? irq : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio_in : 16'hZ;
+assign audio_b      = enable ? audio_out[16:1] : 16'hZ;
 
 wire [21:0] prg_aout;
 reg [21:0] chr_aout;
@@ -54,6 +54,8 @@ wire irq;
 wire prg_open_bus, prg_conflict, has_chr_dout;
 wire [15:0] audio;
 
+// NOTE: The volume is equal but the polarity is reversed.
+wire [16:0] audio_out = audio + audio_in;
 
 reg [1:0] prg_mode, chr_mode;
 reg prg_protect_1, prg_protect_2;
@@ -400,21 +402,29 @@ assign chr_allow = flags[15];
 
 wire [7:0] apu_dout;
 wire apu_cs = (prg_ain[15:5]==11'b0101_0000_000) && (prg_ain[3]==0);
-wire DmaReq;      // 1 when DMC wants DMA
+wire DmaReq;          // 1 when DMC wants DMA
 wire [15:0] DmaAddr;  // Address DMC wants to read
 wire odd_or_even;
-wire apu_irq;       // IRQ asserted
+wire apu_irq;         // IRQ asserted
 
-APU mmc5apu(1, clk, ppu_ce, ~enable,
-		prg_ain[4:0], prg_din, apu_dout,
-		prg_write && apu_cs, prg_read && apu_cs,
-		5'b10011,
-		audio,
-		DmaReq,
-		1,
-		DmaAddr,
-		0,
-		odd_or_even,
-		apu_irq);
+APU mmc5apu(
+	.MMC5           (1),
+	.clk            (clk),
+	.ce             (ce),
+	.reset          (~enable),
+	.ADDR           (prg_ain[4:0]),
+	.DIN            (prg_din),
+	.DOUT           (apu_dout),
+	.MW             (prg_write && apu_cs),
+	.MR             (prg_read && apu_cs),
+	.audio_channels (5'b10011),
+	.Sample         (audio),
+	.DmaReq         (DmaReq),
+	.DmaAck         (1),
+	.DmaAddr        (DmaAddr),
+	.DmaData        (0),
+	.odd_or_even    (odd_or_even),
+	.IRQ            (apu_irq)
+);
 
 endmodule
