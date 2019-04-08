@@ -155,7 +155,8 @@ module NES(input clk, input reset, input ce,
            input ext_audio,
            output apu_ce_o,
            input scandouble,
-           output [2:0] emphasis
+           output [2:0] emphasis,
+           output save_written
            );
   reg [7:0] from_data_bus;
   wire [7:0] cpu_dout;
@@ -294,8 +295,9 @@ module NES(input clk, input reset, input ce,
   wire mapper_irq;
   wire has_chr_from_ppu_mapper;
   wire [15:0] sample_ext;
-  //assign sample = {int_audio, ext_audio}sample_sum[16:1]; //loss of 1 bit of resolution.  Add control for when no external audio to boost back up?
-  
+
+  assign save_written = (prg_addr[15:13] == 3'b011 && prg_write) | bram_write;
+
   assign sample = sample_a;
   reg [15:0] sample_a;
 
