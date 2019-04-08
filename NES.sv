@@ -107,7 +107,7 @@ assign AUDIO_L   = |mute_cnt ? 16'd0 : sample_signed[15:0];
 assign AUDIO_R   = AUDIO_L;
 assign AUDIO_MIX = 0;
 
-assign LED_USER  = downloading | (loader_fail & led_blink) | bk_state;
+assign LED_USER  = downloading | (loader_fail & led_blink) | bk_state | (bk_pending & status[17]);
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
@@ -146,6 +146,7 @@ parameter CONF_STR3 = {
 
 parameter CONF_STR4 = {
 	"7,Save Backup RAM;",
+	"OH,Autosave,No,Yes;",
 	"-;",
 	"O8,Aspect ratio,4:3,16:9;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
@@ -411,23 +412,43 @@ wire bram_override;
 // NES is clocked at every 4th cycle.
 always @(posedge clk) nes_ce <= nes_ce + 1'd1;
 
-NES nes
-(
-	clk, reset_nes, run_nes,
-	downloading ? 25'd0 : mapper_flags,
-	sample, color,
-	joypad_strobe, joypad_clock, {powerpad_d4[0],powerpad_d3[0],joypad_bits2[0],joypad_bits[0]}, mic,
-	fds_swap,
-	5'b11111,  // enable all channels
-	memory_addr,
-	memory_read_cpu, memory_din_cpu,
-	memory_read_ppu, memory_din_ppu,
-	memory_write, memory_dout,
-   bram_addr, bram_din, bram_dout,
-	bram_write, bram_override,
-	cycle, scanline,
-	int_audio, ext_audio, apu_ce,
-	scale || forced_scandoubler, emphasis
+NES nes (
+	.clk             (clk),
+	.reset           (reset_nes),
+	.ce              (run_nes),
+	.mapper_flags    (downloading ? 25'd0 : mapper_flags),
+	// Audio
+	.sample          (sample),
+	.audio_channels  (5'b11111),
+	.int_audio       (int_audio),
+	.ext_audio       (ext_audio),
+	.apu_ce_o        (apu_ce),
+	// Video
+	.color           (color),
+	.emphasis        (emphasis),
+	.cycle           (cycle),
+	.scanline        (scanline),
+	.scandouble      (scale || forced_scandoubler),
+	// User Input
+	.joypad_strobe   (joypad_strobe),
+	.joypad_clock    (joypad_clock),
+	.joypad_data     ({powerpad_d4[0],powerpad_d3[0],joypad_bits2[0],joypad_bits[0]}),
+	.mic             (mic),
+	.fds_swap        (fds_swap),
+	// Memory transactions
+	.memory_addr     (memory_addr),
+	.memory_read_cpu (memory_read_cpu),
+	.memory_din_cpu  (memory_din_cpu),
+	.memory_read_ppu (memory_read_ppu),
+	.memory_din_ppu  (memory_din_ppu),
+	.memory_write    (memory_write),
+	.memory_dout     (memory_dout),
+	.bram_addr       (bram_addr),
+	.bram_din        (bram_din),
+	.bram_dout       (bram_dout),
+	.bram_write      (bram_write),
+	.bram_override   (bram_override),
+	.save_written    (save_written)
 );
 
 wire [2:0] emphasis;
@@ -484,43 +505,52 @@ end
 sdram sdram
 (
 	// interface to the MT48LC16M16 chip
-	.sd_data     	( SDRAM_DQ                 ),
-	.sd_addr     	( SDRAM_A                  ),
-	.sd_dqm      	( {SDRAM_DQMH, SDRAM_DQML} ),
-	.sd_cs       	( SDRAM_nCS                ),
-	.sd_ba       	( SDRAM_BA                 ),
-	.sd_we       	( SDRAM_nWE                ),
-	.sd_ras      	( SDRAM_nRAS               ),
-	.sd_cas      	( SDRAM_nCAS               ),
+	.sd_data        ( SDRAM_DQ                 ),
+	.sd_addr        ( SDRAM_A                  ),
+	.sd_dqm         ( {SDRAM_DQMH, SDRAM_DQML} ),
+	.sd_cs          ( SDRAM_nCS                ),
+	.sd_ba          ( SDRAM_BA                 ),
+	.sd_we          ( SDRAM_nWE                ),
+	.sd_ras         ( SDRAM_nRAS               ),
+	.sd_cas         ( SDRAM_nCAS               ),
 
 	// system interface
-	.clk      		( clk85         				),
-	.clkref      	( nes_ce[1]         			),
-	.init         	( !clock_locked     			),
+	.clk            ( clk85                    ),
+	.clkref         ( nes_ce[1]                ),
+	.init           ( !clock_locked            ),
 
 	// cpu/chipset interface
-	.addr     		( (downloading || loader_busy) ? {3'b000, loader_addr_mem} : {3'b000, memory_addr} ),
+	.addr           ( (downloading || loader_busy) ? {3'b000, loader_addr_mem} : {3'b000, memory_addr} ),
 	
-	.we       		( memory_write || loader_write_mem	),
-	.din       		( (downloading || loader_busy) ? loader_write_data_mem : memory_dout ),
+	.we             ( memory_write || loader_write_mem	),
+	.din            ( (downloading || loader_busy) ? loader_write_data_mem : memory_dout ),
 	
-	.oeA         	( memory_read_cpu ),
-	.doutA       	( memory_din_cpu	),
+	.oeA            ( memory_read_cpu ),
+	.doutA          ( memory_din_cpu  ),
 	
-	.oeB         	( memory_read_ppu ),
-	.doutB       	( memory_din_ppu  ),
+	.oeB            ( memory_read_ppu ),
+	.doutB          ( memory_din_ppu  ),
 
-	.bk_clk        ( clk ),
-	.bk_addr       ( {sd_lba[5:0],sd_buff_addr} ),
-	.bk_dout       ( sd_buff_din ),
-	.bk_din        ( sd_buff_dout ),
-	.bk_we         ( sd_buff_wr & sd_ack ),
-	.bko_addr      ( bram_addr ),
-	.bko_dout      ( bram_din ),
-	.bko_din       ( bram_dout ),
-	.bko_we        ( bram_write ),
-	.bk_override   ( bram_override )
+	.bk_clk         ( clk ),
+	.bk_addr        ( {sd_lba[5:0],sd_buff_addr} ),
+	.bk_dout        ( sd_buff_din ),
+	.bk_din         ( sd_buff_dout ),
+	.bk_we          ( sd_buff_wr & sd_ack ),
+	.bko_addr       ( bram_addr ),
+	.bko_dout       ( bram_din ),
+	.bko_din        ( bram_dout ),
+	.bko_we         ( bram_write ),
+	.bk_override    ( bram_override )
 );
+
+reg bk_pending;
+wire save_written;
+always @(posedge clk) begin
+	if (mapper_flags[25] && ~OSD_STATUS && save_written)
+		bk_pending <= 1'b1;
+	else if (bk_state)
+		bk_pending <= 1'b0;
+end
 
 wire downloading;
 
@@ -559,7 +589,7 @@ always @(posedge clk) begin
 end
 
 wire bk_load    = status[6];
-wire bk_save    = status[7];
+wire bk_save    = status[7] | (bk_pending & OSD_STATUS && status[17]);
 reg  bk_loading = 0;
 reg  bk_state   = 0;
 reg  bk_request = 0;
@@ -676,11 +706,13 @@ wire is_dirty = !is_nes20 && ((ines[9][7:1] != 0)
 // Read the mapper number
 wire [7:0] mapper = {is_dirty ? 4'b0000 : ines[7][7:4], ines[6][7:4]};
 wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
-  
+
+wire has_saves = ines[6][1];
+
 // ines[6][0] is mirroring
 // ines[6][3] is 4 screen mode
 // ines[8][7:4] is NES 2.0 submapper
-assign mapper_flags = {7'b0, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
+assign mapper_flags = {6'b0, has_saves, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
 
 reg [3:0] clearclk; //Wait for SDRAM
 reg copybios;
