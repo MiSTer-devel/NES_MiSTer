@@ -193,9 +193,9 @@ always @* begin
 end
 
 // Determine IRQ handling
-reg last_scanline, irq_trig;
+reg last_scanline;
+wire irq_trig = (irq_scanline != 0 && irq_scanline < 240 && ppu_scanline == {1'b0, irq_scanline});
 always @(posedge clk) if (ce || ppu_ce) begin
-	irq_trig <= (irq_scanline != 0 && irq_scanline < 240 && ppu_scanline == {1'b0, irq_scanline});
 	last_scanline <= ppu_scanline[0];
 
 	if ((ce && prg_read && prg_ain == 16'h5204) || ~ppu_in_frame)
