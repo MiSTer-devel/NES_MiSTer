@@ -1131,7 +1131,7 @@ Rambo1 rambo1(
 // Mappers: 105                                                                //
 // Status : Working                                                            //
 // Notes  : This wraps the MMC1 mapper, consider merging more elegantly        //
-// Games  : Nintedo World Championships 1990 (start hack)                      //
+// Games  : Nintendo World Championships 1990 (start hack)                     //
 //*****************************************************************************//
 NesEvent nesev(
 	.clk        (clk),
