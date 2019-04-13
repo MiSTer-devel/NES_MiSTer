@@ -77,6 +77,7 @@ wire ValidFreq = (MMC5==1) || ((|Period[10:3]) && (SweepNegate || !NewSweepPerio
 
 //double speed for MMC5=Env_Clock
 wire LenCtrClockEnable = (MMC5==0 && LenCtr_Clock) || (MMC5==1 && Env_Clock);
+reg apu_div;
  
 always @(posedge clk) if (reset) begin
     LenCtr <= 0;
@@ -96,6 +97,7 @@ always @(posedge clk) if (reset) begin
     Period <= 0;
     TimerCtr <= 0;
     SeqPos <= 0;
+    apu_div <= 0;
   end else if (ce) begin
   // Check if writing to the regs of this channel
   // NOTE: This needs to be done before the clocking below.
@@ -135,12 +137,17 @@ always @(posedge clk) if (reset) begin
 
   
   // Count down the square timer...
-  if (TimerCtr == 0) begin
-    // Timer was clocked
-    TimerCtr <= {Period, 1'b1};
-    SeqPos <= SeqPos - 1'd1;
-  end else begin
-    TimerCtr <= TimerCtr - 1'd1;
+  apu_div <= ~apu_div;
+
+  // Should be clocked on every odd cpu cycle
+  if (apu_div) begin
+    if (TimerCtr == 0) begin
+      // Timer was clocked
+      TimerCtr <= Period;
+      SeqPos <= SeqPos - 1'd1;
+    end else begin
+      TimerCtr <= TimerCtr - 1'd1;
+    end
   end
 
   // Clock the length counter?
@@ -235,7 +242,7 @@ module TriangleChan(input clk, input ce, input reset,
     SeqPos <= 0;
     LinCtrPeriod <= 0;
     LinCtr <= 0;
-    LinCtrl <= 0;
+    //LinCtrl <= 0; do not reset
     LinHalt <= 0;
     LenCtr <= 0;
   end else if (ce) begin
@@ -557,7 +564,7 @@ module ApuLookupTable
 
 wire [15:0] lookup_a[256] = '{
        0,   760,  1503,  2228,  2936,  3627,  4303,  4963,  5609,  6240,  6858,  7462,  8053,  8631,  9198,  9752,
-   10296, 10828, 11349, 11860, 12361, 12852, 13334, 13807, 14270, 14725, 15171, 15609, 16039, 16461, 16876,     0,
+   10296, 10828, 11349, 11860, 12361, 12852, 13334, 13807, 14270, 14725, 15171, 15609, 16039, 16461, 16876, 17283,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
@@ -587,14 +594,16 @@ wire [15:0] lookup_b[256] = '{
    39881, 40055, 40228, 40399, 40570, 40740, 40909, 41078, 41245, 41412, 41577, 41742, 41906, 42070, 42232, 42394,
    42555, 42715, 42874, 43032, 43190, 43347, 43503, 43659, 43813, 43967, 44120, 44273, 44424, 44575, 44726, 44875,
    45024, 45172, 45319, 45466, 45612, 45757, 45902, 46046, 46189, 46332, 46474, 46615, 46756, 46895, 47035, 47173,
-   47312, 47449, 47586, 47722, 47857, 47992, 48127, 48260, 48393, 48526, 48658,     0,     0,     0,     0,     0,
+   47312, 47449, 47586, 47722, 47857, 47992, 48127, 48260, 48393, 48526, 48658, 48788,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0
 };
 
+wire [16:0] audio_mixed = lookup_a[in_a] + lookup_b[in_b];
+
 always @(posedge clk) begin
-	out <= lookup_a[in_a] + lookup_b[in_b];
+	out <= audio_mixed[16] ? 16'hFFFF : audio_mixed[15:0];
 end
 
 endmodule
@@ -679,18 +688,18 @@ reg FrameInterrupt, DisableFrameInterrupt;
 //    l - l - -    96 Hz
 //    e e e e -   192 Hz
 
+reg [7:0] last_4017 = 0;
    
 always @(posedge clk) if (reset) begin
-  FrameSeqMode <= 0;
-  DisableFrameInterrupt <= 0;
   FrameInterrupt <= 0;
   Enabled <= 0;
   InternalClock <= 0;
   Wrote4017 <= 0;
   ClkE <= 0;
   ClkL <= 0;
-  Cycles <= 4; // This needs to be 5 for proper power up behavior
+  Cycles <= 5; // This needs to be 5 for proper power up behavior
   IrqCtr <= 0;
+  {FrameSeqMode, DisableFrameInterrupt} <= last_4017[7:6];
 end else if (ce) begin   
   FrameInterrupt <= IrqCtr[1] ? 1'd1 : (ADDR == 5'h15 && MR || ApuMW5 && ADDR[1:0] == 3 && DIN[6]) ? 1'd0 : FrameInterrupt;
   InternalClock <= !InternalClock;
@@ -739,6 +748,7 @@ end else if (ce) begin
 //      $write("$4015 = %X\n", DIN);
     end
     3: begin // Register $4017
+      last_4017 <= DIN;
       FrameSeqMode <= DIN[7]; // 1 = 5 frames cycle, 0 = 4 frames cycle
       DisableFrameInterrupt <= DIN[6];
      
@@ -762,11 +772,12 @@ end else if (ce) begin
 end
 
 ApuLookupTable lookup(clk, 
-                      (audio_channels[0] ? {4'b0, Sq1Sample} : 8'b0) + 
-                      (audio_channels[1] ? {4'b0, Sq2Sample} : 8'b0), 
-                      (audio_channels[2] ? {4'b0, TriSample} + {3'b0, TriSample, 1'b0} : 8'b0) + 
-                      (audio_channels[3] ? {3'b0, NoiSample, 1'b0} : 8'b0) +
-                      (audio_channels[4] ? {1'b0, DmcSample} : 8'b0),
+                      (audio_channels[0] ? {4'b0, Sq1Sample}        : 8'b0) +
+                      (audio_channels[1] ? {4'b0, Sq2Sample}        : 8'b0),
+
+                      (audio_channels[2] ? {4'b0, TriSample} * 2'd3 : 8'b0) +
+                      (audio_channels[3] ? {4'b0, NoiSample} * 2'd2 : 8'b0) +
+                      (audio_channels[4] ? {1'b0, DmcSample}        : 8'b0),
                       Sample);
 
 wire frame_irq = FrameInterrupt && !DisableFrameInterrupt;

@@ -408,6 +408,8 @@ wire [7:0] bram_din;
 wire [7:0] bram_dout;
 wire bram_write;
 wire bram_override;
+wire trigger = 0;
+wire light = 0;
 
 // NES is clocked at every 4th cycle.
 always @(posedge clk) nes_ce <= nes_ce + 1'd1;
@@ -415,7 +417,7 @@ always @(posedge clk) nes_ce <= nes_ce + 1'd1;
 NES nes (
 	.clk             (clk),
 	.reset           (reset_nes),
-	.ce              (run_nes),
+	.cec              (run_nes),
 	.mapper_flags    (downloading ? 25'd0 : mapper_flags),
 	// Audio
 	.sample          (sample),
@@ -428,11 +430,11 @@ NES nes (
 	.emphasis        (emphasis),
 	.cycle           (cycle),
 	.scanline        (scanline),
-	.scandouble      (scale || forced_scandoubler),
+	.scandouble      (0),
 	// User Input
 	.joypad_strobe   (joypad_strobe),
 	.joypad_clock    (joypad_clock),
-	.joypad_data     ({powerpad_d4[0],powerpad_d3[0],joypad_bits2[0],joypad_bits[0]}),
+	.joypad_data     ({powerpad_d4[0] | trigger,powerpad_d3[0] | light,joypad_bits2[0],joypad_bits[0]}),
 	.mic             (mic),
 	.fds_swap        (fds_swap),
 	// Memory transactions
@@ -448,9 +450,11 @@ NES nes (
 	.bram_dout       (bram_dout),
 	.bram_write      (bram_write),
 	.bram_override   (bram_override),
-	.save_written    (save_written)
+	.save_written    (save_written),
+	.short_frame     (short_frame)
 );
 
+wire short_frame;
 wire [2:0] emphasis;
 
 assign SDRAM_CKE         = 1'b1;
@@ -562,14 +566,15 @@ video video
 (
 	.*,
 	.clk(clk),
-
-	.count_v(scanline),
-	.count_h(cycle),
+	.reset(reset_nes),
+	.scanlines(scanline),
+	.cycles(cycle),
 	.forced_scandoubler(forced_scandoubler),
 	.scale(scale),
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
 	.emphasis(emphasis),
+	.short_frame(short_frame),
 
 	.ce_pix(CE_PIXEL)
 );

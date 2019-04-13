@@ -109,13 +109,12 @@ module ClockGen(input clk, input ce, input reset,
                 output exiting_vblank,
                 output entering_vblank,
                 output reg is_pre_render,
-                input scandouble);
-  reg second_frame;
-  
-  // Scanline 0..239 = picture scan lines
-  // Scanline 240 = dummy scan line
-  // Scanline 241..260 = VBLANK
-  // Scanline -1 = Pre render scanline (Fetches objects for next line)
+                input scandouble,
+                output short_frame);
+  reg second_frame = 1;
+
+assign short_frame = second_frame;
+
   assign at_last_cycle_group = (cycle[8:3] == 42);
   // Every second pre-render frame is only 340 cycles instead of 341.
   assign end_of_line = at_last_cycle_group && cycle[3:0] == (is_pre_render && second_frame && is_rendering ? 3 : 4);
@@ -140,14 +139,14 @@ module ClockGen(input clk, input ce, input reset,
   always @(posedge clk) if (reset) begin
     scanline <= 0;
     is_pre_render <= 0;
-    second_frame <= 0;
+    //second_frame <= 1;
   end else if (ce && end_of_line) begin
     // Once the scanline counter reaches end of 260, it gets reset to -1.
-    scanline <= exiting_vblank ? 9'b111111111 : scanline + 1'd1;
+    scanline <= (scanline == 260) ? 9'b111111111 : scanline + 1'd1;
     // The pre render flag is set while we're on scanline -1.
-    is_pre_render <= exiting_vblank;
+    is_pre_render <= (scanline == 260);
 
-    if (exiting_vblank & ~scandouble) second_frame <= !second_frame;
+    if (is_pre_render & ~scandouble) second_frame <= !second_frame;
   end
   
 endmodule // ClockGen
@@ -260,7 +259,7 @@ module SpriteRAM(input clk, input ce,
     /* verilator lint_off CASEOVERLAP */
     // Compute value to return to cpu through $2004. And also the value that gets written to temp sprite ram.
     casez({sprites_enabled, cycle[8], cycle[6], state, oam_ptr[1:0]})
-    7'b1_10_??_??: oam_bus = sprtemp_data;         // At cycle 256-319 we output what's in sprite temp ram
+    7'b1_10_??_??: oam_bus = sprtemp_data;                 // At cycle 256-319 we output what's in sprite temp ram
     7'b1_??_00_??: oam_bus = 8'b11111111;                  // On the first 64 cycles (while inside state 0), we output 0xFF.
     7'b1_??_01_00: oam_bus = {4'b0000, spr_y_coord[3:0]};  // Y coord that will get written to temp ram.
     7'b?_??_??_10: oam_bus = {oam_data[7:5], 3'b000, oam_data[1:0]}; // Bits 2-4 of attrib are always zero when reading oam.
@@ -291,25 +290,24 @@ module SpriteRAM(input clk, input ce,
      
     // Some bits of the OAM are hardwired to zero.
     if (oam_load) begin
-		oam[oam_ptr] <= (oam_ptr & 3) == 2 ? data_in & 8'hE3: data_in;
-		oam_data <= (oam_ptr & 3) == 2 ? data_in & 8'hE3: data_in;
-	 end
-    if((cycle[0] && sprites_enabled) || oam_load || oam_ptr_load) begin
-		oam_ptr <= oam_ptr_tmp;
-		oam_data <= oam[oam_ptr_tmp];
+      oam[oam_ptr] <= (oam_ptr & 3) == 2 ? data_in & 8'hE3: data_in;
+      oam_data <= (oam_ptr & 3) == 2 ? data_in & 8'hE3: data_in;
     end
+
+    if((cycle[0] && sprites_enabled) || oam_load || oam_ptr_load) begin
+      oam_ptr <= oam_ptr_tmp;
+      oam_data <= oam[oam_ptr_tmp];
+    end
+
     // Set overflow flag?
     if (sprites_enabled && state == 2'b11 && spr_is_inside)
       spr_overflow <= 1;
     // Remember if sprite0 is included on the scanline, needed for hit test later.
     sprite0_curr <= (state == 2'b01 && oam_ptr[7:2] == 0 && spr_is_inside || sprite0_curr);
-    
-//    if (scanline == 0 && cycle[0] && (state == 2'b01 || state == 2'b00))
-//      $write("Drawing sprite %d/%d. bus=%d oam_ptr=%X->%X oam_data=%X p=%d (%d %d %d)\n", scanline, cycle, oam_bus, oam_ptr, new_oam_ptr, oam_data, p,
-//         cycle[0] && sprites_enabled, oam_load, oam_ptr_load);
-    
+
     // Always writing to temp ram while we're in state 0 or 1.
     if (!state[1]) sprtemp[sprtemp_ptr] <= oam_bus;
+
     // Update state machine on every second cycle.
     if (cycle[0]) begin
       // Increment p whenever oam_ptr carries in state 0 or 1.
@@ -330,7 +328,7 @@ module SpriteRAM(input clk, input ce,
       state <= 0;
       p <= 0;
       oam_ptr <= 0;
-		oam_data <= oam[0];
+      oam_data <= oam[0];
       sprite0_curr <= 0;
       sprite0 <= sprite0_curr;
     end
@@ -498,7 +496,9 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
            input [2:0] ain,   // input address from CPU
            input read,        // read
            input write,       // write
-           output nmi,    // one while inside vblank
+           output reg nmi,    // one while inside vblank
+           input pre_read,
+           input pre_write,
            output vram_r, // read from vram active
            output vram_w, // write to vram active
            output [13:0] vram_a, // vram address
@@ -507,8 +507,9 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
            output [8:0] scanline,
            output [8:0] cycle,
            output [19:0] mapper_ppu_flags,
-           input scandouble,
-           output [2:0] emphasis); // This should be removed ASAP. Disabling alternate lines wrecks NMI sync
+           input scandouble,// This should be removed ASAP. Disabling alternate lines wrecks NMI sync
+           output [2:0] emphasis,
+           output short_frame); 
   // These are stored in control register 0
   reg obj_patt; // Object pattern table
   reg bg_patt;  // Background pattern table
@@ -549,7 +550,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
   wire is_rendering = (enable_playfield || enable_objects) && !is_in_vblank && scanline != 240;
   
   ClockGen clock(clk, ce, reset, is_rendering, scanline, cycle, is_in_vblank, end_of_line, at_last_cycle_group,
-                 exiting_vblank, entering_vblank, is_pre_render_line, scandouble);
+                 exiting_vblank, entering_vblank, is_pre_render_line, scandouble, short_frame);
   
   assign emphasis = color_intensity;
   
@@ -644,12 +645,12 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
                   cycle[8] && !cycle[6] ? {1'b0, sprite_vram_addr} : 
                                           {1'b0, bg_patt, bg_name_table, cycle[1], loopy[14:12]}; // Pattern table bitmap #0, #1
   // Read from VRAM, either when user requested a manual read, or when we're generating pixels.
-  wire vram_r_ppudata = read && (ain == 7);
+  wire vram_r_ppudata = pre_read && (ain == 7);
   assign vram_r = vram_r_ppudata ||
                   is_rendering && cycle[0] == 0 && !end_of_line;
   
   // Write to VRAM?
-  assign vram_w = write && (ain == 7) && !is_pal_address && !is_rendering;
+  assign vram_w = pre_write && (ain == 7) && !is_pal_address && !is_rendering;
 
   wire [5:0] color2;
   PaletteRam palette_ram(clk, ce, 
@@ -670,7 +671,8 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
 //    if (!is_in_vblank && write)
 //      $write("%d/%d: $200%d <= %x\n", scanline, cycle, ain, din);
     if (reset) begin
-      vbl_enable <= 0;
+      {obj_patt, bg_patt, obj_size, vbl_enable} <= 0; // 2000 resets to 0
+      {grayscale, playfield_clip, object_clip, enable_playfield, enable_objects, color_intensity} <= 0; // 2001 resets to 0
     end else if (write) begin
       case (ain)
       0: begin // PPU Control Register 1
@@ -693,7 +695,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
       end
       endcase
     end
-     
+    // https://wiki.nesdev.com/w/index.php/NMI
     // Reset frame specific counters upon exiting vblank
     if (exiting_vblank)
       nmi_occured <= 0;
@@ -704,7 +706,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
     if (read && ain == 2)
       nmi_occured <= 0;
   end
-  
+
   // If we're triggering a VBLANK NMI 
   assign nmi = nmi_occured && vbl_enable;
 
@@ -720,32 +722,74 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
   // Value currently being written to video ram
   assign vram_dout = din;
 
-  reg [7:0] latched_dout;
-  always @* begin
-    case (ain)
-    2: latched_dout = {nmi_occured,
-               sprite0_hit_bg,
-               sprite_overflow,
-               saved_dout[4:0]};
-    4: latched_dout = oam_bus;
-    7: if (is_pal_address) begin
-        latched_dout = {2'b00, color};
-      end else begin
-        latched_dout = vram_latch;
-      end 
-    default: latched_dout = saved_dout;
-    endcase
-  end
   // Last data on bus is persistent
-  reg [7:0] saved_dout;
-  always @(posedge clk) if (ce) begin
-   if (read) begin
-	 saved_dout <= latched_dout;
-   end else if (write) begin
-    saved_dout = din;
-   end
+  reg [7:0] latched_dout;
+
+  reg [23:0] decay_high;
+  reg [23:0] decay_low;
+
+  reg refresh_high, refresh_low;
+
+  always @(posedge clk) begin
+    if (refresh_high) begin
+      decay_high = 3221590; // aprox 600ms decay rate
+      refresh_high <= 0;
+    end
+
+    if (refresh_low) begin
+      decay_low = 3221590;
+      refresh_low <= 0;
+    end
+
+    if (ce) begin
+      if (decay_high)
+        decay_high <= decay_high - 1'b1;
+      else
+        latched_dout[7:5] <= 3'b000;
+
+      if (decay_low)
+        decay_low <= decay_low - 1'b1;
+      else
+        latched_dout[4:0] <= 5'b00000;
+
+      if (read) begin
+        case (ain)
+          2: begin
+            latched_dout <= {nmi_occured,
+                    sprite0_hit_bg,
+                    sprite_overflow,
+                    latched_dout[4:0]};
+            refresh_high <= 1'b1;
+          end
+
+          4: begin
+            latched_dout <= oam_bus;
+            refresh_high <= 1'b1;
+            refresh_low <= 1'b1;
+          end
+
+          7: if (is_pal_address) begin
+              latched_dout <= {latched_dout[7:6], color};
+              refresh_low <= 1'b1;
+            end else begin
+              latched_dout <= vram_latch;
+              refresh_high <= 1'b1;
+              refresh_low <= 1'b1;
+            end
+          default: latched_dout <= latched_dout;
+        endcase
+
+        if (reset)
+          latched_dout <= 8'd0;
+
+      end else if (write) begin
+        refresh_high <= 1'b1;
+        refresh_low <= 1'b1;
+        latched_dout <= din;
+      end
+    end
   end
-  
+
   assign dout = latched_dout;
   
   
