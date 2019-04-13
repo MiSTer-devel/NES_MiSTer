@@ -4,14 +4,16 @@
 module video
 (
 	input        clk,
+	input        reset,
 	input  [5:0] color,
-	input  [8:0] count_h,
-	input  [8:0] count_v,
+	input  [8:0] cycles,
+	input  [8:0] scanlines,
 	input        forced_scandoubler,
 	input  [2:0] scale,
 	input        hide_overscan,
 	input  [3:0] palette,
 	input  [2:0] emphasis,
+	input        short_frame,
 
 	output       ce_pix,
 
@@ -24,13 +26,25 @@ module video
 );
 
 reg pix_ce, pix_ce_n;
+reg old_reset;
+
+wire [8:0] count_h = cycles;// + (short_frame & &scanlines);
+wire [8:0] count_v = scanlines;
+
+wire skipped_pixel = short_frame & (cycles == 339) & (scanlines == 511);
 
 always @(negedge clk) begin
 	reg [1:0] cnt = 0;
 
-	cnt <= cnt + 1'd1;
-	pix_ce   <= ~cnt[1] & ~cnt[0];
-	pix_ce_n <=  cnt[1] & ~cnt[0];
+	old_reset <= reset;
+
+	if (old_reset & ~reset)
+		cnt <= 0;
+	else
+		cnt <= cnt + 1'd1;
+
+	pix_ce   <= (~cnt[1] & ~cnt[0]);// | (skipped_pixel && cnt == 2'b10);
+	pix_ce_n <=  (cnt[1] & ~cnt[0]);// | (skipped_pixel && cnt == 2'b00);
 end
 
 // Smooth palette from FirebrandX
