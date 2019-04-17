@@ -559,7 +559,6 @@ video video
 (
 	.*,
 	.clk(clk),
-	.reset(reset_nes),
 	.count_v(scanline),
 	.count_h(cycle),
 	.forced_scandoubler(forced_scandoubler),
