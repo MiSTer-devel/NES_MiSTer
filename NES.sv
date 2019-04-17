@@ -328,7 +328,7 @@ wire mic_button = joyA[21] | joyB[21];
 wire fds_btn = joyA[8] | joyB[8];
 wire fds_swap = fds_swap_invert ^ fds_btn;
 
-reg [1:0] nes_ce;
+reg [2:0] nes_ce;
 
 reg [7:0] mic_cnt;
 
@@ -346,8 +346,8 @@ always @(posedge clk) begin
 		last_joypad_clock <= 0;
 	end else begin
 		if (joypad_strobe) begin
-			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'h0000, joy_swap ? nes_joy_B : nes_joy_A} | fds_btn;
-			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'h0000, joy_swap ? nes_joy_A : nes_joy_B};
+			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, joy_swap ? nes_joy_B : nes_joy_A};
+			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, joy_swap ? nes_joy_A : nes_joy_B};
 			powerpad_d4 <= {4'b0000, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
 			powerpad_d3 <= {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
 		end
@@ -401,7 +401,6 @@ always @(posedge clk) begin
 end
  
 wire reset_nes = ~init_reset_n || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading;
-wire run_nes = (nes_ce == 3);	// keep running even when reset, so that the reset can actually do its job!
 
 wire [14:0] bram_addr;
 wire [7:0] bram_din;
@@ -411,26 +410,22 @@ wire bram_override;
 wire trigger = 0;
 wire light = 0;
 
-// NES is clocked at every 4th cycle.
-always @(posedge clk) nes_ce <= nes_ce + 1'd1;
-
 NES nes (
 	.clk             (clk),
 	.reset           (reset_nes),
-	.cec              (run_nes),
+	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 25'd0 : mapper_flags),
 	// Audio
 	.sample          (sample),
 	.audio_channels  (5'b11111),
 	.int_audio       (int_audio),
 	.ext_audio       (ext_audio),
-	.apu_ce_o        (apu_ce),
+	.apu_ce          (apu_ce),
 	// Video
 	.color           (color),
 	.emphasis        (emphasis),
 	.cycle           (cycle),
 	.scanline        (scanline),
-	.scandouble      (0),
 	// User Input
 	.joypad_strobe   (joypad_strobe),
 	.joypad_clock    (joypad_clock),
@@ -450,11 +445,9 @@ NES nes (
 	.bram_dout       (bram_dout),
 	.bram_write      (bram_write),
 	.bram_override   (bram_override),
-	.save_written    (save_written),
-	.short_frame     (short_frame)
+	.save_written    (save_written)
 );
 
-wire short_frame;
 wire [2:0] emphasis;
 
 assign SDRAM_CKE         = 1'b1;
@@ -567,14 +560,13 @@ video video
 	.*,
 	.clk(clk),
 	.reset(reset_nes),
-	.scanlines(scanline),
-	.cycles(cycle),
+	.count_v(scanline),
+	.count_h(cycle),
 	.forced_scandoubler(forced_scandoubler),
 	.scale(scale),
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
 	.emphasis(emphasis),
-	.short_frame(short_frame),
 
 	.ce_pix(CE_PIXEL)
 );

@@ -109,44 +109,46 @@ module ClockGen(input clk, input ce, input reset,
                 output exiting_vblank,
                 output entering_vblank,
                 output reg is_pre_render,
-                input scandouble,
                 output short_frame);
-  reg second_frame = 1;
 
-assign short_frame = second_frame;
+  reg even_frame_toggle = 0;
 
   assign at_last_cycle_group = (cycle[8:3] == 42);
+
   // Every second pre-render frame is only 340 cycles instead of 341.
-  assign end_of_line = at_last_cycle_group && cycle[3:0] == (is_pre_render && second_frame && is_rendering ? 3 : 4);
-  // Set the clock right before vblank begins
-  assign entering_vblank = end_of_line && scanline == 240;
-  // Set the clock right before vblank ends
-  assign exiting_vblank = end_of_line && scanline == 260;
+  assign short_frame = end_of_line & skip_pixel;
+
+  wire skip_pixel = is_pre_render && ~even_frame_toggle && is_rendering;
+  assign end_of_line = at_last_cycle_group && (cycle[3:0] == (skip_pixel ? 3 : 4));
+
+  // Confimed with Visual 2C02
+  // All vblank clocked registers should have changed and be readable by cycle 1 of 241/261
+  assign entering_vblank = (cycle == 0) && scanline == 241;
+  assign exiting_vblank = (cycle == 0) && scanline == 511;
   // New value for is_in_vblank flag
   wire new_is_in_vblank = entering_vblank ? 1'b1 : exiting_vblank ? 1'b0 : is_in_vblank;
   // Set if the current line is line 0..239
   always @(posedge clk) if (reset) begin
     cycle <= 0;
-    is_in_vblank <= 1;
+    is_in_vblank <= 0;
   end else if (ce) begin
     cycle <= end_of_line ? 1'd0 : cycle + 1'd1;
     is_in_vblank <= new_is_in_vblank;
   end
-//  always @(posedge clk) if (ce) begin
-//    $write("%x %x %x %x %x\n", new_is_in_vblank, entering_vblank, exiting_vblank, is_in_vblank, entering_vblank ? 1'b1 : exiting_vblank ? 1'b0 : is_in_vblank);
-    
-//  end
+  
   always @(posedge clk) if (reset) begin
     scanline <= 0;
     is_pre_render <= 0;
-    //second_frame <= 1;
+    even_frame_toggle <= 0; // Resets to 0, the first frame will always end with 341 pixels.
   end else if (ce && end_of_line) begin
     // Once the scanline counter reaches end of 260, it gets reset to -1.
     scanline <= (scanline == 260) ? 9'b111111111 : scanline + 1'd1;
     // The pre render flag is set while we're on scanline -1.
     is_pre_render <= (scanline == 260);
 
-    if (is_pre_render & ~scandouble) second_frame <= !second_frame;
+    // Visual 2C02 shows the register flipping here
+    if (scanline == 255)
+      even_frame_toggle <= ~even_frame_toggle;
   end
   
 endmodule // ClockGen
@@ -298,7 +300,6 @@ module SpriteRAM(input clk, input ce,
       oam_ptr <= oam_ptr_tmp;
       oam_data <= oam[oam_ptr_tmp];
     end
-
     // Set overflow flag?
     if (sprites_enabled && state == 2'b11 && spr_is_inside)
       spr_overflow <= 1;
@@ -332,7 +333,7 @@ module SpriteRAM(input clk, input ce,
       sprite0_curr <= 0;
       sprite0 <= sprite0_curr;
     end
-    if (exiting_vblank)
+    if (cycle == 340 && scanline == 260) // Confirmed with visual 2C02. Effective by Line 261, pixel 1, but visible on 0.
       spr_overflow <= 0;
   end
 endmodule  // SpriteRAM
@@ -507,8 +508,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
            output [8:0] scanline,
            output [8:0] cycle,
            output [19:0] mapper_ppu_flags,
-           input scandouble,// This should be removed ASAP. Disabling alternate lines wrecks NMI sync
-           output [2:0] emphasis,
+           output reg [2:0] emphasis,
            output short_frame); 
   // These are stored in control register 0
   reg obj_patt; // Object pattern table
@@ -519,9 +519,6 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
   reg grayscale; // Disable color burst
   reg playfield_clip;     // 0: Left side 8 pixels playfield clipping
   reg object_clip;        // 0: Left side 8 pixels object clipping
-  reg enable_playfield;   // Enable playfield display
-  reg enable_objects;     // Enable objects display
-  reg [2:0] color_intensity; // Color intensity
   
   initial begin
     obj_patt = 0;
@@ -533,7 +530,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
     object_clip = 0;
     enable_playfield = 0;
     enable_objects = 0;
-    color_intensity = 0;
+    emphasis = 0;
   end
   
   reg nmi_occured;         // True if NMI has occured but not cleared.
@@ -547,13 +544,17 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
   wire exiting_vblank;      // At the very last cycle of the vblank
   wire entering_vblank;     // 
   wire is_pre_render_line;  // True while we're on the pre render scanline
-  wire is_rendering = (enable_playfield || enable_objects) && !is_in_vblank && scanline != 240;
+
+  // Confirmed in Visual 2C02, rendering enabled is latched from bck_enable and spr_enable,
+  // which are themselves registers. Therefor, there is one extra cycle of delay.
+  reg rendering_enabled;
+
+  // 2C02 has an "is_vblank" flag that is true from pixel 0 of line 241 to pixel 0 of line 0;
+  wire is_rendering = rendering_enabled && (scanline < 240 || is_pre_render_line);
   
-  ClockGen clock(clk, ce, reset, is_rendering, scanline, cycle, is_in_vblank, end_of_line, at_last_cycle_group,
-                 exiting_vblank, entering_vblank, is_pre_render_line, scandouble, short_frame);
-  
-  assign emphasis = color_intensity;
-  
+  ClockGen clock(clk, ce, reset, rendering_enabled, scanline, cycle, is_in_vblank, end_of_line, at_last_cycle_group,
+                 exiting_vblank, entering_vblank, is_pre_render_line, short_frame);
+
   // The loopy module handles updating of the loopy address
   wire [14:0] loopy;
   wire [2:0] fine_x_scroll;
@@ -572,7 +573,16 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
   wire [3:0] bg_pixel = {bg_pixel_noblank[3:2], show_bg_on_pixel ? bg_pixel_noblank[1:0] : 2'b00};
 
   // This will set oam_ptr to 0 right before the scanline 240 and keep it there throughout vblank.
-  wire before_line = (enable_playfield || enable_objects) && (exiting_vblank || end_of_line && !is_in_vblank);
+  // this is triggered on the first tick after vblank is ended
+  wire before_line;// = (enable_playfield || enable_objects) && ((scanline == 511 && cycle == 2) || end_of_line && scanline < 241 && ~is_in_vblank);
+
+  always_comb begin
+    before_line = 0;
+    if (rendering_enabled)
+      if ((end_of_line && (scanline < 241 || is_pre_render_line)) || exiting_vblank)
+        before_line = 1'b1;
+  end
+
   wire [7:0] oam_bus;
   wire sprite_overflow;
   wire obj0_on_line;                        // True if sprite#0 is included on the current line
@@ -613,7 +623,8 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
   
   reg sprite0_hit_bg;            // True if sprite#0 has collided with the BG in the last frame.
   always @(posedge clk) if (ce) begin
-    if (exiting_vblank)
+    rendering_enabled <= (enable_objects | enable_playfield);
+    if (cycle == 340 && scanline == 260) // confirmed with visual 2C02 (261, 1);
       sprite0_hit_bg <= 0;
     else if (is_rendering &&         // Object rendering is enabled
              !cycle[8] &&            // X Pixel 0..255
@@ -624,6 +635,12 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
              show_obj_on_pixel &&
              bg_pixel[1:0] != 0) begin // Background pixel nonzero.
       sprite0_hit_bg <= 1;
+
+  //"The hit condition is basically sprite zero is in range AND the first sprite output unit is outputting
+  // a non-zero pixel AND the background drawing unit is outputting a non-zero pixel."
+  //"Sprite zero hits do not register at x=255" (cycle 256)
+  //"... provided that background and sprite rendering are both enabled"
+  //"Should always miss when Y >= 239"
       
     end
 
@@ -660,19 +677,16 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
                          color2,    // Output color
                          write && (ain == 7) && is_pal_address); // Condition for writing
   assign color = grayscale ? {color2[5:4], 4'b0} : color2;
-//  always @(posedge clk)  
-//  if (scanline == 194 && cycle < 8 && color == 15) begin
-//    $write("Pixel black %x %x %x %x %x\n", bg_pixel,obj_pixel,pixel,pixel_is_obj,color);
-//  end
 
- 
+ reg enable_playfield, enable_objects;
+
   always @(posedge clk) 
   if (ce) begin
 //    if (!is_in_vblank && write)
 //      $write("%d/%d: $200%d <= %x\n", scanline, cycle, ain, din);
     if (reset) begin
       {obj_patt, bg_patt, obj_size, vbl_enable} <= 0; // 2000 resets to 0
-      {grayscale, playfield_clip, object_clip, enable_playfield, enable_objects, color_intensity} <= 0; // 2001 resets to 0
+      {grayscale, playfield_clip, object_clip, enable_playfield, enable_objects, emphasis} <= 0; // 2001 resets to 0
     end else if (write) begin
       case (ain)
       0: begin // PPU Control Register 1
@@ -690,7 +704,7 @@ module PPU(input clk, input ce, input reset,   // input clock  21.48 MHz / 4. 1 
         object_clip <= din[2];
         enable_playfield <= din[3];
         enable_objects <= din[4];
-        color_intensity <= din[7:5];
+        emphasis <= din[7:5];
         //if (!din[3] && scanline == 59) $write("Disabling playfield at cycle %d\n", cycle);
       end
       endcase

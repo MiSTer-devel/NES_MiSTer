@@ -13,6 +13,10 @@
 // 4) If DMC interrupts Sprite, then it runs on the even cycle, and the odd cycle will be idle (pause_cpu=1, aout_enable=0)
 // 5) When DMC triggers && interrupts CPU, there will be 2-3 cycles (pause_cpu=1, aout_enable=0) before DMC DMA starts.
 
+// https://wiki.nesdev.com/w/index.php/PPU_OAM
+// https://wiki.nesdev.com/w/index.php/APU_DMC
+// https://forums.nesdev.com/viewtopic.php?f=3&t=6100
+// https://forums.nesdev.com/viewtopic.php?f=3&t=14120
 
 module DmaController(
 	input clk,
@@ -56,7 +60,7 @@ end else if (ce) begin
 	if (spr_state[1]) sprite_dma_lastval <= data_from_ram;
 end
 
-assign pause_cpu = (spr_state[0] || dmc_trigger) && cpu_read;
+assign pause_cpu = (spr_state[0] || dmc_trigger);
 assign dmc_ack   = (dmc_state == 1 && !odd_cycle);
 assign aout_enable = dmc_ack || spr_state[1];
 assign read = !odd_cycle;
@@ -116,7 +120,7 @@ endmodule
 module NES(
 	input         clk,
 	input         reset,
-	input         cec,
+	output  [2:0] nes_div,
 	input  [31:0] mapper_flags,
 	output [15:0] sample,         // sample generated from APU
 	output  [5:0] color,          // pixel generated from PPU
@@ -147,11 +151,9 @@ module NES(
 	output  [8:0] scanline,
 	input         int_audio,
 	input         ext_audio,
-	output        apu_ce_o,
-	input         scandouble,
+	output        apu_ce,
 	output  [2:0] emphasis,
-	output        save_written,
-	output        short_frame
+	output        save_written
 );
 
 
@@ -170,9 +172,16 @@ module NES(
 // PPU ---P---P---P---P---P---P---P---P---P---P---P---P
 //  M: M2 Tick, C: CPU Tick, P: PPU Tick -: Idle Cycle
 
+
+assign nes_div = div_sys;
+assign apu_ce = cpu_ce;
+
 reg [7:0] from_data_bus;
 wire [7:0] cpu_dout;
-wire odd_or_even; // Is this an odd or even clock cycle?
+
+// odd or even apu cycle, AKA div_apu or apu_/clk2. This is actually not 50% duty cycle. It is high for 18
+// master cycles and low for 6 master cycles. It is considered active when low or "even".
+reg odd_or_even = 0; // 1 == odd, 0 == even
 
 wire PAL = 1'b0;
 
@@ -182,7 +191,7 @@ wire [4:0] div_m2_n = div_cpu_n[4:1] - 1'b1; // For NTSC, 5/8 duty cycle phi-2
 
 reg [4:0] div_cpu = 5'd1;
 reg [2:0] div_ppu = 3'd1;
-
+reg [2:0] div_sys = 3'd0;
 wire cpu_ce = (div_cpu == div_cpu_n);
 wire ppu_ce = (div_ppu == div_ppu_n);
 
@@ -192,9 +201,39 @@ wire cart_pre = (div_cpu >= 'd1) && (div_cpu <= div_ppu_n);
 wire M2 = (div_cpu >= div_m2_n) && (div_cpu < div_cpu_n);
 wire m2_pre = (div_cpu >= 'd5) && (div_cpu <= 'd8);
 
+// The infamous NES jitter is important for accuracy, but wreks havok on modern devices and scalers,
+// so what I do here is pause the whole system for one PPU clock and insert a "fake" ppu clock to
+// replace the missing pixel. Thus the system runs accurately (ableit a few nanoseconds per frame slower)
+// but all video devices stay happy.
+
+wire skip_pixel;
+reg freeze_clocks = 0;
+reg [4:0] faux_pixel_cnt;
+
+wire use_fake_h = freeze_clocks && faux_pixel_cnt < 6;
+
 always @(posedge clk) begin
-	div_cpu <= (div_cpu == div_cpu_n) ? 1'b1 : div_cpu + 1'b1;
-	div_ppu <= (div_ppu == div_ppu_n) ? 1'b1 : div_ppu + 1'b1;
+	if (~freeze_clocks | ~(div_ppu == (div_ppu_n - 1'b1))) begin
+		div_cpu <= (div_cpu == div_cpu_n) ? 1'b1 : div_cpu + 1'b1;
+		div_ppu <= (div_ppu == div_ppu_n) ? 1'b1 : div_ppu + 1'b1;
+	end
+		div_sys <= (div_sys == div_ppu_n - 1'b1) ? 1'b0 : div_sys + 1'b1;
+	
+	if (faux_pixel_cnt == 3)
+		freeze_clocks <= 1'b0;
+
+	if (|faux_pixel_cnt)
+		faux_pixel_cnt <= faux_pixel_cnt - 1'b1;
+
+	if (skip_pixel && (faux_pixel_cnt == 0)) begin
+		freeze_clocks <= 1'b1;
+		faux_pixel_cnt <= {div_ppu_n - 1'b1, 1'b0} + 1'b1;
+	end
+
+	if (reset)
+		odd_or_even <= 1'b0;
+	else if (cpu_ce) 
+		odd_or_even <= ~odd_or_even;
 end
 
 
@@ -208,17 +247,10 @@ wire pause_cpu;
 wire nmi;
 wire mapper_irq;
 wire apu_irq;
-reg [1:0] nmi_latch;
 
-// NMI must be high for at least 3 cycle during M2 to register
-always @(posedge clk)
-if (reset)
-	nmi_latch <= 2'd0;
-else if (cpu_ce)
-	nmi_latch <= 2'd0;
-else if (M2 & nmi)
-	if (~&nmi_latch)
-		nmi_latch <= nmi_latch + 1'b1;
+// IRQ only changes once per CPU ce and with our current
+// limited CPU model, NMI is only latched on the falling edge
+// of M2, which corresponds with CPU ce, so no latches needed.
 
 T65 cpu(
 	.mode   (0),
@@ -226,7 +258,8 @@ T65 cpu(
 
 	.res_n  (~reset),
 	.clk    (clk),
-	.enable (cpu_ce && !pause_cpu),
+	.enable (cpu_ce),
+	.rdy    (~pause_cpu),
 
 	.IRQ_n  (~(apu_irq | mapper_irq)),
 	.NMI_n  (~nmi),
@@ -314,13 +347,12 @@ wire [15:0] sample_inverted = 16'hFFFF - sample_apu;
 wire [1:0] audio_en = {int_audio, ext_audio};
 wire [15:0] audio_mappers = (audio_en == 2'd1) ? 16'd0 : sample_inverted;
 
-assign apu_ce_o = cpu_ce;
 
 // Joypads are mapped into the APU's range.
 wire joypad1_cs = (addr == 'h4016);
 wire joypad2_cs = (addr == 'h4017);
 assign joypad_strobe = (joypad1_cs && mw_int && cpu_dout[0]);
-assign joypad_clock =  {joypad2_cs && mr_int, joypad1_cs && mr_int};
+assign joypad_clock = {joypad2_cs && mr_int, joypad1_cs && mr_int};
 
 
 /**********************************************************/
@@ -332,15 +364,17 @@ assign joypad_clock =  {joypad2_cs && mr_int, joypad1_cs && mr_int};
 // 7 and 1/2 master cycles on NTSC. Therefore, the PPU should read or write once per cpu cycle, and
 // with our alignment, this should occur at PPU cycle 1 (the *second* cycle).
 
-wire mr_ppu     = mr_int && M2;// Read *from* the PPU.
-wire mw_ppu     = mw_int && M2;// Write *to* the PPU.
+wire mr_ppu     = mr_int && M2; // Read *from* the PPU.
+wire mw_ppu     = mw_int && M2; // Write *to* the PPU.
 wire ppu_cs = addr >= 'h2000 && addr < 'h4000;
-wire [7:0] ppu_dout;           // Data from PPU to CPU
-wire chr_read, chr_write;      // If PPU reads/writes from VRAM
-wire [13:0] chr_addr;          // Address PPU accesses in VRAM
-wire [7:0] chr_from_ppu;       // Data from PPU to VRAM
+wire [7:0] ppu_dout;            // Data from PPU to CPU
+wire chr_read, chr_write;       // If PPU reads/writes from VRAM
+wire [13:0] chr_addr;           // Address PPU accesses in VRAM
+wire [7:0] chr_from_ppu;        // Data from PPU to VRAM
 wire [7:0] chr_to_ppu;
-wire [19:0] mapper_ppu_flags;  // PPU flags for mapper cheating
+wire [19:0] mapper_ppu_flags;   // PPU flags for mapper cheating
+wire [8:0] ppu_cycle;
+assign cycle = use_fake_h ? 9'd340 : ppu_cycle;
 
 PPU ppu(
 	.clk              (clk),
@@ -361,10 +395,10 @@ PPU ppu(
 	.vram_din         (chr_to_ppu),
 	.vram_dout        (chr_from_ppu),
 	.scanline         (scanline),
-	.cycle            (cycle),
+	.cycle            (ppu_cycle),
 	.mapper_ppu_flags (mapper_ppu_flags),
 	.emphasis         (emphasis),
-	.short_frame      (short_frame)
+	.short_frame      (skip_pixel)
 );
 
 
@@ -457,7 +491,9 @@ MemoryMultiplex mem(
 	.memory_dout     (memory_dout)
 );
 
-wire bus_is_open = (addr >= 16'h4018 && addr < 16'h4100);
+// These registers are open bus if FDS is not in use
+// Some games hacks (Super Mario All-Stars) rely on this behavior
+wire bus_is_open = (mapper_flags[7:0] == 8'd20) ? 1'b0 : (addr >= 16'h4018 && addr < 16'h4100);
 reg [7:0] open_bus_data;
 
 always @(posedge clk) begin
@@ -469,9 +505,9 @@ always @* begin
 		from_data_bus = 0;
 	else if (apu_cs) begin
 		if (joypad1_cs)
-			from_data_bus = {5'b01000, mic, 1'b0, joypad_data[0]};
+			from_data_bus = {open_bus_data[7:5], 2'b0, mic, 1'b0, joypad_data[0]};
 		else if (joypad2_cs)
-			from_data_bus = {3'b010, joypad_data[3:2], 2'b00, joypad_data[1]};
+			from_data_bus = {open_bus_data[7:5], joypad_data[3:2], 2'b00, joypad_data[1]};
 		else
 			from_data_bus = (addr == 16'h4015) ? apu_dout : open_bus_data;
 	end else if (bus_is_open) begin
