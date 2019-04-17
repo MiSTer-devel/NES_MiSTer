@@ -50,6 +50,7 @@ module SquareChan(input MMC5,
                   input MW,
                   input LenCtr_Clock,
                   input Env_Clock,
+                  input odd_or_even,
                   input Enabled,
                   input [7:0] LenCtr_In,
                   output reg [3:0] Sample,
@@ -77,7 +78,7 @@ wire ValidFreq = (MMC5==1) || ((|Period[10:3]) && (SweepNegate || !NewSweepPerio
 
 //double speed for MMC5=Env_Clock
 wire LenCtrClockEnable = (MMC5==0 && LenCtr_Clock) || (MMC5==1 && Env_Clock);
- 
+
 always @(posedge clk) if (reset) begin
     LenCtr <= 0;
     Duty <= 0;
@@ -135,12 +136,15 @@ always @(posedge clk) if (reset) begin
 
   
   // Count down the square timer...
-  if (TimerCtr == 0) begin
-    // Timer was clocked
-    TimerCtr <= {Period, 1'b1};
-    SeqPos <= SeqPos - 1'd1;
-  end else begin
-    TimerCtr <= TimerCtr - 1'd1;
+  // Should be clocked on every even cpu cycle
+  if (~odd_or_even) begin
+    if (TimerCtr == 0) begin
+      // Timer was clocked
+      TimerCtr <= Period;
+      SeqPos <= SeqPos - 1'd1;
+    end else begin
+      TimerCtr <= TimerCtr - 1'd1;
+    end
   end
 
   // Clock the length counter?
@@ -235,7 +239,7 @@ module TriangleChan(input clk, input ce, input reset,
     SeqPos <= 0;
     LinCtrPeriod <= 0;
     LinCtr <= 0;
-    LinCtrl <= 0;
+    //LinCtrl <= 0; do not reset
     LinHalt <= 0;
     LenCtr <= 0;
   end else if (ce) begin
@@ -321,22 +325,22 @@ module NoiseChan(input clk, input ce, input reset,
   reg [11:0] NoisePeriod, TimerCtr;
   always @* begin
     case (Period)
-    0: NoisePeriod = 12'h004;
-    1: NoisePeriod = 12'h008;
-    2: NoisePeriod = 12'h010;
-    3: NoisePeriod = 12'h020;
-    4: NoisePeriod = 12'h040;
-    5: NoisePeriod = 12'h060;
-    6: NoisePeriod = 12'h080;
-    7: NoisePeriod = 12'h0A0;
-    8: NoisePeriod = 12'h0CA;
-    9: NoisePeriod = 12'h0FE;
-    10: NoisePeriod = 12'h17C;
-    11: NoisePeriod = 12'h1FC;
-    12: NoisePeriod = 12'h2FA;
-    13: NoisePeriod = 12'h3F8;
-    14: NoisePeriod = 12'h7F2;
-    15: NoisePeriod = 12'hFE4;  
+    0: NoisePeriod = 12'd4;
+    1: NoisePeriod = 12'd8;
+    2: NoisePeriod = 12'd16;
+    3: NoisePeriod = 12'd32;
+    4: NoisePeriod = 12'd64;
+    5: NoisePeriod = 12'd96;
+    6: NoisePeriod = 12'd128;
+    7: NoisePeriod = 12'd160;
+    8: NoisePeriod = 12'd202;
+    9: NoisePeriod = 12'd254;
+    10: NoisePeriod = 12'd380;
+    11: NoisePeriod = 12'd508;
+    12: NoisePeriod = 12'd762;
+    13: NoisePeriod = 12'd1016;
+    14: NoisePeriod = 12'd2034;
+    15: NoisePeriod = 12'd4068;
     endcase
   end
   //
@@ -347,11 +351,11 @@ module NoiseChan(input clk, input ce, input reset,
     Volume <= 0;
     Envelope <= 0;
     EnvDivider <= 0;
-    LenCtr <= 0;
+    LenCtr <= 1;
     ShortMode <= 0;
     Shift <= 1;
     Period <= 0;
-    TimerCtr <= 0;
+    TimerCtr <= NoisePeriod - 1'b1;
   end else if (ce) begin
     // Check if writing to the regs of this channel 
     if (MW) begin
@@ -373,7 +377,7 @@ module NoiseChan(input clk, input ce, input reset,
     end
     // Count down the period timer...
     if (TimerCtr == 0) begin
-      TimerCtr <= NoisePeriod;
+      TimerCtr <= NoisePeriod - 1'b1;
       // Clock the shift register. Use either 
       // bit 1 or 6 as the tap.
       Shift <= { 
@@ -465,7 +469,7 @@ module DmcChan(input MMC5,
       Dac <= 0;
       SampleAddress <= 0;
       SampleLen <= 0;
-      ShiftReg <= 8'hff;
+      ShiftReg <= 8'h0; // XXX: should be 0 or 07? Visual 2C02 says 0, as does Mesen.
       Cycles <= 439;
       Address <= 0;
       BytesLeft <= 0;
@@ -473,7 +477,7 @@ module DmcChan(input MMC5,
       SampleBuffer <= 0;
       HasSampleBuffer <= 0;
       HasShiftReg <= 0;
-      DmcEnabled <= 0;
+      DmcEnabled <= 1;
       ActivationDelay <= 0;
     end else if (ce) begin
       if (ActivationDelay == 3 && !odd_or_even) ActivationDelay <= 1;
@@ -557,7 +561,7 @@ module ApuLookupTable
 
 wire [15:0] lookup_a[256] = '{
        0,   760,  1503,  2228,  2936,  3627,  4303,  4963,  5609,  6240,  6858,  7462,  8053,  8631,  9198,  9752,
-   10296, 10828, 11349, 11860, 12361, 12852, 13334, 13807, 14270, 14725, 15171, 15609, 16039, 16461, 16876,     0,
+   10296, 10828, 11349, 11860, 12361, 12852, 13334, 13807, 14270, 14725, 15171, 15609, 16039, 16461, 16876, 17283,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
@@ -587,14 +591,16 @@ wire [15:0] lookup_b[256] = '{
    39881, 40055, 40228, 40399, 40570, 40740, 40909, 41078, 41245, 41412, 41577, 41742, 41906, 42070, 42232, 42394,
    42555, 42715, 42874, 43032, 43190, 43347, 43503, 43659, 43813, 43967, 44120, 44273, 44424, 44575, 44726, 44875,
    45024, 45172, 45319, 45466, 45612, 45757, 45902, 46046, 46189, 46332, 46474, 46615, 46756, 46895, 47035, 47173,
-   47312, 47449, 47586, 47722, 47857, 47992, 48127, 48260, 48393, 48526, 48658,     0,     0,     0,     0,     0,
+   47312, 47449, 47586, 47722, 47857, 47992, 48127, 48260, 48393, 48526, 48658, 48788,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0
 };
 
+wire [16:0] audio_mixed = lookup_a[in_a] + lookup_b[in_b];
+
 always @(posedge clk) begin
-	out <= lookup_a[in_a] + lookup_b[in_b];
+	out <= audio_mixed[16] ? 16'hFFFF : audio_mixed[15:0];
 end
 
 endmodule
@@ -610,12 +616,12 @@ module APU(input MMC5,
            input [4:0] audio_channels, // Enabled audio channels
            output [15:0] Sample,
 
-           output DmaReq,      // 1 when DMC wants DMA
+           output DmaReq,          // 1 when DMC wants DMA
            input DmaAck,           // 1 when DMC byte is on DmcData. DmcDmaRequested should go low.
            output [15:0] DmaAddr,  // Address DMC wants to read
            input [7:0] DmaData,    // Input data to DMC from memory.
 
-           output odd_or_even,
+           input  odd_or_even,
            output IRQ);       // IRQ asserted
 
 // Which channels are enabled?
@@ -650,13 +656,11 @@ reg [15:0] Cycles;
 reg ClkE, ClkL;
 reg Wrote4017;
 reg [1:0] IrqCtr;
-reg InternalClock; // APU Differentiates between Even or Odd clocks
-assign odd_or_even = InternalClock;
 
 
 // Generate each channel
-SquareChan	 Sq1(MMC5, clk, ce, reset, 1'b0, ADDR[1:0], DIN, ApuMW0, ClkL, ClkE, Enabled[0], LenCtr_In, Sq1Sample, Sq1NonZero);
-SquareChan   Sq2(MMC5, clk, ce, reset, 1'b1, ADDR[1:0], DIN, ApuMW1, ClkL, ClkE, Enabled[1], LenCtr_In, Sq2Sample, Sq2NonZero);
+SquareChan	 Sq1(MMC5, clk, ce, reset, 1'b0, ADDR[1:0], DIN, ApuMW0, ClkL, ClkE, odd_or_even, Enabled[0], LenCtr_In, Sq1Sample, Sq1NonZero);
+SquareChan   Sq2(MMC5, clk, ce, reset, 1'b1, ADDR[1:0], DIN, ApuMW1, ClkL, ClkE, odd_or_even, Enabled[1], LenCtr_In, Sq2Sample, Sq2NonZero);
 TriangleChan Tri(clk, ce, reset, ADDR[1:0], DIN, ApuMW2, ClkL, ClkE, Enabled[2], LenCtr_In, TriSample, TriNonZero);
 NoiseChan    Noi(clk, ce, reset, ADDR[1:0], DIN, ApuMW3, ClkL, ClkE, Enabled[3], LenCtr_In, NoiSample, NoiNonZero);
 DmcChan      Dmc(MMC5, clk, ce, reset, odd_or_even, ADDR[2:0], DIN, ApuMW4, DmcSample, DmaReq, DmaAck, DmaAddr, DmaData, DmcIrq, IsDmcActive);
@@ -679,21 +683,19 @@ reg FrameInterrupt, DisableFrameInterrupt;
 //    l - l - -    96 Hz
 //    e e e e -   192 Hz
 
-   
+reg [7:0] last_4017 = 0;
+
 always @(posedge clk) if (reset) begin
-  FrameSeqMode <= 0;
-  DisableFrameInterrupt <= 0;
   FrameInterrupt <= 0;
   Enabled <= 0;
-  InternalClock <= 0;
   Wrote4017 <= 0;
   ClkE <= 0;
   ClkL <= 0;
-  Cycles <= 4; // This needs to be 5 for proper power up behavior
+  Cycles <= 5; // This needs to be 5 for proper power up behavior (why?)
   IrqCtr <= 0;
+  {FrameSeqMode, DisableFrameInterrupt} <= last_4017[7:6];
 end else if (ce) begin   
   FrameInterrupt <= IrqCtr[1] ? 1'd1 : (ADDR == 5'h15 && MR || ApuMW5 && ADDR[1:0] == 3 && DIN[6]) ? 1'd0 : FrameInterrupt;
-  InternalClock <= !InternalClock;
   IrqCtr <= {IrqCtr[0], 1'b0};
   Cycles <= Cycles + 1'd1;
   ClkE <= 0;
@@ -739,12 +741,13 @@ end else if (ce) begin
 //      $write("$4015 = %X\n", DIN);
     end
     3: begin // Register $4017
+      last_4017 <= DIN;
       FrameSeqMode <= DIN[7]; // 1 = 5 frames cycle, 0 = 4 frames cycle
       DisableFrameInterrupt <= DIN[6];
      
       // If the internal clock is even, things happen
       // right away.
-      if (!InternalClock) begin
+      if (!odd_or_even) begin
         if (DIN[7]) begin
           ClkE <= 1;
           ClkL <= 1;
@@ -753,7 +756,7 @@ end else if (ce) begin
       end
       
       // Otherwise they get delayed one clock
-      Wrote4017 <= InternalClock;
+      Wrote4017 <= odd_or_even;
     end
     endcase
   end
@@ -762,11 +765,12 @@ end else if (ce) begin
 end
 
 ApuLookupTable lookup(clk, 
-                      (audio_channels[0] ? {4'b0, Sq1Sample} : 8'b0) + 
-                      (audio_channels[1] ? {4'b0, Sq2Sample} : 8'b0), 
-                      (audio_channels[2] ? {4'b0, TriSample} + {3'b0, TriSample, 1'b0} : 8'b0) + 
-                      (audio_channels[3] ? {3'b0, NoiSample, 1'b0} : 8'b0) +
-                      (audio_channels[4] ? {1'b0, DmcSample} : 8'b0),
+                      (audio_channels[0] ? {4'b0, Sq1Sample}        : 8'b0) +
+                      (audio_channels[1] ? {4'b0, Sq2Sample}        : 8'b0),
+
+                      (audio_channels[2] ? {4'b0, TriSample} * 2'd3 : 8'b0) +
+                      (audio_channels[3] ? {4'b0, NoiSample} * 2'd2 : 8'b0) +
+                      (audio_channels[4] ? {1'b0, DmcSample}        : 8'b0),
                       Sample);
 
 wire frame_irq = FrameInterrupt && !DisableFrameInterrupt;

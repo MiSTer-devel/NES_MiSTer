@@ -27,7 +27,6 @@ reg pix_ce, pix_ce_n;
 
 always @(negedge clk) begin
 	reg [1:0] cnt = 0;
-
 	cnt <= cnt + 1'd1;
 	pix_ce   <= ~cnt[1] & ~cnt[0];
 	pix_ce_n <=  cnt[1] & ~cnt[0];
