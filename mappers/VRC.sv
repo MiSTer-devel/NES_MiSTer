@@ -432,7 +432,7 @@ MAPVRC6 vrc6(m2[7], m2_n, clk, enable, prg_write, nesprg_oe, 0,
 // VRC6 audio is opposite polarity from APU audio.
 
 wire [15:0] exp_audio;
-wire [16:0] mixed_audio = audio_in + (((exp_audio >> 2) + (exp_audio >> 3)) + (exp_audio >> 4));
+wire [16:0] mixed_audio = audio_in + (exp_audio[15:1] + exp_audio[15:3]);
 assign audio = mixed_audio[16:1];
 
 

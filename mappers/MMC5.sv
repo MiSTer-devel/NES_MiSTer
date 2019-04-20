@@ -54,8 +54,8 @@ wire irq;
 wire prg_open_bus, prg_conflict, has_chr_dout;
 wire [15:0] audio;
 
-// NOTE: The apu volume is 75% of MMC5 and the polarity is reversed.
-wire [16:0] audio_out = audio + (audio_in[15:1] + audio_in[15:2] + audio_in[15:2]);
+// NOTE: The apu volume is 100% of MMC5 and the polarity is reversed.
+wire [16:0] audio_out = audio + audio_in;
 
 reg [1:0] prg_mode, chr_mode;
 reg prg_protect_1, prg_protect_2;
@@ -412,8 +412,15 @@ wire [7:0] apu_dout;
 wire apu_cs = (prg_ain[15:5]==11'b0101_0000_000) && (prg_ain[3]==0);
 wire DmaReq;          // 1 when DMC wants DMA
 wire [15:0] DmaAddr;  // Address DMC wants to read
-wire odd_or_even;
+reg odd_or_even;
 wire apu_irq;         // IRQ asserted
+
+always @(posedge clk) 
+if (~enable)
+	odd_or_even <= 0;
+else if (ce) 
+	odd_or_even <= ~odd_or_even;
+
 
 APU mmc5apu(
 	.MMC5           (1),

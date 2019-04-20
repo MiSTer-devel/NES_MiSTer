@@ -133,7 +133,7 @@ parameter CONF_STR1 = {
 };
 
 parameter CONF_STR2 = {
-	",BIOS;",
+	",BIN,Load FDS BIOS;",
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert mirroring,OFF,ON;",
@@ -209,7 +209,7 @@ always_ff @(posedge clk) begin
 end
 
 // Filter CE impacts frequency response
-reg [1:0] filter_cnt;
+reg [2:0] filter_cnt;
 always_ff @(posedge clk) begin
 	if (apu_ce)
 		filter_cnt<= filter_cnt + 1'b1;
