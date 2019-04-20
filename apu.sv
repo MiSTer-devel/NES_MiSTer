@@ -73,7 +73,9 @@ reg [2:0] SeqPos;
 wire [10:0] ShiftedPeriod = (Period >> SweepShift);
 wire [10:0] PeriodRhs = (SweepNegate ? (~ShiftedPeriod + {10'b0, sq2}) : ShiftedPeriod);
 wire [11:0] NewSweepPeriod = Period + PeriodRhs;
-wire ValidFreq = (MMC5==1) || ((|Period[10:3]) && (SweepNegate || !NewSweepPeriod[11]));
+// XXX: This should be enabled for MMC5, but do we really want ultrasonic frequencies?
+// Re-enable if we ever get a proper LPF.
+wire ValidFreq = /*(MMC5==1) ||*/ ((|Period[10:3]) && (SweepNegate || !NewSweepPeriod[11]));
  // |Period[10:3] is equivalent to Period >= 8
 
 //double speed for MMC5=Env_Clock
@@ -216,7 +218,7 @@ module TriangleChan(input clk, input ce, input reset,
                     input LinCtr_Clock,
                     input Enabled,
                     input [7:0] LenCtr_In,
-                    output [3:0] Sample,
+                    output reg [3:0] Sample,
                     output IsNonZero);
   //
   reg [10:0] Period, TimerCtr;
@@ -292,7 +294,10 @@ module TriangleChan(input clk, input ce, input reset,
       SeqPos <= SeqPos + 1'd1;
   end
   // Generate the output
-  assign Sample = (Period > 2) ? SeqPos[3:0] ^ {4{~SeqPos[4]}} : 4'b0000;
+  // XXX: Ultrisonic frequencies cause issues, so are disabled.
+  // This can be removed for accuracy if a proper LPF is ever implemented.
+  always @(posedge clk)
+    Sample <= (Period > 1) ? SeqPos[3:0] ^ {4{~SeqPos[4]}} : Sample;
   //
 endmodule
 
@@ -551,61 +556,6 @@ module DmcChan(input MMC5,
   end
 endmodule
 
-module ApuLookupTable
-(
-	input clk,
-	input [7:0] in_a,
-	input [7:0] in_b,
-	output reg [15:0] out
-);
-
-wire [15:0] lookup_a[256] = '{
-       0,   760,  1503,  2228,  2936,  3627,  4303,  4963,  5609,  6240,  6858,  7462,  8053,  8631,  9198,  9752,
-   10296, 10828, 11349, 11860, 12361, 12852, 13334, 13807, 14270, 14725, 15171, 15609, 16039, 16461, 16876, 17283,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0
-};
-
-wire [15:0] lookup_b[256] = '{
-       0,   439,   874,  1306,  1735,  2160,  2581,  2999,  3414,  3826,  4234,  4639,  5041,  5440,  5836,  6229,
-    6618,  7005,  7389,  7769,  8147,  8522,  8895,  9264,  9631,  9995, 10356, 10714, 11070, 11423, 11774, 12122,
-   12468, 12811, 13152, 13490, 13825, 14159, 14490, 14818, 15145, 15469, 15791, 16110, 16427, 16742, 17055, 17366,
-   17675, 17981, 18286, 18588, 18888, 19187, 19483, 19777, 20069, 20360, 20648, 20935, 21219, 21502, 21783, 22062,
-   22339, 22615, 22889, 23160, 23431, 23699, 23966, 24231, 24494, 24756, 25016, 25274, 25531, 25786, 26040, 26292,
-   26542, 26791, 27039, 27284, 27529, 27772, 28013, 28253, 28492, 28729, 28964, 29198, 29431, 29663, 29893, 30121,
-   30349, 30575, 30800, 31023, 31245, 31466, 31685, 31904, 32121, 32336, 32551, 32764, 32976, 33187, 33397, 33605,
-   33813, 34019, 34224, 34428, 34630, 34832, 35032, 35232, 35430, 35627, 35823, 36018, 36212, 36405, 36597, 36788,
-   36978, 37166, 37354, 37541, 37727, 37912, 38095, 38278, 38460, 38641, 38821, 39000, 39178, 39355, 39532, 39707,
-   39881, 40055, 40228, 40399, 40570, 40740, 40909, 41078, 41245, 41412, 41577, 41742, 41906, 42070, 42232, 42394,
-   42555, 42715, 42874, 43032, 43190, 43347, 43503, 43659, 43813, 43967, 44120, 44273, 44424, 44575, 44726, 44875,
-   45024, 45172, 45319, 45466, 45612, 45757, 45902, 46046, 46189, 46332, 46474, 46615, 46756, 46895, 47035, 47173,
-   47312, 47449, 47586, 47722, 47857, 47992, 48127, 48260, 48393, 48526, 48658, 48788,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0
-};
-
-wire [16:0] audio_mixed = lookup_a[in_a] + lookup_b[in_b];
-
-always @(posedge clk) begin
-	out <= audio_mixed[16] ? 16'hFFFF : audio_mixed[15:0];
-end
-
-endmodule
-
-
 module APU(input MMC5,
            input clk, input ce, input reset,
            input [4:0] ADDR,  // APU Address Line
@@ -684,46 +634,72 @@ reg FrameInterrupt, DisableFrameInterrupt;
 //    e e e e -   192 Hz
 
 reg [7:0] last_4017 = 0;
+reg [2:0] delayed_clear;
+reg delayed_interrupt;
+wire set_irq = ((Cycles == 29828) || (Cycles == 29829) || delayed_interrupt) && ~DisableFrameInterrupt && ~FrameSeqMode;
 
 always @(posedge clk) if (reset) begin
+  delayed_interrupt <= 0;
   FrameInterrupt <= 0;
   Enabled <= 0;
-  Wrote4017 <= 0;
   ClkE <= 0;
   ClkL <= 0;
-  Cycles <= 5; // This needs to be 5 for proper power up behavior (why?)
+  delayed_clear <= 0;
+  Cycles <= 0;
   IrqCtr <= 0;
   {FrameSeqMode, DisableFrameInterrupt} <= last_4017[7:6];
 end else if (ce) begin   
-  FrameInterrupt <= IrqCtr[1] ? 1'd1 : (ADDR == 5'h15 && MR || ApuMW5 && ADDR[1:0] == 3 && DIN[6]) ? 1'd0 : FrameInterrupt;
+  FrameInterrupt <= set_irq ? 1'd1 : (ADDR == 5'h15 && MR || ApuMW5 && ADDR[1:0] == 3 && DIN[6]) ? 1'd0 : FrameInterrupt;
+
   IrqCtr <= {IrqCtr[0], 1'b0};
+
+  // NesDev's wiki on this is ambiguous and written from a strange perspective. To the best
+  // of my understanding, the Frame Counter works like this:
+  // The APU alternates between Read cycles (even) and Write cycles, (odd). The internal counter
+  // is incremented on every Write cycle, and if it hits certain special points, the clocks are
+  // generated *on* the next Read cycle. The counter can only be controlled by one thing at a time,
+  // so resetting the counter must always be on a Write cycle.
+  //
+  // In the case of writes to 4017, the internal registers are written normally as the write occurs, so
+  // that their values are visible on the next CE, however a reset cannot start writing to the counter
+  // until the *next* Write cycle. It's probably implemented as a flag to tell the counter to reset, that
+  // is written as part of the register data, and since the counter only runs on Writes, that's when it
+  // happens.
+
+  if (delayed_clear)
+    delayed_clear <= delayed_clear - 1'b1;
+ 
   Cycles <= Cycles + 1'd1;
+
   ClkE <= 0;
   ClkL <= 0;
-  if (Cycles == 7457) begin
+  delayed_interrupt <= 1'b0;
+  if (Cycles == 7456) begin
     ClkE <= 1;
-  end else if (Cycles == 14913) begin
+  end else if (Cycles == 14912) begin
     ClkE <= 1;
     ClkL <= 1;
-  end else if (Cycles == 22371) begin
+  end else if (Cycles == 22370) begin
     ClkE <= 1;
-  end else if (Cycles == 29829) begin
+  end else if (Cycles == 29828) begin
     if (!FrameSeqMode) begin
       ClkE <= 1;
       ClkL <= 1;
-      Cycles <= 0;
-      IrqCtr <= 3;
-      FrameInterrupt <= 1;
     end
-  end else if (Cycles == 37281) begin
+  end else if (Cycles == 29829) begin
+    if (!FrameSeqMode) begin
+      delayed_interrupt <= 1'b1;
+      Cycles <= 0;
+    end
+  end else if (Cycles == 37280) begin
     ClkE <= 1;
     ClkL <= 1;
+  end else if (Cycles == 37281) begin
     Cycles <= 0;
   end
   
   // Handle one cycle delayed write to 4017.
-  Wrote4017 <= 0;
-  if (Wrote4017) begin
+  if (delayed_clear == 1) begin
     if (FrameSeqMode) begin
       ClkE <= 1;
       ClkL <= 1;
@@ -731,32 +707,23 @@ end else if (ce) begin
     Cycles <= 0;
   end
   
-//  if (ClkE||ClkL) $write("%d: Clocking %s%s\n", Cycles, ClkE?"E":" ", ClkL?"L":" ");
-
   // Handle writes to control registers
   if (ApuMW5) begin
     case (ADDR[1:0])
     1: begin // Register $4015
       Enabled <= DIN[3:0];
-//      $write("$4015 = %X\n", DIN);
     end
     3: begin // Register $4017
-      last_4017 <= DIN;
-      FrameSeqMode <= DIN[7]; // 1 = 5 frames cycle, 0 = 4 frames cycle
-      DisableFrameInterrupt <= DIN[6];
-     
-      // If the internal clock is even, things happen
-      // right away.
-      if (!odd_or_even) begin
-        if (DIN[7]) begin
-          ClkE <= 1;
-          ClkL <= 1;
-        end
-        Cycles <= 0;
+      if (~MMC5) begin
+        last_4017 <= DIN;
+        FrameSeqMode <= DIN[7]; // 1 = 5 frames cycle, 0 = 4 frames cycle
+        DisableFrameInterrupt <= DIN[6];
+
+        if (odd_or_even)
+          delayed_clear <= 3'd2;
+        else
+          delayed_clear <= 3'd1;
       end
-      
-      // Otherwise they get delayed one clock
-      Wrote4017 <= odd_or_even;
     end
     endcase
   end
@@ -764,19 +731,19 @@ end else if (ce) begin
 
 end
 
-ApuLookupTable lookup(clk, 
-                      (audio_channels[0] ? {4'b0, Sq1Sample}        : 8'b0) +
-                      (audio_channels[1] ? {4'b0, Sq2Sample}        : 8'b0),
-
-                      (audio_channels[2] ? {4'b0, TriSample} * 2'd3 : 8'b0) +
-                      (audio_channels[3] ? {4'b0, NoiSample} * 2'd2 : 8'b0) +
-                      (audio_channels[4] ? {1'b0, DmcSample}        : 8'b0),
-                      Sample);
+APUMixer mixer (
+  .square1(Sq1Sample),
+  .square2(Sq2Sample),
+  .noise(NoiSample),
+  .triangle(TriSample),
+  .dmc(DmcSample),
+  .sample(Sample)
+);
 
 wire frame_irq = FrameInterrupt && !DisableFrameInterrupt;
 
 // Generate bus output
-assign DOUT = {DmcIrq, frame_irq, 1'b0, 
+assign DOUT = {DmcIrq, FrameInterrupt, 1'b0,
                IsDmcActive,
                NoiNonZero,
                TriNonZero,
@@ -784,5 +751,92 @@ assign DOUT = {DmcIrq, frame_irq, 1'b0,
                Sq1NonZero};
 
 assign IRQ = frame_irq || DmcIrq;
+
+endmodule
+
+// http://wiki.nesdev.com/w/index.php/APU_Mixer
+// I generated three LUT's for each mix channel entry and one lut for the squares, then a
+// 282 entry lut for the mix channel. It's more accurate than the original LUT system listed on
+// the NesDev page.
+
+module APUMixer (
+  input [3:0] square1,
+  input [3:0] square2,
+  input [3:0] triangle,
+  input [3:0] noise,
+  input [6:0] dmc,
+  output [15:0] sample
+);
+
+wire [15:0] pulse_lut[32] = '{
+  16'd0,     16'd763,   16'd1509,  16'd2236,  16'd2947,  16'd3641,  16'd4319,  16'd4982,
+  16'd5630,  16'd6264,  16'd6883,  16'd7490,  16'd8083,  16'd8664,  16'd9232,  16'd9789,
+  16'd10334, 16'd10868, 16'd11392, 16'd11905, 16'd12408, 16'd12901, 16'd13384, 16'd13858,
+  16'd14324, 16'd14780, 16'd15228, 16'd15668, 16'd16099, 16'd16523, 16'd16939, 16'd17348
+};
+
+wire [5:0] tri_lut[16] = '{
+  6'd0,  6'd3,  6'd7,  6'd11, 6'd15, 6'd19, 6'd23, 6'd27,
+  6'd31, 6'd35, 6'd39, 6'd43, 6'd47, 6'd51, 6'd55, 6'd59
+};
+
+wire [5:0] noise_lut[16] = '{
+  6'd0,  6'd2,  6'd5,  6'd8,  6'd10, 6'd13, 6'd16, 6'd18,
+  6'd21, 6'd24, 6'd26, 6'd29, 6'd32, 6'd34, 6'd37, 6'd40
+};
+
+wire [7:0] dmc_lut[128] = '{
+  8'd0,   8'd1,   8'd2,   8'd4,   8'd5,   8'd7,   8'd8,   8'd10,  8'd11,  8'd13,  8'd14,  8'd15,  8'd17,  8'd18,  8'd20,  8'd21,
+  8'd23,  8'd24,  8'd26,  8'd27,  8'd28,  8'd30,  8'd31,  8'd33,  8'd34,  8'd36,  8'd37,  8'd39,  8'd40,  8'd41,  8'd43,  8'd44,
+  8'd46,  8'd47,  8'd49,  8'd50,  8'd52,  8'd53,  8'd55,  8'd56,  8'd57,  8'd59,  8'd60,  8'd62,  8'd63,  8'd65,  8'd66,  8'd68,
+  8'd69,  8'd70,  8'd72,  8'd73,  8'd75,  8'd76,  8'd78,  8'd79,  8'd81,  8'd82,  8'd83,  8'd85,  8'd86,  8'd88,  8'd89,  8'd91,
+  8'd92,  8'd94,  8'd95,  8'd96,  8'd98,  8'd99,  8'd101, 8'd102, 8'd104, 8'd105, 8'd107, 8'd108, 8'd110, 8'd111, 8'd112, 8'd114,
+  8'd115, 8'd117, 8'd118, 8'd120, 8'd121, 8'd123, 8'd124, 8'd125, 8'd127, 8'd128, 8'd130, 8'd131, 8'd133, 8'd134, 8'd136, 8'd137,
+  8'd138, 8'd140, 8'd141, 8'd143, 8'd144, 8'd146, 8'd147, 8'd149, 8'd150, 8'd151, 8'd153, 8'd154, 8'd156, 8'd157, 8'd159, 8'd160,
+  8'd162, 8'd163, 8'd165, 8'd166, 8'd167, 8'd169, 8'd170, 8'd172, 8'd173, 8'd175, 8'd176, 8'd178, 8'd179, 8'd180, 8'd182, 8'd183
+};
+
+wire [15:0] mix_lut[512] = '{
+  16'd0,     16'd318,   16'd635,   16'd950,   16'd1262,  16'd1573,  16'd1882,  16'd2190,  16'd2495,  16'd2799,  16'd3101,  16'd3401,  16'd3699,  16'd3995,  16'd4290,  16'd4583,
+  16'd4875,  16'd5164,  16'd5452,  16'd5739,  16'd6023,  16'd6306,  16'd6588,  16'd6868,  16'd7146,  16'd7423,  16'd7698,  16'd7971,  16'd8243,  16'd8514,  16'd8783,  16'd9050,
+  16'd9316,  16'd9581,  16'd9844,  16'd10105, 16'd10365, 16'd10624, 16'd10881, 16'd11137, 16'd11392, 16'd11645, 16'd11897, 16'd12147, 16'd12396, 16'd12644, 16'd12890, 16'd13135,
+  16'd13379, 16'd13622, 16'd13863, 16'd14103, 16'd14341, 16'd14579, 16'd14815, 16'd15050, 16'd15284, 16'd15516, 16'd15747, 16'd15978, 16'd16206, 16'd16434, 16'd16661, 16'd16886,
+  16'd17110, 16'd17333, 16'd17555, 16'd17776, 16'd17996, 16'd18215, 16'd18432, 16'd18649, 16'd18864, 16'd19078, 16'd19291, 16'd19504, 16'd19715, 16'd19925, 16'd20134, 16'd20342,
+  16'd20549, 16'd20755, 16'd20960, 16'd21163, 16'd21366, 16'd21568, 16'd21769, 16'd21969, 16'd22169, 16'd22367, 16'd22564, 16'd22760, 16'd22955, 16'd23150, 16'd23343, 16'd23536,
+  16'd23727, 16'd23918, 16'd24108, 16'd24297, 16'd24485, 16'd24672, 16'd24858, 16'd25044, 16'd25228, 16'd25412, 16'd25595, 16'd25777, 16'd25958, 16'd26138, 16'd26318, 16'd26497,
+  16'd26674, 16'd26852, 16'd27028, 16'd27203, 16'd27378, 16'd27552, 16'd27725, 16'd27898, 16'd28069, 16'd28240, 16'd28410, 16'd28579, 16'd28748, 16'd28916, 16'd29083, 16'd29249,
+  16'd29415, 16'd29580, 16'd29744, 16'd29907, 16'd30070, 16'd30232, 16'd30393, 16'd30554, 16'd30714, 16'd30873, 16'd31032, 16'd31190, 16'd31347, 16'd31503, 16'd31659, 16'd31815,
+  16'd31969, 16'd32123, 16'd32276, 16'd32429, 16'd32581, 16'd32732, 16'd32883, 16'd33033, 16'd33182, 16'd33331, 16'd33479, 16'd33627, 16'd33774, 16'd33920, 16'd34066, 16'd34211,
+  16'd34356, 16'd34500, 16'd34643, 16'd34786, 16'd34928, 16'd35070, 16'd35211, 16'd35352, 16'd35492, 16'd35631, 16'd35770, 16'd35908, 16'd36046, 16'd36183, 16'd36319, 16'd36456,
+  16'd36591, 16'd36726, 16'd36860, 16'd36994, 16'd37128, 16'd37261, 16'd37393, 16'd37525, 16'd37656, 16'd37787, 16'd37917, 16'd38047, 16'd38176, 16'd38305, 16'd38433, 16'd38561,
+  16'd38689, 16'd38815, 16'd38942, 16'd39068, 16'd39193, 16'd39318, 16'd39442, 16'd39566, 16'd39690, 16'd39813, 16'd39935, 16'd40057, 16'd40179, 16'd40300, 16'd40421, 16'd40541,
+  16'd40661, 16'd40780, 16'd40899, 16'd41017, 16'd41136, 16'd41253, 16'd41370, 16'd41487, 16'd41603, 16'd41719, 16'd41835, 16'd41950, 16'd42064, 16'd42178, 16'd42292, 16'd42406,
+  16'd42519, 16'd42631, 16'd42743, 16'd42855, 16'd42966, 16'd43077, 16'd43188, 16'd43298, 16'd43408, 16'd43517, 16'd43626, 16'd43735, 16'd43843, 16'd43951, 16'd44058, 16'd44165,
+  16'd44272, 16'd44378, 16'd44484, 16'd44589, 16'd44695, 16'd44799, 16'd44904, 16'd45008, 16'd45112, 16'd45215, 16'd45318, 16'd45421, 16'd45523, 16'd45625, 16'd45726, 16'd45828,
+  16'd45929, 16'd46029, 16'd46129, 16'd46229, 16'd46329, 16'd46428, 16'd46527, 16'd46625, 16'd46723, 16'd46821, 16'd46919, 16'd47016, 16'd47113, 16'd47209, 16'd47306, 16'd47402,
+  16'd47497, 16'd47592, 16'd47687, 16'd47782, 16'd47876, 16'd47970, 16'd48064, 16'd48157, 16'd48250, 16'd48343, 16'd48436, 16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,
+  16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0,     16'd0
+};
+
+wire [4:0] squares = square1 + square2;
+wire [8:0] mix = tri_lut[triangle] + noise_lut[noise] + dmc_lut[dmc];
+wire [15:0] ch1 = pulse_lut[squares];
+wire [15:0] ch2 = mix_lut[mix];
+wire [63:0] chan_mix = ch1 + ch2;
+
+assign sample = chan_mix > 16'hFFFF ? 16'hFFFF : chan_mix[15:0];
 
 endmodule

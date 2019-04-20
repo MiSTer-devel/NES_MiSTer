@@ -146,7 +146,7 @@ SS5b_audio snd_5b (
 
 wire [15:0] exp_out;
 wire [15:0] exp_adj = (|exp_out[15:14] ? 16'hFFFF : {exp_out[13:0], exp_out[1:0]});
-wire [16:0] audio_mix = audio_in + exp_adj;
+wire [16:0] audio_mix = audio_in + (exp_adj + exp_adj[15:1]);
 
 assign audio = 16'hFFFF - audio_mix[16:1];
 
