@@ -154,6 +154,7 @@ parameter CONF_STR4 = {
 	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Nintendulator;",
 	"-;",
 	"O9,Swap joysticks,NO,YES;",
+	"OIJ,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2);",
 	"OA,Multitap,Disabled,Enabled;",
 `ifdef DEBUG_AUDIO
 	"-;",
@@ -161,11 +162,11 @@ parameter CONF_STR4 = {
 `endif
 	"-;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start,FDS,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12,Mic;",
+	"J1,A,B,Select,Start,FDS,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12,Mic,Trigger;",
 	"V,v",`BUILD_DATE
 };
 
-wire [21:0] joyA,joyB,joyC,joyD;
+wire [22:0] joyA,joyB,joyC,joyD;
 wire [1:0] buttons;
 
 wire [31:0] status;
@@ -233,6 +234,8 @@ wire        img_readonly;
 wire [63:0] img_size;
 wire [7:0]  filetype;
 wire [24:0] ioctl_addr;
+wire [24:0] ps2_mouse;
+wire [15:0] joy_analog0, joy_analog1;
 
 hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + 3)) hps_io
 (
@@ -247,6 +250,8 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.joystick_1(joyB),
 	.joystick_2(joyC),
 	.joystick_3(joyD),
+	.joystick_analog_0(joy_analog0),
+	.joystick_analog_1(joy_analog1),
 
 	.status(status),
 
@@ -270,7 +275,9 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.img_size(img_size),
 
 	.ps2_kbd_led_use(0),
-	.ps2_kbd_led_status(0)
+	.ps2_kbd_led_status(0),
+
+	.ps2_mouse(ps2_mouse)
 );
 
 
@@ -336,6 +343,20 @@ wire mic = (mic_cnt < 8'd215) && mic_button;
 always @(posedge clk)
 	mic_cnt <= (mic_cnt == 8'd250) ? 8'd0 : mic_cnt + 1'b1;
 
+zapper zap (
+	.clk(clk),
+	.reset(reset_nes | ~lightgun_en),
+	.mode(status[19]),
+	.ps2_mouse(ps2_mouse),
+	.analog(~status[18] ? joy_analog0 : joy_analog1),
+	.analog_trigger(~status[18] ? joyA[22] : joyB[22]),
+	.cycle(cycle),
+	.scanline(scanline),
+	.color(color),
+	.reticule(reticule),
+	.light(light),
+	.trigger(trigger)
+);
 
 always @(posedge clk) begin
 	if (reset_nes) begin
@@ -407,8 +428,10 @@ wire [7:0] bram_din;
 wire [7:0] bram_dout;
 wire bram_write;
 wire bram_override;
-wire trigger = 0;
-wire light = 0;
+wire trigger;
+wire light;
+
+wire lightgun_en = |status[19:18];
 
 NES nes (
 	.clk             (clk),
@@ -429,7 +452,7 @@ NES nes (
 	// User Input
 	.joypad_strobe   (joypad_strobe),
 	.joypad_clock    (joypad_clock),
-	.joypad_data     ({powerpad_d4[0] | trigger,powerpad_d3[0] | light,joypad_bits2[0],joypad_bits[0]}),
+	.joypad_data     ({lightgun_en ? trigger : powerpad_d4[0],lightgun_en ? light : powerpad_d3[0],joypad_bits2[0],joypad_bits[0]}),
 	.mic             (mic),
 	.fds_swap        (fds_swap),
 	// Memory transactions
@@ -555,6 +578,8 @@ wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
 assign VGA_SL = sl[1:0];
 
+wire reticule;
+
 video video
 (
 	.*,
@@ -566,6 +591,7 @@ video video
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
 	.emphasis(emphasis),
+	.reticule(reticule),
 
 	.ce_pix(CE_PIXEL)
 );
