@@ -102,19 +102,19 @@ module emu
 
 assign USER_OUT = '1;
 
-assign AUDIO_S   = 0;
-assign AUDIO_L   = sample;
-assign AUDIO_R   = sample;
+assign AUDIO_S   = 1'b1;
+assign AUDIO_L   = |mute_cnt ? 16'd0 : sample_signed[15:0];
+assign AUDIO_R   = AUDIO_L;
 assign AUDIO_MIX = 0;
 
-assign LED_USER  = downloading | (loader_fail & led_blink) | bk_state;
+assign LED_USER  = downloading | (loader_fail & led_blink) | bk_state | (bk_pending & status[17]);
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
 assign VIDEO_ARX = status[8] ? 8'd16 : 8'd4;
 assign VIDEO_ARY = status[8] ? 8'd9  : 8'd3;
 
-assign CLK_VIDEO = clk85;
+assign CLK_VIDEO = clk;
 
 assign VGA_F1 = 0;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
@@ -133,7 +133,7 @@ parameter CONF_STR1 = {
 };
 
 parameter CONF_STR2 = {
-	",BIOS;",
+	",BIN,Load FDS BIOS;",
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert mirroring,OFF,ON;",
@@ -146,6 +146,7 @@ parameter CONF_STR3 = {
 
 parameter CONF_STR4 = {
 	"7,Save Backup RAM;",
+	"OH,Autosave,No,Yes;",
 	"-;",
 	"O8,Aspect ratio,4:3,16:9;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
@@ -153,6 +154,7 @@ parameter CONF_STR4 = {
 	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Nintendulator;",
 	"-;",
 	"O9,Swap joysticks,NO,YES;",
+	"OIJ,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2);",
 	"OA,Multitap,Disabled,Enabled;",
 `ifdef DEBUG_AUDIO
 	"-;",
@@ -160,11 +162,11 @@ parameter CONF_STR4 = {
 `endif
 	"-;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start,FDS,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
+	"J1,A,B,Select,Start,FDS,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12,Mic,Trigger;",
 	"V,v",`BUILD_DATE
 };
 
-wire [20:0] joyA,joyB,joyC,joyD;
+wire [22:0] joyA,joyB,joyC,joyD;
 wire [1:0] buttons;
 
 wire [31:0] status;
@@ -183,6 +185,38 @@ wire ext_audio = 1;
 wire int_audio = 1;
 `endif
 
+// Remove DC offset and convert to signed
+// At this CE rate, it also slightly lowers the bass to
+// better imitate the real high pass of the system.
+jt49_dcrm2 #(.sw(16)) dc_filter (
+	.clk  (clk),
+	.cen  (apu_ce & &filter_cnt),
+	.rst  (reset_nes),
+	.din  (sample),
+	.dout (sample_signed)
+);
+
+wire apu_ce;
+wire signed [15:0] sample_signed;
+
+reg [20:0] mute_cnt = 21'h1FFFFF;
+
+// Pause audio to avoid loud "POP"
+always_ff @(posedge clk) begin
+	if (reset_nes)
+		mute_cnt <= 21'h1FFFFF;
+	else if (|mute_cnt)
+		mute_cnt <= mute_cnt - 1'b1;
+end
+
+// Filter CE impacts frequency response
+reg [2:0] filter_cnt;
+always_ff @(posedge clk) begin
+	if (apu_ce)
+		filter_cnt<= filter_cnt + 1'b1;
+end
+
+
 
 wire forced_scandoubler;
 wire ps2_kbd_clk, ps2_kbd_data;
@@ -200,6 +234,8 @@ wire        img_readonly;
 wire [63:0] img_size;
 wire [7:0]  filetype;
 wire [24:0] ioctl_addr;
+wire [24:0] ps2_mouse;
+wire [15:0] joy_analog0, joy_analog1;
 
 hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + 3)) hps_io
 (
@@ -214,6 +250,8 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.joystick_1(joyB),
 	.joystick_2(joyC),
 	.joystick_3(joyD),
+	.joystick_analog_0(joy_analog0),
+	.joystick_analog_1(joy_analog1),
 
 	.status(status),
 
@@ -237,7 +275,9 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.img_size(img_size),
 
 	.ps2_kbd_led_use(0),
-	.ps2_kbd_led_status(0)
+	.ps2_kbd_led_status(0),
+
+	.ps2_mouse(ps2_mouse)
 );
 
 
@@ -291,10 +331,32 @@ wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], j
 wire [7:0] nes_joy_C = { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], joyC[4] };
 wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], joyD[4] };
 
+wire mic_button = joyA[21] | joyB[21];
 wire fds_btn = joyA[8] | joyB[8];
 wire fds_swap = fds_swap_invert ^ fds_btn;
 
-reg [1:0] nes_ce;
+reg [2:0] nes_ce;
+
+reg [7:0] mic_cnt;
+
+wire mic = (mic_cnt < 8'd215) && mic_button;
+always @(posedge clk)
+	mic_cnt <= (mic_cnt == 8'd250) ? 8'd0 : mic_cnt + 1'b1;
+
+zapper zap (
+	.clk(clk),
+	.reset(reset_nes | ~lightgun_en),
+	.mode(status[19]),
+	.ps2_mouse(ps2_mouse),
+	.analog(~status[18] ? joy_analog0 : joy_analog1),
+	.analog_trigger(~status[18] ? joyA[22] : joyB[22]),
+	.cycle(cycle),
+	.scanline(scanline),
+	.color(color),
+	.reticule(reticule),
+	.light(light),
+	.trigger(trigger)
+);
 
 always @(posedge clk) begin
 	if (reset_nes) begin
@@ -305,8 +367,8 @@ always @(posedge clk) begin
 		last_joypad_clock <= 0;
 	end else begin
 		if (joypad_strobe) begin
-			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'h0000, joy_swap ? nes_joy_B : nes_joy_A} | fds_btn;
-			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'h0000, joy_swap ? nes_joy_A : nes_joy_B};
+			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, joy_swap ? nes_joy_B : nes_joy_A};
+			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, joy_swap ? nes_joy_A : nes_joy_B};
 			powerpad_d4 <= {4'b0000, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
 			powerpad_d3 <= {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
 		end
@@ -360,34 +422,56 @@ always @(posedge clk) begin
 end
  
 wire reset_nes = ~init_reset_n || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading;
-wire run_nes = (nes_ce == 3);	// keep running even when reset, so that the reset can actually do its job!
 
 wire [14:0] bram_addr;
 wire [7:0] bram_din;
 wire [7:0] bram_dout;
 wire bram_write;
 wire bram_override;
+wire trigger;
+wire light;
 
-// NES is clocked at every 4th cycle.
-always @(posedge clk) nes_ce <= nes_ce + 1'd1;
+wire lightgun_en = |status[19:18];
 
-NES nes
-(
-	clk, reset_nes, run_nes,
-	mapper_flags,
-	sample, color,
-	joypad_strobe, joypad_clock, {powerpad_d4[0],powerpad_d3[0],joypad_bits2[0],joypad_bits[0]},
-	fds_swap,
-	5'b11111,  // enable all channels
-	memory_addr,
-	memory_read_cpu, memory_din_cpu,
-	memory_read_ppu, memory_din_ppu,
-	memory_write, memory_dout,
-   bram_addr, bram_din, bram_dout,
-	bram_write, bram_override,
-	cycle, scanline,
-	int_audio, ext_audio
+NES nes (
+	.clk             (clk),
+	.reset           (reset_nes),
+	.nes_div         (nes_ce),
+	.mapper_flags    (downloading ? 25'd0 : mapper_flags),
+	// Audio
+	.sample          (sample),
+	.audio_channels  (5'b11111),
+	.int_audio       (int_audio),
+	.ext_audio       (ext_audio),
+	.apu_ce          (apu_ce),
+	// Video
+	.color           (color),
+	.emphasis        (emphasis),
+	.cycle           (cycle),
+	.scanline        (scanline),
+	// User Input
+	.joypad_strobe   (joypad_strobe),
+	.joypad_clock    (joypad_clock),
+	.joypad_data     ({lightgun_en ? trigger : powerpad_d4[0],lightgun_en ? light : powerpad_d3[0],joypad_bits2[0],joypad_bits[0]}),
+	.mic             (mic),
+	.fds_swap        (fds_swap),
+	// Memory transactions
+	.memory_addr     (memory_addr),
+	.memory_read_cpu (memory_read_cpu),
+	.memory_din_cpu  (memory_din_cpu),
+	.memory_read_ppu (memory_read_ppu),
+	.memory_din_ppu  (memory_din_ppu),
+	.memory_write    (memory_write),
+	.memory_dout     (memory_dout),
+	.bram_addr       (bram_addr),
+	.bram_din        (bram_din),
+	.bram_dout       (bram_dout),
+	.bram_write      (bram_write),
+	.bram_override   (bram_override),
+	.save_written    (save_written)
 );
+
+wire [2:0] emphasis;
 
 assign SDRAM_CKE         = 1'b1;
 
@@ -441,43 +525,52 @@ end
 sdram sdram
 (
 	// interface to the MT48LC16M16 chip
-	.sd_data     	( SDRAM_DQ                 ),
-	.sd_addr     	( SDRAM_A                  ),
-	.sd_dqm      	( {SDRAM_DQMH, SDRAM_DQML} ),
-	.sd_cs       	( SDRAM_nCS                ),
-	.sd_ba       	( SDRAM_BA                 ),
-	.sd_we       	( SDRAM_nWE                ),
-	.sd_ras      	( SDRAM_nRAS               ),
-	.sd_cas      	( SDRAM_nCAS               ),
+	.sd_data        ( SDRAM_DQ                 ),
+	.sd_addr        ( SDRAM_A                  ),
+	.sd_dqm         ( {SDRAM_DQMH, SDRAM_DQML} ),
+	.sd_cs          ( SDRAM_nCS                ),
+	.sd_ba          ( SDRAM_BA                 ),
+	.sd_we          ( SDRAM_nWE                ),
+	.sd_ras         ( SDRAM_nRAS               ),
+	.sd_cas         ( SDRAM_nCAS               ),
 
 	// system interface
-	.clk      		( clk85         				),
-	.clkref      	( nes_ce[1]         			),
-	.init         	( !clock_locked     			),
+	.clk            ( clk85                    ),
+	.clkref         ( nes_ce[1]                ),
+	.init           ( !clock_locked            ),
 
 	// cpu/chipset interface
-	.addr     		( (downloading || loader_busy) ? {3'b000, loader_addr_mem} : {3'b000, memory_addr} ),
+	.addr           ( (downloading || loader_busy) ? {3'b000, loader_addr_mem} : {3'b000, memory_addr} ),
 	
-	.we       		( memory_write || loader_write_mem	),
-	.din       		( (downloading || loader_busy) ? loader_write_data_mem : memory_dout ),
+	.we             ( memory_write || loader_write_mem	),
+	.din            ( (downloading || loader_busy) ? loader_write_data_mem : memory_dout ),
 	
-	.oeA         	( memory_read_cpu ),
-	.doutA       	( memory_din_cpu	),
+	.oeA            ( memory_read_cpu ),
+	.doutA          ( memory_din_cpu  ),
 	
-	.oeB         	( memory_read_ppu ),
-	.doutB       	( memory_din_ppu  ),
+	.oeB            ( memory_read_ppu ),
+	.doutB          ( memory_din_ppu  ),
 
-	.bk_clk        ( clk ),
-	.bk_addr       ( {sd_lba[5:0],sd_buff_addr} ),
-	.bk_dout       ( sd_buff_din ),
-	.bk_din        ( sd_buff_dout ),
-	.bk_we         ( sd_buff_wr & sd_ack ),
-	.bko_addr      ( bram_addr ),
-	.bko_dout      ( bram_din ),
-	.bko_din       ( bram_dout ),
-	.bko_we        ( bram_write ),
-	.bk_override   ( bram_override )
+	.bk_clk         ( clk ),
+	.bk_addr        ( {sd_lba[5:0],sd_buff_addr} ),
+	.bk_dout        ( sd_buff_din ),
+	.bk_din         ( sd_buff_dout ),
+	.bk_we          ( sd_buff_wr & sd_ack ),
+	.bko_addr       ( bram_addr ),
+	.bko_dout       ( bram_din ),
+	.bko_din        ( bram_dout ),
+	.bko_we         ( bram_write ),
+	.bk_override    ( bram_override )
 );
+
+reg bk_pending;
+wire save_written;
+always @(posedge clk) begin
+	if (mapper_flags[25] && ~OSD_STATUS && save_written)
+		bk_pending <= 1'b1;
+	else if (bk_state)
+		bk_pending <= 1'b0;
+end
 
 wire downloading;
 
@@ -485,17 +578,20 @@ wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
 assign VGA_SL = sl[1:0];
 
+wire reticule;
+
 video video
 (
 	.*,
-	.clk(clk85),
-
+	.clk(clk),
 	.count_v(scanline),
 	.count_h(cycle),
 	.forced_scandoubler(forced_scandoubler),
 	.scale(scale),
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
+	.emphasis(emphasis),
+	.reticule(reticule),
 
 	.ce_pix(CE_PIXEL)
 );
@@ -515,7 +611,7 @@ always @(posedge clk) begin
 end
 
 wire bk_load    = status[6];
-wire bk_save    = status[7];
+wire bk_save    = status[7] | (bk_pending & OSD_STATUS && status[17]);
 reg  bk_loading = 0;
 reg  bk_state   = 0;
 reg  bk_request = 0;
@@ -632,11 +728,13 @@ wire is_dirty = !is_nes20 && ((ines[9][7:1] != 0)
 // Read the mapper number
 wire [7:0] mapper = {is_dirty ? 4'b0000 : ines[7][7:4], ines[6][7:4]};
 wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
-  
+
+wire has_saves = ines[6][1];
+
 // ines[6][0] is mirroring
 // ines[6][3] is 4 screen mode
 // ines[8][7:4] is NES 2.0 submapper
-assign mapper_flags = {7'b0, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
+assign mapper_flags = {6'b0, has_saves, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
 
 reg [3:0] clearclk; //Wait for SDRAM
 reg copybios;

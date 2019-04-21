@@ -967,7 +967,7 @@ BEGIN
                      (i_inter='0' OR i_flm='1'));
         
         -- Detects third line for low lag mode
-        i_syncline<=to_std_logic(i_vcpt=i_vmin + 4);
+        i_syncline<=to_std_logic(i_vcpt=i_vmin + 20);
         
         ----------------------------------------------------
         IF i_pde='1' AND i_de_pre='0' THEN

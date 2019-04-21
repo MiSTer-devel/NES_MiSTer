@@ -11,6 +11,8 @@ module video
 	input  [2:0] scale,
 	input        hide_overscan,
 	input  [3:0] palette,
+	input  [2:0] emphasis,
+	input        reticule,
 
 	output       ce_pix,
 
@@ -23,13 +25,13 @@ module video
 );
 
 reg pix_ce, pix_ce_n;
+wire [5:0] color_ef = reticule ? 6'h16 : is_padding ? 6'd63 : color;
 
 always @(negedge clk) begin
-	reg [3:0] cnt = 0;
-
+	reg [1:0] cnt = 0;
 	cnt <= cnt + 1'd1;
-	pix_ce   <= !cnt[3] & !cnt[2:0];
-	pix_ce_n <=  cnt[3] & !cnt[2:0];
+	pix_ce   <= ~cnt[1] & ~cnt[0];
+	pix_ce_n <=  cnt[1] & ~cnt[0];
 end
 
 // Smooth palette from FirebrandX
@@ -208,21 +210,21 @@ always @(posedge clk) begin
 	
 	if(pix_ce_n) begin
 		case (palette)
-			0: pixel <= pal_smooth_lut[color][14:0];
-			1: pixel <= pal_unsat_lut[color][14:0];
-			2: pixel <= pal_fcelut[color][14:0];
-			3: pixel <= pal_nes_classic_lut[color][14:0];
-			4: pixel <= pal_composite_direct_lut[color][14:0];
-			5: pixel <= pal_pc10_lut[color][14:0];
-			6: pixel <= pal_pvm_lut[color][14:0];
-			7: pixel <= pal_wavebeam_lut[color][14:0];
-			8: pixel <= pal_real_lut[color][14:0];
-			9: pixel <= pal_sonycxa_lut[color][14:0];
-			10: pixel <= pal_yuv_lut[color][14:0];
-			11: pixel <= pal_greyscale_lut[color][14:0];
-			12: pixel <= pal_rockman9_lut[color][14:0];
-			13: pixel <= pal_nintendulator_lut[color][14:0];
-			default:pixel <= pal_smooth_lut[color][14:0];
+			0: pixel <= pal_smooth_lut[color_ef][14:0];
+			1: pixel <= pal_unsat_lut[color_ef][14:0];
+			2: pixel <= pal_fcelut[color_ef][14:0];
+			3: pixel <= pal_nes_classic_lut[color_ef][14:0];
+			4: pixel <= pal_composite_direct_lut[color_ef][14:0];
+			5: pixel <= pal_pc10_lut[color_ef][14:0];
+			6: pixel <= pal_pvm_lut[color_ef][14:0];
+			7: pixel <= pal_wavebeam_lut[color_ef][14:0];
+			8: pixel <= pal_real_lut[color_ef][14:0];
+			9: pixel <= pal_sonycxa_lut[color_ef][14:0];
+			10: pixel <= pal_yuv_lut[color_ef][14:0];
+			11: pixel <= pal_greyscale_lut[color_ef][14:0];
+			12: pixel <= pal_rockman9_lut[color_ef][14:0];
+			13: pixel <= pal_nintendulator_lut[color_ef][14:0];
+			default:pixel <= pal_smooth_lut[color_ef][14:0];
 		endcase
 	
 		HBlank_r <= HBlank;
@@ -262,24 +264,57 @@ always @(posedge clk) begin
 		old_count_v <= count_v;
 	end
 
+	// The NES and SNES proper resolutions are 280 pixels wide, and 240 lines high. Only 256 of these pixels per line
+	// are drawn with image data, but the real PPU padded the rest with color 0 to make the aspect ratio correct, since
+	// they anticipated the overscan. This padding MUST be considered when scaling the image to 4:3 AR.
+	// http://wiki.nesdev.com/w/index.php?title=Overscan#For_emulator_developers
+
+	// Overscan is simply a zoom-in, and most emulators will take off 8 from the top and bottom to reach the magic
+	// number of 224 pixels, so we take off a proportional percentage from the sides to compensate.
+
 	if(pix_ce) begin
 		if(hide_overscan) begin
-			HBlank <= (hc > (256-8)) || (hc<7);
-			VBlank <= (vc > (240-10)) || (vc<7);
+			HBlank <= (hc >= (HBL_START-10) && (hc <= HBL_END + 9));       // 280 - ((224/240) * 16) = 261.3
+			VBlank <= (vc > (VBL_START-10)) || (vc < 7);                   // 240 - 16 = 224
 		end else begin
-			HBlank <= (hc >= 256);
-			VBlank <= (vc >= 240);
+			HBlank <= (hc >= HBL_START) && (hc <= HBL_END);                // 280 pixels
+			VBlank <= ((vc >= VBL_START) || (vc == (VBL_START - 1'b1) && hc > HBL_END)) && 
+				((vc < VBL_END) || (vc == VBL_END && hc <= HBL_END));      // 240 lines, slightly skewed
 		end
-		HSync  <= ((hc >= 277) && (hc < 302));
-		VSync  <= ((vc >= 242) && (vc < 245));
+		HSync  <= ((hc >= 278) && (hc < 303));
+		VSync  <= ((vc >= 244) && (vc < 247));
 	end
 end
 
-wire  [4:0] vga_r = pixel[4:0];
-wire  [4:0] vga_g = pixel[9:5];
-wire  [4:0] vga_b = pixel[14:10];
+localparam HBL_START = 268;
+localparam HBL_END   = 328;
+localparam VBL_START = 240;
+localparam VBL_END   = 511;
 
-video_mixer #(.LINE_LENGTH(350), .HALF_DEPTH(0)) video_mixer
+wire is_padding = (hc > 255);
+
+wire dark_r, dark_g, dark_b;
+// bits are in order {B, G, R} color emphasis
+always_comb begin
+	{dark_r, dark_g, dark_b} = 3'b000;
+
+	if (~&color_ef[3:1] & |emphasis) begin
+		if (~&emphasis) begin
+			dark_r = ~emphasis[2];
+			dark_g = ~emphasis[1];
+			dark_b = ~emphasis[0];
+		end else begin
+			{dark_r, dark_g, dark_b} = 3'b111;
+		end
+	end
+
+end
+
+wire  [4:0] vga_r = dark_r ? pixel[4:1] + pixel[4:2] : pixel[4:0];
+wire  [4:0] vga_g = dark_g ? pixel[9:6] + pixel[9:7] : pixel[9:5];
+wire  [4:0] vga_b = dark_b ? pixel[14:11] + pixel[14:12] : pixel[14:10];
+
+video_mixer #(260, 0) video_mixer
 (
 	.*,
 	.clk_sys(clk),
