@@ -6,6 +6,8 @@ This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://git
  * Supports saves for most ROM games (FDS saves not currently supported)
  * FDS Support with expansion audio
  * Multiple Palette options
+ * Zapper, Powerpad, and Microphone support
+ * Supports four players
  * Supports expansion audio from mappers including VRC6 & 7, MMC5 and Sunsoft 5b
  * Supports many popular mappers including VRC1-7, MMC0-5, and many more (see below)
  * Supports large games such as Legend of Link and Rockman Minus Infinity
@@ -21,7 +23,10 @@ Copy the NES_\*.rbf file to the root of the SD card. Create a **NES** folder on 
 Before loading \*.FDS files, you must first load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom or boot3.rom and placed in the same folder as the ROMs (NES).  Alternatively, it can be loaded from the OSD if boot0.rom and boot3.rom don't exist. After loading the core and the bios you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the FDS button on the player 1 controller. The "Disk Swap" OSD option inverts this behavior (press FDS to swap disks). Currently, saves are not supported for FDS games.
 
 ## Saving and Loading
-The battery backed RAM (Save RAM) for the NES does not write to disk automatically. When loading a game, you must select **Load Backup RAM** from the OSD menu. After saving in your game, you must then write the RAM to the SD card by selecting **Save Backup RAM** from the menu. If you do not save your RAM to disk, the contents will be lost next time you restart the core or switch games.
+The battery backed RAM (Save RAM) for the NES does not write to disk automatically. When loading a game, you must select **Load Backup RAM** from the OSD menu. After saving in your game, you must then write the RAM to the SD card by selecting **Save Backup RAM** from the menu. If you do not save your RAM to disk, the contents will be lost next time you restart the core or switch games. Alternatively you can enable to Autosave option from the OSD menu, and if you do your games will be recorded to disk every time you open the OSD menu.
+
+## Zapper Support
+The "Zapper" (aka Light Gun) can be used via two methods. You can select Peripheral: Zapper(Mouse) to use your mouse to aim and shoot with the left button. This mode uses relative mouse motion, so devices that rely on absolute coordinates will not work via this method. Alternatively, you can choose Zapper(Joy) to use the Analog stick to aim and, and the defined Trigger button to fire. Guns such as Aimtrak have joystick modes which may be compatible with this method.
 
 ## Supported Mappers
 
