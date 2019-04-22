@@ -137,6 +137,7 @@ parameter CONF_STR2 = {
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert mirroring,OFF,ON;",
+	"OKL,Game Genie,OFF,3 Codes,9 Codes;",
 	"-;",
 };
 
@@ -146,7 +147,7 @@ parameter CONF_STR3 = {
 
 parameter CONF_STR4 = {
 	"7,Save Backup RAM;",
-	"OH,Autosave,No,Yes;",
+	"OH,Autosave,OFF,ON;",
 	"-;",
 	"O8,Aspect ratio,4:3,16:9;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
@@ -435,9 +436,10 @@ wire lightgun_en = |status[19:18];
 
 NES nes (
 	.clk             (clk),
-	.reset           (reset_nes),
+	.reset_nes       (reset_nes),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 25'd0 : mapper_flags),
+	.gg              (status[21:20]),
 	// Audio
 	.sample          (sample),
 	.audio_channels  (5'b11111),
