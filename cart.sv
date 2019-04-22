@@ -52,7 +52,6 @@ module cart_top (
 	output reg [15:0] audio,          // External Audio
 	output reg  [1:0] diskside_auto,
 	input       [1:0] diskside,
-	input             diskside_force,
 	input             fds_swap        // FDS Disk Swap Pause
 );
 
@@ -1380,7 +1379,6 @@ MapperFDS mapfds(
 	// Special ports
 	.diskside_auto_b (fds_diskside_auto),
 	.diskside   (diskside),
-	.diskside_force (diskside_force),
 	.fds_swap   (fds_swap)
 );
 

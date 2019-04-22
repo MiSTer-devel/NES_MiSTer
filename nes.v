@@ -131,7 +131,6 @@ module NES(
 	input         fds_swap,       // FDS Disk Swap Pause
 	output  [1:0] diskside_req,
 	input   [1:0] diskside,
-	input         diskside_force,
 	input   [4:0] audio_channels, // Enabled audio channels
 
 	// Access signals for the SRAM.
@@ -467,8 +466,7 @@ cart_top multi_mapper (
 	// User input/FDS controls
 	.fds_swap          (fds_swap),                // Used to trigger FDS disk changes
 	.diskside_auto     (diskside_req),
-	.diskside          (diskside),
-	.diskside_force    (diskside_force)
+	.diskside          (diskside)
 );
 
 

@@ -25,7 +25,6 @@ module MapperFDS(
 	// Special ports
 	inout [1:0] diskside_auto_b,
 	input [1:0] diskside,
-	input diskside_force,
 	input fds_swap
 );
 
@@ -73,7 +72,7 @@ MAPFDS fds(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-	ce, prg_allow, audio_exp, diskside_auto, diskside, diskside_force, fds_swap);
+	ce, prg_allow, audio_exp, diskside_auto, diskside, fds_swap);
 
 assign chr_aout[21:19] = 3'b100;
 assign chr_aout[9:0] = chr_ain[9:0];
@@ -144,7 +143,6 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	output [11:0] snd_level,
 	output reg [1:0] diskside_auto,
 	input [1:0] diskside,
-	input diskside_force,
 	input fds_swap
 );
 
@@ -215,7 +213,6 @@ module MAPFDS(              //signal descriptions in powerpak.v
 always@(posedge clk20)
 		if(reset) begin
 			// on reset activate infinite loop trap
-//			diskside_auto <= 2'd0;
 		end
 		else begin
 				if ((m2) && (ramprgaout[18]==1'b0))begin
@@ -281,6 +278,10 @@ assign prg_allow = (nesprg_we & (Wstate==2 | (prgain[15]^(&prgain[14:13]))))
 				end else begin
 					timer <= timer - 1'd1;
 				end
+		end
+
+		if(reset) begin
+			diskside_auto <= 2'd0;
 		end
 
 		if(nesprg_we)
@@ -365,7 +366,7 @@ assign irq=timer_irq; // | disk_irq
 //reg [2:0] control_cnt; //use fds_swap instead
 reg [21:0] clkcount;
 
-assign disk_eject=clkcount[21] | fds_swap | (diskside_auto != diskside && ~diskside_force);
+assign disk_eject=clkcount[21] | fds_swap;
 
 always@(posedge clk20) begin
 	if (ce) begin

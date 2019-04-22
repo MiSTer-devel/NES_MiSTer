@@ -334,7 +334,7 @@ wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], j
 
 wire mic_button = joyA[21] | joyB[21];
 wire fds_btn = joyA[8] | joyB[8];
-wire fds_swap = fds_swap_invert ^ fds_btn;
+wire fds_swap = (fds_swap_invert ^ fds_btn) || fds_busy;
 
 reg [2:0] nes_ce;
 
@@ -434,7 +434,6 @@ wire light;
 
 wire [1:0] diskside_req;
 reg [1:0] diskside;
-wire diskside_force;
 //reg fds_swap;
 
 wire lightgun_en = |status[19:18];
@@ -462,7 +461,6 @@ NES nes (
 	.mic             (mic),
 	.diskside_req    (diskside_req),
 	.diskside        (diskside),
-	.diskside_force  (diskside_force),
 	.fds_swap        (fds_swap),
 	// Memory transactions
 	.memory_addr     (memory_addr),
@@ -580,8 +578,8 @@ sdram sdram
 reg bk_pending;
 wire save_written;
 always @(posedge clk) begin
-//	if ((mapper_flags[25] || fds) && ~OSD_STATUS && save_written)
-	if ((mapper_flags[25]) && ~OSD_STATUS && save_written)
+	if ((mapper_flags[25] || fds) && ~OSD_STATUS && save_written)
+//	if ((mapper_flags[25]) && ~OSD_STATUS && save_written)
 		bk_pending <= 1'b1;
 	else if (bk_state)
 		bk_pending <= 1'b0;
@@ -663,12 +661,25 @@ reg  bram_init = 0;
 reg  bram_we = 0;
 reg  fds_wr;
 reg  bk_first;
+reg  fds_busy;
+reg  old_fds_btn;
+reg [1:0] diskside_btn;
 wire fds = (mapper_flags[7:0] == 8'h14);
 reg [17:0] fds_addr;
 // 65500 size; 512 sector size; After first size, beginning of side is in previous sector
 assign fdsddr_addr = {7'h0, (full_loading || (diskside==2'd0)) ? fds_addr : fds_addr - 16'h0200};
 wire [17:0] img_last = (|img_size) ? img_size - 18'd1 : 0;
+wire [1:0] diskside_req_use = fds_swap_invert ? diskside_btn : diskside_req;
 
+// This state machine needs to handle the following:
+// - For non FDS games, S_COPY reads the save file into BRAM on ROM load and when requested by OSD
+// - For FDS games, after the FDS has been loaded to DDR, one diskside is copied to BRAM (S_COPYDDR)
+// - After this, if a save exists, it is loaded one diskside at a time into BRAM (S_COPY).
+// - Each diskside in BRAM then overwrites DDR (S_DDRCOPY).  This is done for each diskside.
+// - When requested by OSD (including autosave), the current BRAM contents are saved to disk (S_COPY).
+// - Whenever the diskside changes, first the current BRAM is copied to disk (S_COPY).
+// - Then the current BRAM is copied to DDR (S_DDRCOPY).
+// - Then the next diskside is loaded into BRAM from DDR (S_COPYDDR).
 typedef enum bit [1:0] { S_IDLE, S_COPY, S_DDRCOPY, S_COPYDDR } mystate;
 mystate bk_state = S_IDLE;
 
@@ -678,8 +689,11 @@ always @(posedge clk) begin
 	old_load <= bk_load & bk_ena;
 	old_save <= bk_save & bk_ena;
 	old_ack  <= sd_ack;
+	fds_busy <= (bk_state != S_IDLE) || bk_request;
+	old_fds_btn <= fds_btn;
 	
 	if(~old_ack & sd_ack) {sd_rd, sd_wr} <= 0;
+	if(~old_fds_btn & fds_btn) diskside_btn <= diskside_btn + 2'd1;
 	if (downloading) begin
 		diskside <= 2'd0;
 		bram_init <= ~fds;
@@ -688,6 +702,7 @@ always @(posedge clk) begin
 		full_loading <= 0;
 		full_loading_req <= 0;
 		bk_loading_req <= 0;
+		diskside_btn <= 2'd0;
 	end else begin
 		if((~old_load & bk_load) | (~old_save & bk_save)) begin
 			bk_loading_req <= bk_load;
@@ -707,7 +722,7 @@ always @(posedge clk) begin
 				fds_addr <= {2'd0, 16'h0};
 				diskside <= 2'd0;
 				bk_first <= 1;
-			end else if(bram_init && (diskside_req != diskside) && ~downloading && ~bk_request && fds) begin
+			end else if(bram_init && (diskside_req_use != diskside) && ~downloading && ~bk_request && fds) begin
 				bk_loading_req <= 0;
 				bk_request <= 1;
 				full_loading_req <= 0;
