@@ -118,7 +118,7 @@ assign CLK_VIDEO = clk;
 
 assign VGA_F1 = 0;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
+//assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 
@@ -129,7 +129,7 @@ parameter CONF_STR1 = {
 	"NES;;",
 	"-;",
 	"FS,NES;",
-	"F,FDS;",
+	"FS,FDS;",
 };
 
 parameter CONF_STR2 = {
@@ -234,6 +234,7 @@ wire        img_readonly;
 wire [63:0] img_size;
 wire [7:0]  filetype;
 wire [24:0] ioctl_addr;
+reg         ioctl_wait;
 wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
 
@@ -259,7 +260,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.ioctl_addr(ioctl_addr),
 	.ioctl_wr(loader_clk),
 	.ioctl_dout(file_input),
-	.ioctl_wait(0),
+	.ioctl_wait(ioctl_wait),
 	.ioctl_index(filetype),
 
 	.sd_lba(sd_lba),
@@ -421,15 +422,20 @@ always @(posedge clk) begin
 	end;
 end
  
-wire reset_nes = ~init_reset_n || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading;
+wire reset_nes = ~init_reset_n || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading || bk_loading_req;
 
-wire [14:0] bram_addr;
+wire [15:0] bram_addr;
 wire [7:0] bram_din;
 wire [7:0] bram_dout;
 wire bram_write;
 wire bram_override;
 wire trigger;
 wire light;
+
+wire [1:0] diskside_req;
+reg [1:0] diskside;
+wire diskside_force;
+//reg fds_swap;
 
 wire lightgun_en = |status[19:18];
 
@@ -454,6 +460,9 @@ NES nes (
 	.joypad_clock    (joypad_clock),
 	.joypad_data     ({lightgun_en ? trigger : powerpad_d4[0],lightgun_en ? light : powerpad_d3[0],joypad_bits2[0],joypad_bits[0]}),
 	.mic             (mic),
+	.diskside_req    (diskside_req),
+	.diskside        (diskside),
+	.diskside_force  (diskside_force),
 	.fds_swap        (fds_swap),
 	// Memory transactions
 	.memory_addr     (memory_addr),
@@ -513,12 +522,17 @@ always @(posedge clk) begin
 		loader_write_triggered <= 1'b1;
 		loader_addr_mem <= loader_addr;
 		loader_write_data_mem <= bios_download ? loader_write_data ^ xor_data : loader_write_data;
+		ioctl_wait <= 1;
 	end
 
-	if(nes_ce == 3) begin
+	if(nes_ce == 3 || fds_wr) begin
 		loader_write_mem <= loader_write_triggered;
-		if(loader_write_triggered)
+		if(loader_write_triggered || fds_wr) begin
 			loader_write_triggered <= 1'b0;
+			if (fds_wr || (~bios_download && loader_addr_mem[18])) ddr_wr <= ~ddr_wr;
+		end else if(ioctl_wait && (ddr_wr == ddr_wrack)) begin
+			ioctl_wait <= 0;
+		end
 	end
 end
 
@@ -552,10 +566,10 @@ sdram sdram
 	.doutB          ( memory_din_ppu  ),
 
 	.bk_clk         ( clk ),
-	.bk_addr        ( {sd_lba[5:0],sd_buff_addr} ),
+	.bk_addr        ( bk_busy ? {bk_lba[6:0],sd_buff_addr} : fds_addr[15:0] ),
 	.bk_dout        ( sd_buff_din ),
-	.bk_din         ( sd_buff_dout ),
-	.bk_we          ( sd_buff_wr & sd_ack ),
+	.bk_din         ( bk_busy ? sd_buff_dout : fds_data ),
+	.bk_we          ( bk_busy ? sd_buff_wr & sd_ack : bram_we ),
 	.bko_addr       ( bram_addr ),
 	.bko_dout       ( bram_din ),
 	.bko_din        ( bram_dout ),
@@ -566,11 +580,37 @@ sdram sdram
 reg bk_pending;
 wire save_written;
 always @(posedge clk) begin
-	if (mapper_flags[25] && ~OSD_STATUS && save_written)
+//	if ((mapper_flags[25] || fds) && ~OSD_STATUS && save_written)
+	if ((mapper_flags[25]) && ~OSD_STATUS && save_written)
 		bk_pending <= 1'b1;
 	else if (bk_state)
 		bk_pending <= 1'b0;
 end
+
+///////////////////////////////////////////////////
+
+wire [21:0] fdsddr_addr;
+wire [7:0] fds_data;
+wire fds_rd, fds_rdy;
+assign DDRAM_CLK = clk85;
+
+ddram ddram
+(
+	.*,
+
+   .wraddr(bk_ena ? {fdsddr_addr[17:0], 1'b0} : {loader_addr_mem[17:0], 1'b0}),
+   .din(bk_ena ? {sd_buff_din, sd_buff_din} : {loader_write_data, loader_write_data}), //({ioctl_data[7:0],ioctl_data[15:8]}),
+   .we_req(ddr_wr),
+   .we_ack(ddr_wrack),
+
+   .rdaddr({fdsddr_addr[17:0], 1'b0}),
+   .dout(fds_data),
+   .rd_req(fds_rd),
+   .rd_rdy(fds_rdy)
+);
+
+reg  ddr_wr;
+wire ddr_wrack;
 
 wire downloading;
 
@@ -600,9 +640,8 @@ video video
 /////////////////////////  STATE SAVE/LOAD  /////////////////////////////
 
 reg bk_ena = 0;
+reg old_downloading = 0;
 always @(posedge clk) begin
-	reg old_downloading = 0;
-	
 	old_downloading <= downloading;
 	if(~old_downloading & downloading) bk_ena <= 0;
 	
@@ -610,49 +649,134 @@ always @(posedge clk) begin
 	if(downloading && img_mounted && !img_readonly) bk_ena <= 1;
 end
 
+wire [8:0] bk_lba;
+assign sd_lba = {23'h0, (full_loading || (diskside==2'd0)) ? bk_lba : bk_lba - 9'h1};
 wire bk_load    = status[6];
 wire bk_save    = status[7] | (bk_pending & OSD_STATUS && status[17]);
 reg  bk_loading = 0;
-reg  bk_state   = 0;
+reg  bk_loading_req = 0;
 reg  bk_request = 0;
+wire bk_busy = (bk_state == S_COPY);
+reg  full_loading = 0;
+reg  full_loading_req = 0;
+reg  bram_init = 0;
+reg  bram_we = 0;
+reg  fds_wr;
+reg  bk_first;
+wire fds = (mapper_flags[7:0] == 8'h14);
+reg [17:0] fds_addr;
+// 65500 size; 512 sector size; After first size, beginning of side is in previous sector
+assign fdsddr_addr = {7'h0, (full_loading || (diskside==2'd0)) ? fds_addr : fds_addr - 16'h0200};
+wire [17:0] img_last = (|img_size) ? img_size - 18'd1 : 0;
+
+typedef enum bit [1:0] { S_IDLE, S_COPY, S_DDRCOPY, S_COPYDDR } mystate;
+mystate bk_state = S_IDLE;
 
 always @(posedge clk) begin
 	reg old_load = 0, old_save = 0, old_ack;
-	reg old_downloading = 0;
 	
-	old_downloading <= downloading;
-
 	old_load <= bk_load & bk_ena;
 	old_save <= bk_save & bk_ena;
 	old_ack  <= sd_ack;
 	
 	if(~old_ack & sd_ack) {sd_rd, sd_wr} <= 0;
-	
-	if(!bk_state) begin
+	if (downloading) begin
+		diskside <= 2'd0;
+		bram_init <= ~fds;
+		bk_state <= S_IDLE;
+		bk_request <= 0;
+		full_loading <= 0;
+		full_loading_req <= 0;
+		bk_loading_req <= 0;
+	end else begin
 		if((~old_load & bk_load) | (~old_save & bk_save)) begin
-			bk_loading <= bk_load;
+			bk_loading_req <= bk_load;
 			bk_request <= 1;
+			full_loading_req <= 0;
 		end
 		if(old_downloading & ~downloading & |img_size & bk_ena) begin
-			bk_loading <= 1;
+			bk_loading_req <= 1;
 			bk_request <= 1;
+			full_loading_req <= 1;
 		end
-		if (bk_request && !loader_busy) begin
-			bk_request <= 0;
-			bk_state <= 1;
-			sd_lba <= 0;
-			sd_rd <=  bk_load;
-			sd_wr <= ~bk_load;
-		end
-	end else begin
-		if(old_ack & ~sd_ack) begin
-			if(&sd_lba[5:0]) begin
-				bk_loading <= 0;
-				bk_state <= 0;
+		if(bk_state == S_IDLE) begin
+			if(!bram_init && ~loader_busy && ~downloading) begin
+				bk_loading <= 1;
+				full_loading <= 0;
+				bk_state <= S_COPYDDR;
+				fds_addr <= {2'd0, 16'h0};
+				diskside <= 2'd0;
+				bk_first <= 1;
+			end else if(bram_init && (diskside_req != diskside) && ~downloading && ~bk_request && fds) begin
+				bk_loading_req <= 0;
+				bk_request <= 1;
+				full_loading_req <= 0;
+				fds_addr <= {diskside, 16'h0};
+			end
+			if (bram_init && bk_request && ~downloading && !loader_busy) begin
+				bk_state <= S_COPY;
+				bk_lba <= full_loading_req ? 9'h0 : {diskside, 7'h0};
+				diskside <= full_loading_req ? 2'd0 : diskside;
+				full_loading <= full_loading_req;
+				full_loading_req <= 0;
+				bk_loading <= full_loading_req || bk_loading_req;
+				bk_loading_req <= 0;
+				bk_first <= 1;
+			end
+		end else if(bk_state == S_COPY) begin
+			if (bk_first) begin
+				bk_request <= 0;  //one cycle pause
+				sd_rd <=  bk_loading;
+				sd_wr <= ~bk_loading;
+				bk_first <= 0;
+			end else if(old_ack & ~sd_ack) begin
+				if((&bk_lba[5:0] && (bk_lba[6] == fds)) || (bk_loading && (bk_lba[8:0] == img_last[17:9]))) begin
+					fds_addr <= {diskside, 16'h0};
+					bk_state <= fds ? S_DDRCOPY : S_IDLE;
+					bram_init <= 1;
+					bk_first <= 1;
+				end else begin
+					bk_lba <= bk_lba + 1'd1;
+					sd_rd  <=  bk_loading;
+					sd_wr  <= ~bk_loading;
+				end
+			end
+		end else if(bk_state == S_DDRCOPY) begin
+			fds_wr <= 0;
+			if (bk_first) begin
+				bk_first <= 0;
+				fds_wr <= 1;
+			end else if (~fds_wr && (ddr_wr == ddr_wrack)) begin
+				if(&fds_addr[15:0]) begin
+					bk_loading <= full_loading && bk_loading && (img_last[17:16] != diskside);
+					bk_state <= full_loading ? (img_last[17:16] == diskside) ? S_IDLE : S_COPY : S_COPYDDR;
+					bk_lba <= bk_lba + 1'd1;
+					diskside <= (full_loading && (img_last[17:16] == diskside)) ? diskside : diskside + 2'd1;
+					fds_addr <= {diskside + 2'd1, 16'h0};
+					bk_first <= 1;
+				end else begin
+					fds_addr <= fds_addr + 1'd1;
+					fds_wr <= 1;
+				end
+			end
+		end else begin // if(bk_state == S_COPYDDR) begin
+			bram_we <= 0;
+			if (bk_first) begin
+				bk_first <= 0;
+				fds_rd <= 1;
+			end else if (fds_rdy && ~fds_rd) begin
+				if(&fds_addr[15:0]) begin
+					bk_loading <= 0;
+					bk_state <= S_IDLE;
+					fds_addr <= {diskside, 16'h0};
+					bram_init <= 1;
+				end else begin
+					fds_addr <= fds_addr + 1'd1;
+					fds_rd <= 1;
+				end
 			end else begin
-				sd_lba <= sd_lba + 1'd1;
-				sd_rd  <=  bk_loading;
-				sd_wr  <= ~bk_loading;
+				fds_rd <= 0;
+				bram_we <= 1;
 			end
 		end
 	end
@@ -693,10 +817,10 @@ reg [21:0] bytes_left;
 wire [7:0] prgrom = ines[4];	// Number of 16384 byte program ROM pages
 wire [7:0] chrrom = ines[5];	// Number of 8192 byte character ROM pages (0 indicates CHR RAM)
 wire has_chr_ram = (chrrom == 0);
-assign mem_data = (state == STATE_CLEARRAM || (~copybios && state == STATE_COPYBIOS)) ? 8'h00 : indata;
-assign mem_write = (((bytes_left != 0) && (state == STATE_LOADPRG || state == STATE_LOADCHR)
-                    || (downloading && (state == STATE_LOADHEADER || state == STATE_LOADFDS))) && indata_clk)
-						 || ((bytes_left != 0) && ((state == STATE_CLEARRAM) || (state == STATE_COPYBIOS)) && clearclk == 4'h2);
+assign mem_data = (state == S_CLEARRAM || (~copybios && state == S_COPYBIOS)) ? 8'h00 : indata;
+assign mem_write = (((bytes_left != 0) && (state == S_LOADPRG || state == S_LOADCHR)
+                    || (downloading && (state == S_LOADHEADER || state == S_LOADFDS))) && indata_clk)
+						 || ((bytes_left != 0) && ((state == S_CLEARRAM) || (state == S_COPYBIOS)) && clearclk == 4'h2);
   
 wire [2:0] prg_size = prgrom <= 1  ? 3'd0 :		// 16KB
                       prgrom <= 2  ? 3'd1 : 		// 32KB
@@ -739,7 +863,7 @@ assign mapper_flags = {6'b0, has_saves, ines2mapper, ines[6][3], has_chr_ram, in
 reg [3:0] clearclk; //Wait for SDRAM
 reg copybios;
 
-typedef enum bit [2:0] { STATE_LOADHEADER, STATE_LOADPRG, STATE_LOADCHR, STATE_LOADFDS, STATE_ERROR, STATE_CLEARRAM, STATE_COPYBIOS, STATE_DONE } mystate;
+typedef enum bit [2:0] { S_LOADHEADER, S_LOADPRG, S_LOADCHR, S_LOADFDS, S_ERROR, S_CLEARRAM, S_COPYBIOS, S_DONE } mystate;
 mystate state;
 
 wire type_bios = (filetype == 0 || filetype == 3 || filetype==8'hC0); //*.BIOS or boot.rom or boot0.rom or boot3.rom
@@ -748,7 +872,7 @@ wire type_fds = (filetype == 2 || filetype==8'h80); //*.FDS or boot2.rom
 
 always @(posedge clk) begin
 	if (reset) begin
-		state <= STATE_LOADHEADER;
+		state <= S_LOADHEADER;
 		busy <= 0;
 		done <= 0;
 		ctr <= 0;
@@ -758,7 +882,7 @@ always @(posedge clk) begin
 	end else begin
 		case(state)
 		// Read 16 bytes of ines header
-		STATE_LOADHEADER:
+		S_LOADHEADER:
 			if (indata_clk) begin
 			  error <= 0;
 			  ctr <= ctr + 1'd1;
@@ -770,47 +894,47 @@ always @(posedge clk) begin
 				 busy <= 1;
 				 if ((ines[0] == 8'h4E) && (ines[1] == 8'h45) && (ines[2] == 8'h53) && (ines[3] == 8'h1A) && !ines[6][2]) begin
 					mem_addr <= 0;  // Address for PRG
-					state <= STATE_LOADPRG;
+					state <= S_LOADPRG;
 				 //FDS
 				 end else if ((ines[0] == 8'h46) && (ines[1] == 8'h44) && (ines[2] == 8'h53) && (ines[3] == 8'h1A)) begin
 					mem_addr <= 22'b00_0100_0000_0000_0001_0000;  // Address for FDS skip Header
-					state <= STATE_LOADFDS;
+					state <= S_LOADFDS;
 					bytes_left <= 21'b1;
 				 end else if (type_bios) begin // Bios
-					state <= STATE_LOADFDS;
+					state <= S_LOADFDS;
 					mem_addr <= 22'b00_0000_0000_0000_0001_0000;  // Address for BIOS skip Header
 					bytes_left <= 21'b1;
 					bios_download <= 1;
 				 end else if(type_fds) begin // FDS
-					state <= STATE_LOADFDS;
+					state <= S_LOADFDS;
 					mem_addr <= 22'b00_0100_0000_0000_0010_0000;  // Address for FDS no Header
 					bytes_left <= 21'b1;
 				 end else begin
-					state <= STATE_ERROR;
+					state <= S_ERROR;
 				 end
 			  end
 			end
-		STATE_LOADPRG, STATE_LOADCHR: begin // Read the next |bytes_left| bytes into |mem_addr|
+		S_LOADPRG, S_LOADCHR: begin // Read the next |bytes_left| bytes into |mem_addr|
 			 if (bytes_left != 0) begin
 				if (indata_clk) begin
 				  bytes_left <= bytes_left - 1'd1;
 				  mem_addr <= mem_addr + 1'd1;
 				end
-			 end else if (state == STATE_LOADPRG) begin
-				state <= STATE_LOADCHR;
+			 end else if (state == S_LOADPRG) begin
+				state <= S_LOADCHR;
 				mem_addr <= 22'b10_0000_0000_0000_0000_0000; // Address for CHR
 				bytes_left <= {1'b0, chrrom, 13'b0};
-			 end else if (state == STATE_LOADCHR) begin
+			 end else if (state == S_LOADCHR) begin
 				done <= 1;
 				busy <= 0;
 			 end
 			end
-		STATE_ERROR: begin
+		S_ERROR: begin
 				done <= 1;
 				error <= 1;
 				busy <= 0;
 			end
-		STATE_LOADFDS: begin // Read the next |bytes_left| bytes into |mem_addr|
+		S_LOADFDS: begin // Read the next |bytes_left| bytes into |mem_addr|
 			 if (downloading) begin
 				if (indata_clk) begin
 				  mem_addr <= mem_addr + 1'd1;
@@ -832,12 +956,12 @@ always @(posedge clk) begin
 				ines[13] <= 8'h00;
 				ines[14] <= 8'h00;
 				ines[15] <= 8'h00;
-				state <= STATE_CLEARRAM;
+				state <= S_CLEARRAM;
 				clearclk <= 4'h0;
 				copybios <= (|filetype); // Don't copybios for bootrom0
 			 end
 			end
-		STATE_CLEARRAM: begin // Read the next |bytes_left| bytes into |mem_addr|
+		S_CLEARRAM: begin // Read the next |bytes_left| bytes into |mem_addr|
 			 clearclk <= clearclk + 4'h1;
 			 if (bytes_left != 21'h0) begin
 				if (clearclk == 4'hF) begin
@@ -847,11 +971,11 @@ always @(posedge clk) begin
 			 end else begin
 				mem_addr <= 22'b00_0000_0000_0000_0000_0000;
 				bytes_left <= 21'h2000;
-				state <= STATE_COPYBIOS;
+				state <= S_COPYBIOS;
 				clearclk <= 4'h0;
 			 end
 			end
-		STATE_COPYBIOS: begin // Read the next |bytes_left| bytes into |mem_addr|
+		S_COPYBIOS: begin // Read the next |bytes_left| bytes into |mem_addr|
 			 clearclk <= clearclk + 4'h1;
 			 if (bytes_left != 21'h0) begin
 				if (clearclk == 4'hF) begin
@@ -859,10 +983,10 @@ always @(posedge clk) begin
 					mem_addr <= mem_addr + 1'd1;
 				end
 			 end else begin
-				state <= STATE_DONE;
+				state <= S_DONE;
 			 end
 			end
-		STATE_DONE: begin // Read the next |bytes_left| bytes into |mem_addr|
+		S_DONE: begin // Read the next |bytes_left| bytes into |mem_addr|
 			 done <= 1;
 			 busy <= 0;
 			 bios_download <= 0;

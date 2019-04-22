@@ -23,19 +23,23 @@ module MapperFDS(
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 	// Special ports
-	input        fds_swap     // User input to change disks
+	inout [1:0] diskside_auto_b,
+	input [1:0] diskside,
+	input diskside_force,
+	input fds_swap
 );
 
-assign prg_aout_b   = enable ? prg_aout : 22'hZ;
-assign prg_dout_b   = enable ? prg_dout : 8'hZ;
-assign prg_allow_b  = enable ? prg_allow : 1'hZ;
-assign chr_aout_b   = enable ? chr_aout : 22'hZ;
-assign chr_allow_b  = enable ? chr_allow : 1'hZ;
-assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
-assign vram_ce_b    = enable ? vram_ce : 1'hZ;
-assign irq_b        = enable ? irq : 1'hZ;
-assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? 16'hFFFF - audio[16:1] : 16'hZ;
+assign prg_aout_b      = enable ? prg_aout : 22'hZ;
+assign prg_dout_b      = enable ? prg_dout : 8'hZ;
+assign prg_allow_b     = enable ? prg_allow : 1'hZ;
+assign chr_aout_b      = enable ? chr_aout : 22'hZ;
+assign chr_allow_b     = enable ? chr_allow : 1'hZ;
+assign vram_a10_b      = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b       = enable ? vram_ce : 1'hZ;
+assign irq_b           = enable ? irq : 1'hZ;
+assign flags_out_b     = enable ? flags_out : 16'hZ;
+assign audio_b         = enable ? 16'hFFFF - audio[16:1] : 16'hZ;
+assign diskside_auto_b = enable ? diskside_auto : 2'hZ;
 
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
@@ -45,6 +49,7 @@ wire vram_ce;
 wire [7:0] prg_dout;
 reg [15:0] flags_out = 0;
 wire irq;
+wire [1:0] diskside_auto;
 
 wire nesprg_oe;
 wire [7:0] neschrdout;
@@ -68,12 +73,12 @@ MAPFDS fds(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-	ce, fds_swap, prg_allow, audio_exp);
+	ce, prg_allow, audio_exp, diskside_auto, diskside, diskside_force, fds_swap);
 
 assign chr_aout[21:19] = 3'b100;
 assign chr_aout[9:0] = chr_ain[9:0];
 assign vram_a10 = chr_aout[10];
-assign prg_aout[21:19] = 3'b000;
+assign prg_aout[21:19] = prg_aout[18] ? 3'b111 : 3'b000;  //Switch to Cart Ram for Disk access
 //assign prg_aout[12:0] = prg_ain[12:0];
 
 wire [11:0] audio_exp;
@@ -135,10 +140,12 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	input cfg_chrram,
 
 	input ce,// add
-	input fds_swap,
 	output prg_allow,
 	output [11:0] snd_level,
-	input [1:0] diskside_manual
+	output reg [1:0] diskside_auto,
+	input [1:0] diskside,
+	input diskside_force,
+	input fds_swap
 );
 
 	localparam WRITE_LO=16'hF4CD, WRITE_HI=16'hF4CE, READ_LO=16'hF4D0, READ_HI=16'hF4D1;
@@ -177,15 +184,15 @@ module MAPFDS(              //signal descriptions in powerpak.v
 // diskside_manual to be manage from OSD user input allow to add diskswap capabilities.
 // (automatic fds_swap should be preferably stopped before changing diskside_manual)
 
-	reg [1:0] diskside_auto;
-	wire[1:0] diskside;
-	assign diskside = diskside_auto + diskside_manual;
+//	reg [1:0] diskside_auto;
+//	wire[1:0] diskside;
+//	assign diskside = diskside_auto + diskside_manual;
 	wire diskend=(diskpos==65499);
-	always@* case(diskside) //16+65500*diskside
+	always@* case(diskside) //16+65500*diskside (+h200 = bram buffer size)
 		0:sideoffset=18'h00010;
-		1:sideoffset=18'h0ffec;
-		2:sideoffset=18'h1ffc8;
-		3:sideoffset=18'h2ffa4;
+		1:sideoffset=18'h001Ec;//18'h0ffec; // - h200
+		2:sideoffset=18'h001C8;//18'h1ffc8; // - h200
+		3:sideoffset=18'h001A4;//18'h2ffa4; // - h200
 	endcase
 	assign romoffset=diskpos + sideoffset;
 
@@ -208,6 +215,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
 always@(posedge clk20)
 		if(reset) begin
 			// on reset activate infinite loop trap
+//			diskside_auto <= 2'd0;
 		end
 		else begin
 				if ((m2) && (ramprgaout[18]==1'b0))begin
@@ -354,19 +362,19 @@ end
 assign irq=timer_irq; // | disk_irq
 
 //disk eject:   toggle flag continuously except when select button is held
-reg [2:0] control_cnt;
+//reg [2:0] control_cnt; //use fds_swap instead
 reg [21:0] clkcount;
 
-assign disk_eject=clkcount[21] | fds_swap;
+assign disk_eject=clkcount[21] | fds_swap | (diskside_auto != diskside && ~diskside_force);
 
 always@(posedge clk20) begin
 	if (ce) begin
 		clkcount<=clkcount+1'd1;
-		if(prgain==16'h4016) begin
-			if(nesprg_we)                           control_cnt<=0;
-			else if(~nesprg_we & control_cnt!=7)    control_cnt<=control_cnt+1'd1;
-			//if(~nesprg_we & control_cnt==2)          button<=|nesprgdin[1:0];
-		end
+//		if(prgain==16'h4016) begin
+//			if(nesprg_we)                           control_cnt<=0;
+//			else if(~nesprg_we & control_cnt!=7)    control_cnt<=control_cnt+1'd1;
+//			//if(~nesprg_we & control_cnt==2)          button<=|nesprgdin[1:0];
+//		end
 	end
 end
 

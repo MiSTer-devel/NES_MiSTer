@@ -3,12 +3,12 @@
 This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://github.com/strigeus/fpganes) by Ludvig Strigeus and ported to MiSTer.
 
 ## Features
- * Supports saves for most ROM games (FDS saves not currently supported)
+ * Supports saves for most games
  * FDS Support with expansion audio
  * Multiple Palette options
  * Zapper, Powerpad, and Microphone support
  * Supports four players
- * Supports expansion audio from mappers including VRC6 & 7, MMC5 and Sunsoft 5b
+ * Supports expansion audio from mappers including VRC6 & 7, MMC5, Namco 163 and Sunsoft 5b
  * Supports many popular mappers including VRC1-7, MMC0-5, and many more (see below)
  * Supports large games such as Legend of Link and Rockman Minus Infinity
 
@@ -16,14 +16,13 @@ This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://git
 Copy the NES_\*.rbf file to the root of the SD card. Create a **NES** folder on the root of the card, and place NES roms (\*.NES) inside this folder. The ROMs must have an iNES or NES2.0 header, which most already do. NES2.0 headers are prefered for the best accuracy. To have a game ROM load automatically upon starting the core and place it in the **NES** folder.
 - boot0.rom = FDS BIOS file.  Will be used for any FDS images loaded
 - boot1.rom = NES Cart file.  Can be used with boot0.rom (BIOS) in place
-- boot2.rom = FDS image file.  Requires boot0.rom (BIOS)
-- boot3.rom = FDS BIOS file.  Use instead of boot0.rom.  Will be used for any FDS images loaded, and will start running without an FDS image on core start
+- boot2.rom = FDS image file.  Requires boot0.rom (BIOS).  Use a blank FDS to boot the FDS BIOS without a disk image.
 
 ## Famicom Disk System Usage
-Before loading \*.FDS files, you must first load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom or boot3.rom and placed in the same folder as the ROMs (NES).  Alternatively, it can be loaded from the OSD if boot0.rom and boot3.rom don't exist. After loading the core and the bios you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the FDS button on the player 1 controller. The "Disk Swap" OSD option inverts this behavior (press FDS to swap disks). Currently, saves are not supported for FDS games.
+Before loading \*.FDS files, you must first load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom and placed in the same folder as the ROMs (NES).  Alternatively, it can be loaded from the OSD if boot0.rom doesn't exist. After loading the core and the bios you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the FDS button on the player 1 controller. The "Disk Swap" OSD option inverts this behavior (press FDS to swap disks).
 
 ## Saving and Loading
-The battery backed RAM (Save RAM) for the NES does not write to disk automatically. When loading a game, you must select **Load Backup RAM** from the OSD menu. After saving in your game, you must then write the RAM to the SD card by selecting **Save Backup RAM** from the menu. If you do not save your RAM to disk, the contents will be lost next time you restart the core or switch games. Alternatively you can enable to Autosave option from the OSD menu, and if you do your games will be recorded to disk every time you open the OSD menu.
+The battery backed RAM (Save RAM) for the NES does not write to disk automatically. When loading a game, you must select **Load Backup RAM** from the OSD menu. After saving in your game, you must then write the RAM to the SD card by selecting **Save Backup RAM** from the menu. If you do not save your RAM to disk, the contents will be lost next time you restart the core or switch games. Alternatively you can enable to Autosave option from the OSD menu, and if you do your games will be recorded to disk every time you open the OSD menu.  FDS files are saved every time the disk side changes.  Saving the currently in-use disk side uses the same method as for cartridge RAM saves.
 
 ## Zapper Support
 The "Zapper" (aka Light Gun) can be used via two methods. You can select Peripheral: Zapper(Mouse) to use your mouse to aim and shoot with the left button. This mode uses relative mouse motion, so devices that rely on absolute coordinates will not work via this method. Alternatively, you can choose Zapper(Joy) to use the Analog stick to aim and, and the defined Trigger button to fire. Guns such as Aimtrak have joystick modes which may be compatible with this method.
