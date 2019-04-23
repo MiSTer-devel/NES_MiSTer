@@ -145,7 +145,7 @@ always_comb begin
 	if (enable) begin
 		for (x = 0; x < 9; x = x + 1'b1) begin
 			if (codes[x][32] && {1'b1, codes[x][30:16]} == addr_in && x < max_code) begin
-				if (codes[x][31]) begin        // Check for compare bit if needed
+				if (codes[x][31] || |codes[x][15:8]) begin        // Check for compare bit if needed
 					if (codes[x][15:8] == data_in) begin
 						genie_ovr = 1'b1;
 						genie_data = codes[x][7:0];
