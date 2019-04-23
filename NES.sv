@@ -421,7 +421,7 @@ always @(posedge clk) begin
 	end;
 end
  
-wire reset_nes = ~init_reset_n || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading;
+wire reset_nes = ~init_reset_n || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading || hold_reset;
 
 wire [14:0] bram_addr;
 wire [7:0] bram_din;
@@ -579,11 +579,14 @@ wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
 assign VGA_SL = sl[1:0];
 
 wire reticule;
+wire hold_reset;
 
 video video
 (
 	.*,
 	.clk(clk),
+	.reset(reset_nes),
+	.hold_reset(hold_reset),
 	.count_v(scanline),
 	.count_h(cycle),
 	.forced_scandoubler(forced_scandoubler),
