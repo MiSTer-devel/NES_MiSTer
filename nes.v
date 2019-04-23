@@ -119,7 +119,7 @@ endmodule
 
 module NES(
 	input         clk,
-	input         reset,
+	input         reset_nes,
 	output  [2:0] nes_div,
 	input  [31:0] mapper_flags,
 	output [15:0] sample,         // sample generated from APU
@@ -152,6 +152,7 @@ module NES(
 	input         int_audio,
 	input         ext_audio,
 	output        apu_ce,
+	input   [1:0] gg,
 	output  [2:0] emphasis,
 	output        save_written
 );
@@ -175,6 +176,8 @@ module NES(
 
 assign nes_div = div_sys;
 assign apu_ce = cpu_ce;
+
+wire reset = reset_nes | reset_gg;
 
 reg [7:0] from_data_bus;
 wire [7:0] cpu_dout;
@@ -417,6 +420,7 @@ wire [21:0] prg_linaddr, chr_linaddr;
 wire [7:0] prg_dout_mapper, chr_from_ppu_mapper;
 wire has_chr_from_ppu_mapper;
 wire [15:0] sample_ext;
+wire reset_gg;
 
 assign save_written = (prg_addr[15:13] == 3'b011 && prg_write) | bram_write;
 
@@ -424,9 +428,11 @@ cart_top multi_mapper (
 	// FPGA specific
 	.clk               (clk),
 	.reset             (reset),
-	.flags             (mapper_flags),            // iNES header data (use 0 while loading)
+	.reset_gg          (reset_gg),
+	.cold_reset        (cold_reset),
+	.flags_in          (mapper_flags),            // iNES header data (use 0 while loading)
 	// Cart pins (slightly abstracted)
-	.ce                (cart_ce & ~reset),          // M2 (held in high impedance during reset)
+	.ce                (cart_ce & ~reset),        // M2 (held in high impedance during reset)
 	.prg_ain           (prg_addr),                // CPU Address in (a15 abstracted from ROMSEL)
 	.prg_read          (prg_read),                // CPU RnW split
 	.prg_write         (prg_write),               // CPU RnW split
@@ -453,6 +459,7 @@ cart_top multi_mapper (
 	.mapper_data_out   (bram_dout),
 	.mapper_prg_write  (bram_write),
 	.mapper_ovr        (bram_override),
+	.code              (code),
 	// Cheats
 	.prg_from_ram      (from_data_bus),           // Hacky cpu din <= get rid of this!
 	.ppuflags          (mapper_ppu_flags),        // Cheat for MMC5
@@ -462,9 +469,31 @@ cart_top multi_mapper (
 	.prg_open_bus      (prg_open_bus),            // Simulate open bus
 	.prg_conflict      (prg_conflict),            // Simulate bus conflicts
 	// User input
+	.gg                (gg),                      // Enable Game Genie
 	.fds_swap          (fds_swap)                 // Used to trigger FDS disk changes
 );
 
+wire [37:0] code;
+wire genie_ovr;
+wire [7:0] genie_data;
+
+geniecodes codes (
+	.clk        (clk),
+	.reset      (cold_reset),
+	.enable     (|gg),
+	.addr_in    (prg_addr),
+	.data_in    (prg_allow ? memory_din_cpu : prg_dout_mapper),
+	.code       (code),
+	.extra_codes(gg[1]),
+	.genie_ovr  (genie_ovr),
+	.genie_data (genie_data)
+);
+
+wire cold_reset = (old_flags != mapper_flags);
+
+reg [31:0] old_flags;
+always @(posedge clk) if (cpu_ce)
+	old_flags <= mapper_flags;
 
 /**********************************************************/
 /*************       Bus Arbitration        ***************/
@@ -514,6 +543,8 @@ always @* begin
 		from_data_bus = open_bus_data;
 	end else if (ppu_cs) begin
 		from_data_bus = ppu_dout;
+	end else if (genie_ovr) begin
+		from_data_bus = genie_data;
 	end else if (prg_allow) begin
 		from_data_bus = memory_din_cpu;
 	end else if (prg_open_bus) begin
