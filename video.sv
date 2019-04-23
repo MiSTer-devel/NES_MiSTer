@@ -4,6 +4,7 @@
 module video
 (
 	input        clk,
+	input        reset,
 	input  [5:0] color,
 	input  [8:0] count_h,
 	input  [8:0] count_v,
@@ -15,6 +16,7 @@ module video
 	input        reticule,
 
 	output       ce_pix,
+	output   reg hold_reset,
 
 	output       VGA_HS,
 	output       VGA_VS,
@@ -236,11 +238,15 @@ end
 reg  HBlank, VBlank, HSync, VSync;
 reg  [9:0] h, v;
 reg  [1:0] free_sync = 0;
-wire [9:0] hc = (&free_sync) ? h : count_h;
-wire [9:0] vc = (&free_sync) ? v : count_v;
+wire [9:0] hc = (&free_sync | reset) ? h : count_h;
+wire [9:0] vc = (&free_sync | reset) ? v : count_v;
 
 always @(posedge clk) begin
 	reg [8:0] old_count_v;
+	if (h == 0 && v == 0)
+		hold_reset <= 1'b0;
+	else if (reset)
+		hold_reset <= 1'b1;
 
 	if(pix_ce_n) begin
 		if((old_count_v == 511) && (count_v == 0)) begin
