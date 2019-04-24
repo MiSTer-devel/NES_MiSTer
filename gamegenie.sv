@@ -80,7 +80,7 @@ always_ff @(posedge clk) begin
 			case (addr_in)
 				// Master reg
 				'h8000: begin
-					{code3[32],code2[32],code1[32],code1[31],code2[31],code3[31],activate} <= {~data_in[6:4], data_in[3:0]};
+					{code3[32],code2[32],code1[32],code3[31],code2[31],code1[31],activate} <= {~data_in[6:4], data_in[3:0]};
 					if (data_in[0]) // The codes are only in a valid state while this bit is high
 						sendcodes <= 2'd3;
 				end
@@ -145,7 +145,7 @@ always_comb begin
 	if (enable) begin
 		for (x = 0; x < 9; x = x + 1'b1) begin
 			if (codes[x][32] && {1'b1, codes[x][30:16]} == addr_in && x < max_code) begin
-				if (codes[x][31] || |codes[x][15:8]) begin        // Check for compare bit if needed
+				if (codes[x][31]) begin        // Check for compare bit if needed
 					if (codes[x][15:8] == data_in) begin
 						genie_ovr = 1'b1;
 						genie_data = codes[x][7:0];
