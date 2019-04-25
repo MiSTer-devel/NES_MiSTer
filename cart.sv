@@ -52,6 +52,7 @@ module cart_top (
 	output reg [15:0] audio,          // External Audio
 	output reg  [1:0] diskside_auto,
 	input       [1:0] diskside,
+	input             fds_busy,       // FDS Disk Swap Busy
 	input             fds_swap        // FDS Disk Swap Pause
 );
 
@@ -1353,7 +1354,7 @@ N106 n106(
 // Notes  : Uses a special wire to signal disk changes. Req. modified BIOS.    //
 // Games  : Bio Miracle for audio, Various unlicensed games for compatibility. //
 //*****************************************************************************//
-wire [1:0] fds_diskside_auto;
+tri0 [1:0] fds_diskside_auto;
 MapperFDS mapfds(
 	.clk        (clk),
 	.ce         (ce),
@@ -1379,6 +1380,7 @@ MapperFDS mapfds(
 	// Special ports
 	.diskside_auto_b (fds_diskside_auto),
 	.diskside   (diskside),
+	.fds_busy   (fds_busy),
 	.fds_swap   (fds_swap)
 );
 
@@ -1387,7 +1389,7 @@ wire [6:0] chr_mask;
 wire [255:0] me;
 
 always @* begin
-	me = 255'd0;
+	me = 256'd0;
 	me[flags[7:0]] = 1'b1;
 
 	case(flags[10:8])

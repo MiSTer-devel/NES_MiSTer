@@ -25,7 +25,8 @@ module MapperFDS(
 	// Special ports
 	inout [1:0] diskside_auto_b,
 	input [1:0] diskside,
-	input fds_swap
+	input       fds_busy,
+	input       fds_swap
 );
 
 assign prg_aout_b      = enable ? prg_aout : 22'hZ;
@@ -72,7 +73,7 @@ MAPFDS fds(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-	ce, prg_allow, audio_exp, diskside_auto, diskside, fds_swap);
+	ce, prg_allow, audio_exp, diskside_auto, diskside, fds_busy, fds_swap);
 
 assign chr_aout[21:19] = 3'b100;
 assign chr_aout[9:0] = chr_ain[9:0];
@@ -143,6 +144,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	output [11:0] snd_level,
 	output reg [1:0] diskside_auto,
 	input [1:0] diskside,
+	input fds_busy,
 	input fds_swap
 );
 
@@ -241,6 +243,7 @@ wire match6=prgain[15:8]==8'h40 && |prgain[7:6];    //4040..40FF
 wire match7=(prgain==16'hE233) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
 wire match8=(prgain==16'hE234) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
 wire match9=(prgain==16'hE235) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
+wire match10=prgain==16'h4029;      //MiSTer Busy
 always@*
 	case(1)
 		match0: nesprgdout={7'd0, timer_irq};
@@ -253,6 +256,7 @@ always@*
 		match7: nesprgdout=8'h4C;  // when infinite loop is active replace jsr $E778 with jmp $E233
 		match8: nesprgdout=8'h33;
 		match9: nesprgdout=8'hE2;
+		match10:nesprgdout={7'd0,~fds_busy};//MiSTer busy (zero = busy)
 		default: nesprgdout=ramprgdin;
 	endcase
 assign prg_allow = (nesprg_we & (Wstate==2 | (prgain[15]^(&prgain[14:13]))))
@@ -267,6 +271,10 @@ assign prg_allow = (nesprg_we & (Wstate==2 | (prgain[15]^(&prgain[14:13]))))
 	reg [15:0] timerlatch;
 	reg [15:0] timer;
 	always@(posedge clk20) begin
+		if(reset) begin
+			diskside_auto <= 2'd0;
+		end
+
 		if (ce) begin
 			if (timer_irq_en) begin
 				if (timer == 0) begin
@@ -278,10 +286,6 @@ assign prg_allow = (nesprg_we & (Wstate==2 | (prgain[15]^(&prgain[14:13]))))
 				end else begin
 					timer <= timer - 1'd1;
 				end
-		end
-
-		if(reset) begin
-			diskside_auto <= 2'd0;
 		end
 
 		if(nesprg_we)

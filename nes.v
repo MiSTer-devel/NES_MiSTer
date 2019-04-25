@@ -128,6 +128,7 @@ module NES(
 	output  [1:0] joypad_clock,   // Set to 1 for each joypad to clock it.
 	input   [3:0] joypad_data,    // Data for each joypad + 1 powerpad.
 	input         mic,            // Microphone RNG
+	input         fds_busy,       // FDS Disk Swap Busy
 	input         fds_swap,       // FDS Disk Swap Pause
 	output  [1:0] diskside_req,
 	input   [1:0] diskside,
@@ -465,6 +466,7 @@ cart_top multi_mapper (
 	.prg_conflict      (prg_conflict),            // Simulate bus conflicts
 	// User input/FDS controls
 	.fds_swap          (fds_swap),                // Used to trigger FDS disk changes
+	.fds_busy          (fds_busy),                // Used to trigger FDS disk changes
 	.diskside_auto     (diskside_req),
 	.diskside          (diskside)
 );
