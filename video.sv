@@ -13,7 +13,7 @@ module video
 	input        hide_overscan,
 	input  [3:0] palette,
 	input  [2:0] emphasis,
-	input        reticule,
+	input  [1:0] reticule,
 
 	output       ce_pix,
 	output   reg hold_reset,
@@ -27,7 +27,7 @@ module video
 );
 
 reg pix_ce, pix_ce_n;
-wire [5:0] color_ef = reticule ? 6'h16 : is_padding ? 6'd63 : color;
+wire [5:0] color_ef = reticule[0] ? (reticule[1] ? 6'h21 : 6'h15) : is_padding ? 6'd63 : color;
 
 always @(negedge clk) begin
 	reg [1:0] cnt = 0;

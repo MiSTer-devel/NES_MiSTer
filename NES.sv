@@ -580,7 +580,7 @@ wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
 assign VGA_SL = sl[1:0];
 
-wire reticule;
+wire [1:0] reticule;
 wire hold_reset;
 
 video video
