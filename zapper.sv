@@ -11,7 +11,7 @@ module zapper (
 	input  [8:0] cycle,
 	input  [8:0] scanline,
 	input  [5:0] color,
-	output reg   reticule,
+	output reg  [1:0] reticule,
 	output       light,
 	output       trigger
 );
@@ -45,6 +45,9 @@ int trigger_cnt;
 wire hit_x = ((pos_x >= cycle - 1'b1 && pos_x <= cycle + 1'b1) && scanline == pos_y);
 wire hit_y = ((pos_y >= scanline - 1'b1 && pos_y <= scanline + 1'b1) && cycle == pos_x);
 
+wire is_offscreen = ((pos_x >= 254 || pos_x <= 1) || (pos_y >= 224 || pos_y <= 8));
+wire light_square = ((pos_x >= cycle - 3'd4 && pos_x <= cycle + 3'd4) && (pos_y >= scanline - 3'd4 && pos_y <= scanline + 3'd4));
+
 // Jump through a few hoops to deal with signed math
 wire signed [7:0] joy_x = analog[7:0];
 wire signed [7:0] joy_y = analog[15:8];
@@ -66,9 +69,9 @@ end else begin
 	if (old_scanline != scanline && light_cnt > 0)
 		light_cnt <= light_cnt - 1'b1;
 
-	// Update mouse coordinates if needed
-	if (~old_msg & mouse_msg & ~mode) begin
-
+	// Register the mouse click regardless of mode to make it easier to map
+	// special lightgun hardware
+	if (~old_msg & mouse_msg) begin
 		if (trigger_cnt == 0 && mouse_button && ~pressed) begin
 			trigger_cnt <= 'd830000 + 'd2_100_000;
 			pressed <= 1'b1;
@@ -76,7 +79,10 @@ end else begin
 
 		if (~mouse_button)
 			pressed <= 0;
+	end
 
+	// Update mouse coordinates if needed
+	if (~old_msg & mouse_msg & ~mode) begin
 		if (x_diff <= 0)
 			pos_x <= 0;
 		else if (x_diff >= 255)
@@ -92,30 +98,36 @@ end else begin
 			pos_y <= y_diff;
 	end
 
+	// Check for the mapped trigger button regardless of mode
+	if (trigger_cnt == 0 && analog_trigger && ~pressed) begin
+		trigger_cnt <= 'd830000 + 'd2_100_000;
+		pressed <= 1'b1;
+	end
+
+	if (~analog_trigger)
+		pressed <= 0;
+
+	// Update X/Y based on analog stick if in joystick mode
 	if (mode) begin
 		pos_x <= joy_x_a;
 		pos_y <= y_axis_lut[joy_y_a];
-		if (trigger_cnt == 0 && analog_trigger && ~pressed) begin
-			trigger_cnt <= 'd830000 + 'd2_100_000;
-			pressed <= 1'b1;
-		end
-
-		if (~analog_trigger)
-			pressed <= 0;
 	end
 
-
+	if (hit_x || hit_y)
+		reticule[0] <= 1'b1;
+	else
+		reticule[0] <= 1'b0;
+	
+	reticule[1] <= is_offscreen;
+	
 	// See if we're "pointed" at light
-	if (hit_x | hit_y) begin
-		reticule <= 1'b1;
+	if (light_square && ~is_offscreen) begin
 		if (color == 'h20 || color == 'h30)
 			light_cnt <= 'd26;
 		else if ((color[5:4] == 3 && color < 'h3E) || color == 'h10)
 			if (light_cnt < 'd20) light_cnt <= 'd20;
 		else if ((color[5:4] == 2 && color < 'h2E) || color == 'h00)
 			if (light_cnt < 'd17) light_cnt <= 'd17;
-	end else begin
-		reticule <= 1'b0;
 	end
 end
 end
