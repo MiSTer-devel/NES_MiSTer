@@ -137,7 +137,8 @@ parameter CONF_STR2 = {
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert mirroring,OFF,ON;",
-	"OKL,Game Genie,OFF,3 Codes,9 Codes;",
+	"F,GG,Game Genie Code;",
+	"OK,Game Genie,ON,OFF;",
 	"-;",
 };
 
@@ -238,6 +239,7 @@ wire [7:0]  filetype;
 wire [24:0] ioctl_addr;
 wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
+wire        ioctl_download;
 
 hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + 3)) hps_io
 (
@@ -257,7 +259,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 
 	.status(status),
 
-	.ioctl_download(downloading),
+	.ioctl_download(ioctl_download),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_wr(loader_clk),
 	.ioctl_dout(file_input),
@@ -441,7 +443,8 @@ NES nes (
 	.reset_nes       (reset_nes),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 25'd0 : mapper_flags),
-	.gg              (status[21:20]),
+	.gg              (status[20]),
+	.gg_code         (gg_code),
 	// Audio
 	.sample          (sample),
 	.audio_channels  (5'b11111),
@@ -576,7 +579,8 @@ always @(posedge clk) begin
 		bk_pending <= 1'b0;
 end
 
-wire downloading;
+wire downloading = ioctl_download && ~type_gg;
+wire type_gg = (filetype == 5);
 
 wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
@@ -602,6 +606,28 @@ video video
 
 	.ce_pix(CE_PIXEL)
 );
+
+reg [37:0] gg_code;
+// Code layout:
+// {clock bit, 4'b index, enable, compare enable, 15'b address, 8'b compare, 8'b replace}
+//  37         36:33      32      31              30:16         15:8         7:0
+// 01 00 00 00 59 38 00 00 02 00 00 00 05 00 00 00
+reg [3:0] old_ioctl_addr;
+always_ff @(posedge clk) begin
+	gg_code[37] <= 1'b0;
+	old_ioctl_addr <= ioctl_addr[3:0];
+
+	if (ioctl_download && type_gg) begin
+		case (ioctl_addr[3:0])
+			0:  gg_code[31]    <= file_input[0];   // Compare Enable
+			4:  gg_code[23:16] <= file_input;      // Address lower
+			5:  gg_code[30:24] <= file_input[6:0]; // Address upper
+			8:  gg_code[15:8]  <= file_input;      // compare byte
+			12: gg_code[7:0]   <= file_input;      // replace byte
+			15: gg_code[37]    <= (old_ioctl_addr != ioctl_addr[3:0]) ? 1'b1 : 1'b0;            // Clock it in
+		endcase
+	end
+end
 
 
 /////////////////////////  STATE SAVE/LOAD  /////////////////////////////
