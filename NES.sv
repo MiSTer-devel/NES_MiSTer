@@ -156,6 +156,7 @@ parameter CONF_STR4 = {
 	"-;",
 	"O9,Swap joysticks,NO,YES;",
 	"OIJ,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2);",
+	"OL,Zapper Trigger,Mouse,Joystick;",
 	"OA,Multitap,Disabled,Enabled;",
 `ifdef DEBUG_AUDIO
 	"-;",
@@ -348,6 +349,7 @@ zapper zap (
 	.clk(clk),
 	.reset(reset_nes | ~lightgun_en),
 	.mode(status[19]),
+	.trigger_mode(status[21]),
 	.ps2_mouse(ps2_mouse),
 	.analog(~status[18] ? joy_analog0 : joy_analog1),
 	.analog_trigger(~status[18] ? joyA[22] : joyB[22]),
@@ -646,8 +648,8 @@ always @(posedge clk) begin
 			bk_request <= 0;
 			bk_state <= 1;
 			sd_lba <= 0;
-			sd_rd <=  bk_load;
-			sd_wr <= ~bk_load;
+			sd_rd <= bk_loading;
+			sd_wr <= ~bk_loading;
 		end
 	end else begin
 		if(old_ack & ~sd_ack) begin

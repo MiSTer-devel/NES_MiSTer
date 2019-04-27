@@ -8,6 +8,7 @@ module zapper (
 	input [15:0] analog,
 	input        analog_trigger,
 	input        mode,
+	input        trigger_mode,
 	input  [8:0] cycle,
 	input  [8:0] scanline,
 	input  [5:0] color,
@@ -30,8 +31,8 @@ wire mouse_msg = ps2_mouse[24];
 wire mouse_button = ps2_mouse[0];
 wire light_state = light_cnt > 0;
 
-wire signed [9:0] x_diff = pos_x + (mouse_x >>> 2'd2);
-wire signed [9:0] y_diff = pos_y - (mouse_y >>> 2'd2);
+wire signed [9:0] x_diff = pos_x + mouse_x;
+wire signed [9:0] y_diff = pos_y - mouse_y;
 
 reg [8:0] light_cnt; // timer for 10-25 scanlines worth of "light" activity.
 reg signed [9:0] pos_x, pos_y;
@@ -71,7 +72,7 @@ end else begin
 
 	// Register the mouse click regardless of mode to make it easier to map
 	// special lightgun hardware
-	if (~old_msg & mouse_msg) begin
+	if (~old_msg & mouse_msg & ~trigger_mode) begin
 		if (trigger_cnt == 0 && mouse_button && ~pressed) begin
 			trigger_cnt <= 'd830000 + 'd2_100_000;
 			pressed <= 1'b1;
@@ -99,13 +100,15 @@ end else begin
 	end
 
 	// Check for the mapped trigger button regardless of mode
-	if (trigger_cnt == 0 && analog_trigger && ~pressed) begin
-		trigger_cnt <= 'd830000 + 'd2_100_000;
-		pressed <= 1'b1;
-	end
+	if (trigger_mode) begin
+		if (trigger_cnt == 0 && analog_trigger && ~pressed) begin
+			trigger_cnt <= 'd830000 + 'd2_100_000;
+			pressed <= 1'b1;
+		end
 
-	if (~analog_trigger)
-		pressed <= 0;
+		if (~analog_trigger)
+			pressed <= 0;
+	end
 
 	// Update X/Y based on analog stick if in joystick mode
 	if (mode) begin
