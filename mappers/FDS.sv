@@ -205,7 +205,8 @@ module MAPFDS(              //signal descriptions in powerpak.v
 // Here proposed solution is to create an infinite loop at the end of normal
 // load subroutine if @$2000 was written during load subroutine. Infinite loop
 // give enough time for NMI to occure. (Generaly observed NMI enabling file is
-// the last file of 'normal' loading process to be loaded).
+// the last file of 'normal' loading process to be loaded). @2000.7 is checked to
+// ensure the NMI is being turned on ($90 or $80 mentioned above).
 
 	// manage infinite loop trap at the end ($E233) of LoadFiles subroutine
 //	 reg previous_is_E1F9;
@@ -226,8 +227,8 @@ always@(posedge clk20)
 					// deactivate infinite loop at LoadFile subroutine
 					if(prgain==16'hE1FA) infinite_loop_on_E233 <= 0;
 
-					// activate infinite loop if @$2000 is accessed during FileLoad subroutine
-					if((prgain==16'h2000) && (within_loader == 1)) infinite_loop_on_E233 <= 1;
+					// activate infinite loop if @$2000 is written with NMI (bit 7) high during FileLoad subroutine
+					if((prgain==16'h2000) && (within_loader == 1) && (nesprgdin[7])) infinite_loop_on_E233 <= 1;
 				end
 
 		end
