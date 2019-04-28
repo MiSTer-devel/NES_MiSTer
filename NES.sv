@@ -396,7 +396,7 @@ wire       loader_clk;
 wire [21:0] loader_addr;
 wire [7:0] loader_write_data;
 reg  [7:0] old_filetype;
-wire loader_reset = !download_reset || ((old_filetype != filetype) && |filetype); //loader_conf[0];
+wire loader_reset = !download_reset || ((old_filetype != filetype) && |filetype && ~type_gg); //loader_conf[0];
 wire loader_write;
 wire [31:0] loader_flags;
 reg  [31:0] mapper_flags;
