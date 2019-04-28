@@ -137,7 +137,7 @@ parameter CONF_STR2 = {
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert mirroring,OFF,ON;",
-	"F,GG,Game Genie Code;",
+	"FC,GG,Game Genie Code;",
 	"OK,Game Genie,ON,OFF;",
 	"-;",
 };

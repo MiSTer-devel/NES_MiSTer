@@ -27,13 +27,14 @@ wire found_dup;
 
 assign index = found_dup ? dup_index : next_index;
 
+// See if the code exists already, so it can be disabled if loaded again
 always_comb begin
-	integer x;
+	int x;
 	dup_index = 0;
 	found_dup = 0;
 
 	for (x = 0; x < MAX_CODES; x = x + 1'b1) begin
-		if (~codes[x][30:16] == code[30:16]) begin
+		if (codes[x][30:16] == code[30:16]) begin
 			dup_index = x[4:0];
 			found_dup = 1'b1;
 		end
@@ -46,7 +47,9 @@ always_ff @(posedge clk) begin
 		next_index <= 0;
 		for (x = 0; x < MAX_CODES; x = x + 1) codes[x] <= 33'd0;
 	end else if (code[37]) begin
-		codes[index] <= found_dup ? {1'b0, code[31:0]} : {1'b1, code[31:0]};
+		// Disable the code if it's the exact same code loaded again, otherwise, 
+		// replace it enabled if it has the same address, otherwise, add a new code
+		codes[index] <= found_dup ? ((codes[index][15:0] == code[15:0]) ? {codes[index][32] ? 1'b0 : 1'b1, code[31:0]} : {1'b1, code[31:0]}) : {1'b1, code[31:0]};
 		if (~found_dup) next_index <= next_index + 1'b1;
 	end
 end

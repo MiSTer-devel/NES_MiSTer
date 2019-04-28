@@ -370,7 +370,6 @@ set_global_assignment -name SYSTEMVERILOG_FILE mappers/MMC1.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/misc.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/generic.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/FDS.sv
-set_global_assignment -name VERILOG_FILE mappers/genierom.v
 set_global_assignment -name SYSTEMVERILOG_FILE gamegenie.sv
 set_global_assignment -name SYSTEMVERILOG_FILE zapper.sv
 set_global_assignment -name SYSTEMVERILOG_FILE cart.sv
