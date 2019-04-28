@@ -580,7 +580,7 @@ always @(posedge clk) begin
 end
 
 wire downloading = ioctl_download && ~type_gg;
-wire type_gg = (filetype == 5);
+wire type_gg = (filetype == 5) || (filetype == 6);
 
 wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
