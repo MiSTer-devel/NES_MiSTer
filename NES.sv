@@ -752,6 +752,7 @@ always @(posedge clk) begin
 				if((&fds_addr[14:9] && (fds_addr[15] == fds)) || (bk_loading && (fds_addr[17:9] == img_last[17:9]))) begin
 					fds_addr <= {diskside, 16'h0};
 					bk_state <= fds ? S_DDRCOPY : S_IDLE;
+					bk_loading <= fds ? bk_loading : 1'd0;
 					bram_init <= 1;
 					bk_first <= 1;
 				end else begin
