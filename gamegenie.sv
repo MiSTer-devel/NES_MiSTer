@@ -2,8 +2,8 @@
 // Apr 21, 2019
 
 // Code layout:
-// {clock bit, 4'b index, enable, compare enable, 15'b address, 8'b compare, 8'b replace}
-//  37         36:33      32      31              30:16         15:8         7:0
+// {clock bit, enable, compare enable, 15'b address, 8'b compare, 8'b replace}
+//  34         33      32              31:16         15:8         7:0
 
 localparam MAX_CODES = 32;
 
@@ -18,7 +18,7 @@ module geniecodes(
 	output  [7:0] genie_data
 );
 
-reg [32:0] codes[MAX_CODES];
+reg [33:0] codes[MAX_CODES];
 
 // If MAX_INDEX is changes, these need to be made larger
 wire [4:0] index, dup_index;
@@ -34,7 +34,7 @@ always_comb begin
 	found_dup = 0;
 
 	for (x = 0; x < MAX_CODES; x = x + 1'b1) begin
-		if (codes[x][30:16] == code[30:16]) begin
+		if (codes[x][31:16] == code[31:16]) begin
 			dup_index = x[4:0];
 			found_dup = 1'b1;
 		end
@@ -45,11 +45,11 @@ always_ff @(posedge clk) begin
 	int x;
 	if (reset) begin
 		next_index <= 0;
-		for (x = 0; x < MAX_CODES; x = x + 1) codes[x] <= 33'd0;
-	end else if (code[37]) begin
+		for (x = 0; x < MAX_CODES; x = x + 1) codes[x] <= 34'd0;
+	end else if (code[34]) begin
 		// Disable the code if it's the exact same code loaded again, otherwise, 
 		// replace it enabled if it has the same address, otherwise, add a new code
-		codes[index] <= found_dup ? ((codes[index][15:0] == code[15:0]) ? {codes[index][32] ? 1'b0 : 1'b1, code[31:0]} : {1'b1, code[31:0]}) : {1'b1, code[31:0]};
+		codes[index] <= found_dup ? ((codes[index][15:0] == code[15:0]) ? {codes[index][33] ? 1'b0 : 1'b1, code[32:0]} : {1'b1, code[32:0]}) : {1'b1, code[32:0]};
 		if (~found_dup) next_index <= next_index + 1'b1;
 	end
 end
@@ -62,8 +62,8 @@ always_comb begin
 
 	if (enable) begin
 		for (x = 0; x < MAX_CODES; x = x + 1'b1) begin
-			if (codes[x][32] && {1'b1, codes[x][30:16]} == addr_in) begin
-				if (codes[x][31]) begin        // Check for compare bit if needed
+			if (codes[x][33] && codes[x][31:16] == addr_in) begin
+				if (codes[x][32]) begin        // Check for compare bit if needed
 					if (codes[x][15:8] == data_in) begin
 						genie_ovr = 1'b1;
 						genie_data = codes[x][7:0];

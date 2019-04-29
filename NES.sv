@@ -607,24 +607,23 @@ video video
 	.ce_pix(CE_PIXEL)
 );
 
-reg [37:0] gg_code;
+reg [34:0] gg_code;
 // Code layout:
-// {clock bit, 4'b index, enable, compare enable, 15'b address, 8'b compare, 8'b replace}
-//  37         36:33      32      31              30:16         15:8         7:0
-// 01 00 00 00 59 38 00 00 02 00 00 00 05 00 00 00
+// {clock bit, enable, compare enable, 15'b address, 8'b compare, 8'b replace}
+//  34         33      32              31:16         15:8         7:0
 reg [3:0] old_ioctl_addr;
 always_ff @(posedge clk) begin
-	gg_code[37] <= 1'b0;
+	gg_code[34] <= 1'b0;
 	old_ioctl_addr <= ioctl_addr[3:0];
 
 	if (ioctl_download && type_gg) begin
 		case (ioctl_addr[3:0])
-			0:  gg_code[31]    <= file_input[0];   // Compare Enable
+			0:  gg_code[32]    <= file_input[0];   // Compare Enable
 			4:  gg_code[23:16] <= file_input;      // Address lower
-			5:  gg_code[30:24] <= file_input[6:0]; // Address upper
+			5:  gg_code[31:24] <= file_input;      // Address upper
 			8:  gg_code[15:8]  <= file_input;      // compare byte
 			12: gg_code[7:0]   <= file_input;      // replace byte
-			15: gg_code[37]    <= (old_ioctl_addr != ioctl_addr[3:0]) ? 1'b1 : 1'b0;            // Clock it in
+			15: gg_code[34]    <= (old_ioctl_addr != ioctl_addr[3:0]) ? 1'b1 : 1'b0;            // Clock it in
 		endcase
 	end
 end

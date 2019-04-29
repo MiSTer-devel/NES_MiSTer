@@ -153,7 +153,7 @@ module NES(
 	input         ext_audio,
 	output        apu_ce,
 	input         gg,
-	input  [37:0] gg_code,
+	input  [34:0] gg_code,
 	output  [2:0] emphasis,
 	output        save_written
 );
@@ -180,7 +180,7 @@ assign apu_ce = cpu_ce;
 
 wire reset = reset_nes;
 
-reg [7:0] from_data_bus;
+wire [7:0] from_data_bus;
 wire [7:0] cpu_dout;
 
 // odd or even apu cycle, AKA div_apu or apu_/clk2. This is actually not 50% duty cycle. It is high for 18
@@ -477,7 +477,7 @@ geniecodes codes (
 	.clk        (clk),
 	.reset      (cold_reset),
 	.enable     (~gg),
-	.addr_in    (prg_addr),
+	.addr_in    (addr),
 	.data_in    (prg_allow ? memory_din_cpu : prg_dout_mapper),
 	.code       (gg_code),
 	.genie_ovr  (genie_ovr),
@@ -524,28 +524,30 @@ always @(posedge clk) begin
 	open_bus_data <= from_data_bus;
 end
 
+assign from_data_bus = genie_ovr ? genie_data : raw_data_bus;
+
+reg [7:0] raw_data_bus;
+
 always @* begin
 	if (reset)
-		from_data_bus = 0;
+		raw_data_bus = 0;
 	else if (apu_cs) begin
 		if (joypad1_cs)
-			from_data_bus = {open_bus_data[7:5], 2'b0, mic, 1'b0, joypad_data[0]};
+			raw_data_bus = {open_bus_data[7:5], 2'b0, mic, 1'b0, joypad_data[0]};
 		else if (joypad2_cs)
-			from_data_bus = {open_bus_data[7:5], joypad_data[3:2], 2'b00, joypad_data[1]};
+			raw_data_bus = {open_bus_data[7:5], joypad_data[3:2], 2'b00, joypad_data[1]};
 		else
-			from_data_bus = (addr == 16'h4015) ? apu_dout : open_bus_data;
+			raw_data_bus = (addr == 16'h4015) ? apu_dout : open_bus_data;
 	end else if (bus_is_open) begin
-		from_data_bus = open_bus_data;
+		raw_data_bus = open_bus_data;
 	end else if (ppu_cs) begin
-		from_data_bus = ppu_dout;
-	end else if (genie_ovr) begin
-		from_data_bus = genie_data;
+		raw_data_bus = ppu_dout;
 	end else if (prg_allow) begin
-		from_data_bus = memory_din_cpu;
+		raw_data_bus = memory_din_cpu;
 	end else if (prg_open_bus) begin
-		from_data_bus = open_bus_data;
+		raw_data_bus = open_bus_data;
 	end else begin
-		from_data_bus = prg_dout_mapper;
+		raw_data_bus = prg_dout_mapper;
 	end
 end
 
