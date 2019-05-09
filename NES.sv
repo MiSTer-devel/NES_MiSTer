@@ -137,6 +137,7 @@ parameter CONF_STR2 = {
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert mirroring,OFF,ON;",
+	"-;",
 	"C,Cheats;",
 };
 
