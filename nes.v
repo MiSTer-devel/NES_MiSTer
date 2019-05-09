@@ -153,7 +153,9 @@ module NES(
 	input         ext_audio,
 	output        apu_ce,
 	input         gg,
-	input  [34:0] gg_code,
+	input [128:0] gg_code,
+	output        gg_avail,
+	input         gg_reset,
 	output  [2:0] emphasis,
 	output        save_written
 );
@@ -428,7 +430,6 @@ cart_top multi_mapper (
 	// FPGA specific
 	.clk               (clk),
 	.reset             (reset),
-	.cold_reset        (cold_reset),
 	.flags             (mapper_flags),            // iNES header data (use 0 while loading)
 	// Cart pins (slightly abstracted)
 	.ce                (cart_ce & ~reset),        // M2 (held in high impedance during reset)
@@ -473,22 +474,18 @@ cart_top multi_mapper (
 wire genie_ovr;
 wire [7:0] genie_data;
 
-geniecodes codes (
+CODES codes (
 	.clk        (clk),
-	.reset      (cold_reset),
+	.reset      (gg_reset),
 	.enable     (~gg),
 	.addr_in    (addr),
 	.data_in    (prg_allow ? memory_din_cpu : prg_dout_mapper),
 	.code       (gg_code),
+	.available  (gg_avail),
 	.genie_ovr  (genie_ovr),
 	.genie_data (genie_data)
 );
 
-wire cold_reset = (old_flags != mapper_flags);
-
-reg [31:0] old_flags;
-always @(posedge clk) if (cpu_ce)
-	old_flags <= mapper_flags;
 
 /**********************************************************/
 /*************       Bus Arbitration        ***************/
