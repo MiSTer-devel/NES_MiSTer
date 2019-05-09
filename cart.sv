@@ -20,7 +20,6 @@ module cart_top (
 	input             ce,
 	input             ppu_ce,
 	input             reset,
-	input             cold_reset,
 	input      [19:0] ppuflags,       // Misc flags from PPU for MMC5 cheating
 	input      [31:0] flags,          // Misc flags from ines header {prg_size(3), chr_size(3), mapper(8)}
 	input      [15:0] prg_ain,        // Better known as "CPU Address in"

@@ -8,7 +8,7 @@ This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://git
  * Multiple Palette options
  * Zapper, Powerpad, and Microphone support
  * Supports four players
- * Game Genie up to 9 codes
+ * Supports up to 32 cheat codes
  * Supports expansion audio from mappers including VRC6 & 7, MMC5 and Sunsoft 5b
  * Supports many popular mappers including VRC1-7, MMC0-5, and many more (see below)
  * Supports large games such as Legend of Link and Rockman Minus Infinity
@@ -28,9 +28,6 @@ The battery backed RAM (Save RAM) for the NES does not write to disk automatical
 
 ## Zapper Support
 The "Zapper" (aka Light Gun) can be used via two methods. You can select Peripheral: Zapper(Mouse) to use your mouse to aim and shoot with the left button. This mode uses relative mouse motion, so devices that rely on absolute coordinates will not work via this method. Alternatively, you can choose Zapper(Joy) to use the Analog stick to aim, and the defined Trigger button to fire. Guns such as Aimtrak have joystick modes which may be compatible with this method.
-
-## Game Genie
-The NES core supports Game Genie using the original Game Genie ROM, which Galoob has graciously given permission to distribute. You may enable 3 codes or 9 codes. If enabled, the code entry screen will appear when loading a new rom. If you have selected 9 codes, the code entry screen will be displayed 3 times, with the codes on each screen being added to the list. You may enable or disable the effect of Game Genie at any time during gameplay from the OSD menu. Selecting OFF will disable all codes, selecting 3-codes will enable only the first three codes, and selecting 9-codes will enable all 9 codes.
 
 ## Supported Mappers
 

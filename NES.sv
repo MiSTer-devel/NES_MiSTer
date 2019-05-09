@@ -137,16 +137,20 @@ parameter CONF_STR2 = {
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert mirroring,OFF,ON;",
-	"FC,GG,Game Genie Code;",
-	"OK,Game Genie,ON,OFF;",
 	"-;",
+	"C,Cheats;",
 };
 
 parameter CONF_STR3 = {
-	"6,Load Backup RAM;"
+	"K,Cheats enabled,ON,OFF;",
+	"-;",
 };
 
 parameter CONF_STR4 = {
+	"6,Load Backup RAM;"
+};
+
+parameter CONF_STR5 = {
 	"7,Save Backup RAM;",
 	"OH,Autosave,OFF,ON;",
 	"-;",
@@ -241,11 +245,11 @@ wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
 wire        ioctl_download;
 
-hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + 3)) hps_io
+hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + ($size(CONF_STR5)>>3) + 4)) hps_io
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-	.conf_str({CONF_STR1,~bios_loaded ? "F" : "+",CONF_STR2,bk_ena ? "R" : "+",CONF_STR3,bk_ena ? "R" : "+",CONF_STR4}),
+	.conf_str({CONF_STR1,~bios_loaded ? "F" : "+",CONF_STR2,gg_avail? "O": "+",CONF_STR3,bk_ena ? "R" : "+",CONF_STR4,bk_ena ? "R" : "+",CONF_STR5}),
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
@@ -445,6 +449,8 @@ NES nes (
 	.mapper_flags    (downloading ? 25'd0 : mapper_flags),
 	.gg              (status[20]),
 	.gg_code         (gg_code),
+	.gg_reset        (ioctl_download && loader_clk && !ioctl_addr),
+	.gg_avail        (gg_avail),
 	// Audio
 	.sample          (sample),
 	.audio_channels  (5'b11111),
@@ -580,7 +586,7 @@ always @(posedge clk) begin
 end
 
 wire downloading = ioctl_download && ~type_gg;
-wire type_gg = (filetype == 5) || (filetype == 6);
+wire type_gg = &filetype;
 
 wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
@@ -607,27 +613,44 @@ video video
 	.ce_pix(CE_PIXEL)
 );
 
-reg [34:0] gg_code;
-// Code layout:
-// {clock bit, enable, compare enable, 15'b address, 8'b compare, 8'b replace}
-//  34         33      32              31:16         15:8         7:0
-reg [3:0] old_ioctl_addr;
-always_ff @(posedge clk) begin
-	gg_code[34] <= 1'b0;
-	old_ioctl_addr <= ioctl_addr[3:0];
+////////////////////////////  CODES  ///////////////////////////////////
 
-	if (ioctl_download && type_gg) begin
+reg [128:0] gg_code;
+wire gg_avail;
+
+// Code layout:
+// {clock bit, code flags,     32'b address, 32'b compare, 32'b replace}
+//  128        127:96          95:64         63:32         31:0
+// Integer values are in BIG endian byte order, so it up to the loader
+// or generator of the code to re-arrange them correctly.
+
+always_ff @(posedge clk) begin
+	gg_code[128] <= 1'b0;
+
+	if (ioctl_download & type_gg & loader_clk) begin
 		case (ioctl_addr[3:0])
-			0:  gg_code[32]    <= file_input[0];   // Compare Enable
-			4:  gg_code[23:16] <= file_input;      // Address lower
-			5:  gg_code[31:24] <= file_input;      // Address upper
-			8:  gg_code[15:8]  <= file_input;      // compare byte
-			12: gg_code[7:0]   <= file_input;      // replace byte
-			15: gg_code[34]    <= (old_ioctl_addr != ioctl_addr[3:0]) ? 1'b1 : 1'b0;            // Clock it in
+			0:  gg_code[111:96]  <= file_input;  // Flags Bottom Word
+			1:  gg_code[119:112] <= file_input;  // Flags Bottom Word
+			2:  gg_code[127:120] <= file_input;  // Flags Top Word
+			3:  gg_code[127:112] <= file_input;  // Flags Top Word
+			4:  gg_code[71:64]   <= file_input;  // Address Bottom Word
+			5:  gg_code[79:72]   <= file_input;  // Address Bottom Word
+			6:  gg_code[87:80]   <= file_input;  // Address Top Word
+			7:  gg_code[95:88]   <= file_input;  // Address Top Word
+			8:  gg_code[39:32]   <= file_input;  // Compare Bottom Word
+			9:  gg_code[47:40]   <= file_input;  // Compare Bottom Word
+			10: gg_code[55:48]   <= file_input;  // Compare top Word
+			11: gg_code[63:56]   <= file_input;  // Compare top Word
+			12: gg_code[7:0]     <= file_input;  // Replace Bottom Word
+			13: gg_code[15:8]    <= file_input;  // Replace Bottom Word
+			14: gg_code[23:16]   <= file_input;  // Replace Top Word
+			15: begin
+				gg_code[31:24]   <= file_input;  // Replace Top Word
+				gg_code[128]     <=  1'b1;       // Clock it in
+			end
 		endcase
 	end
 end
-
 
 /////////////////////////  STATE SAVE/LOAD  /////////////////////////////
 
