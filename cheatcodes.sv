@@ -40,8 +40,7 @@ wire code_comp_f = code[96];
 
 wire [COMP_F_S:0] code_trimmed = {code_comp_f, code_addr, code_compare, code_data};
 
-wire [INDEX_SIZE:0] next_index = index + 1'b1;
-reg [INDEX_SIZE-1:0] index = '0;
+reg [INDEX_SIZE:0] index = '0;
 
 assign available = |index;
 
@@ -54,9 +53,9 @@ always_ff @(posedge clk) begin
 		for (x = 0; x < MAX_CODES; x = x + 1) codes[x] <= '0;
 	end else begin
 		code_change <= code[128];
-		if (code[128] && ~code_change && (next_index < MAX_CODES)) begin // detect posedge
-			codes[next_index] <= {1'b1, code_trimmed};
-			index <= next_index[INDEX_SIZE-1:0];
+		if (code[128] && ~code_change && (index < MAX_CODES)) begin // detect posedge
+			codes[index] <= {1'b1, code_trimmed};
+			index <= index + 1'b1;
 		end
 	end
 end
@@ -67,7 +66,7 @@ always_comb begin
 	genie_data = '0;
 
 	if (enable) begin
-		for (x = 0; x <= index; x = x + 1) begin
+		for (x = 0; x < MAX_CODES; x = x + 1) begin
 			if (codes[x][ENA_F_S] && codes[x][ADDR_S-:ADDR_WIDTH] == addr_in) begin
 				if (!codes[x][COMP_F_S] || (codes[x][COMP_S-:DATA_WIDTH] == data_in)) begin
 					genie_ovr = 1;
