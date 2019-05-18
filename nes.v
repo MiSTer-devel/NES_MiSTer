@@ -427,7 +427,7 @@ wire [7:0] prg_dout_mapper, chr_from_ppu_mapper;
 wire has_chr_from_ppu_mapper;
 wire [15:0] sample_ext;
 
-assign save_written = (prg_addr[15:13] == 3'b011 && prg_write) | bram_write;
+assign save_written = (mapper_flags[7:0] == 8'h14) ? (prg_linaddr[21:18] == 4'b1111 && prg_write) : (prg_addr[15:13] == 3'b011 && prg_write) | bram_write;
 
 cart_top multi_mapper (
 	// FPGA specific
