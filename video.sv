@@ -13,7 +13,7 @@ module video
 	input        hide_overscan,
 	input  [3:0] palette,
 	input  [2:0] emphasis,
-	input  [1:0] reticule,
+	input  [1:0] reticle,
 
 	output       ce_pix,
 	output   reg hold_reset,
@@ -27,7 +27,7 @@ module video
 );
 
 reg pix_ce, pix_ce_n;
-wire [5:0] color_ef = reticule[0] ? (reticule[1] ? 6'h21 : 6'h15) : is_padding ? 6'd63 : color;
+wire [5:0] color_ef = reticle[0] ? (reticle[1] ? 6'h21 : 6'h15) : is_padding ? 6'd63 : color;
 
 always @(negedge clk) begin
 	reg [1:0] cnt = 0;
@@ -280,40 +280,39 @@ always @(posedge clk) begin
 
 	if(pix_ce) begin
 		if(hide_overscan) begin
-			HBlank <= (hc >= (HBL_START-10) && (hc <= HBL_END + 9));       // 280 - ((224/240) * 16) = 261.3
-			VBlank <= (vc > (VBL_START-10)) || (vc < 7);                   // 240 - 16 = 224
+			HBlank <= (hc >= HBL_START && hc <= HBL_END);                  // 280 - ((224/240) * 16) = 261.3
+			VBlank <= (vc > (VBL_START - 9)) || (vc < 8);                  // 240 - 16 = 224
 		end else begin
 			HBlank <= (hc >= HBL_START) && (hc <= HBL_END);                // 280 pixels
-			VBlank <= ((vc >= VBL_START) || (vc == (VBL_START - 1'b1) && hc > HBL_END)) && 
-				((vc < VBL_END) || (vc == VBL_END && hc <= HBL_END));      // 240 lines, slightly skewed
+			VBlank <= (vc >= VBL_START);                                   // 240 lines
 		end
 		HSync  <= ((hc >= 278) && (hc < 303));
 		VSync  <= ((vc >= 244) && (vc < 247));
 	end
 end
 
-localparam HBL_START = 268;
-localparam HBL_END   = 328;
+localparam HBL_START = 256;
+localparam HBL_END   = 340;
 localparam VBL_START = 240;
 localparam VBL_END   = 511;
 
 wire is_padding = (hc > 255);
 
-wire dark_r, dark_g, dark_b;
-// bits are in order {B, G, R} color emphasis
-always_comb begin
-	{dark_r, dark_g, dark_b} = 3'b000;
+reg dark_r, dark_g, dark_b;
+// bits are in order {B, G, R} for NTSC color emphasis
+// Only effects range $00-$0D, $10-$1D, $20-$2D, and $30-$3D
+always @(posedge clk) if (pix_ce_n) begin
+	{dark_r, dark_g, dark_b} <= 3'b000;
 
-	if (~&color_ef[3:1] & |emphasis) begin
+	if ((color_ef[3:0] < 4'hE) && |emphasis) begin
 		if (~&emphasis) begin
-			dark_r = ~emphasis[2];
-			dark_g = ~emphasis[1];
-			dark_b = ~emphasis[0];
+			dark_r <= ~emphasis[0];
+			dark_g <= ~emphasis[1];
+			dark_b <= ~emphasis[2];
 		end else begin
-			{dark_r, dark_g, dark_b} = 3'b111;
+			{dark_r, dark_g, dark_b} <= 3'b111;
 		end
 	end
-
 end
 
 wire  [4:0] vga_r = dark_r ? pixel[4:1] + pixel[4:2] : pixel[4:0];

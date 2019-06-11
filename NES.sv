@@ -111,8 +111,8 @@ assign LED_USER  = downloading | (loader_fail & led_blink) | (bk_state != S_IDLE
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
-assign VIDEO_ARX = status[8] ? 8'd16 : 8'd4;
-assign VIDEO_ARY = status[8] ? 8'd9  : 8'd3;
+assign VIDEO_ARX = status[8] ? 8'd16 : (status[4] ? 8'd64 : 8'd128);
+assign VIDEO_ARY = status[8] ? 8'd9  : (status[4] ? 8'd49 : 8'd105);
 
 assign CLK_VIDEO = clk;
 
@@ -162,6 +162,7 @@ parameter CONF_STR5 = {
 	"O9,Swap joysticks,NO,YES;",
 	"OIJ,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2);",
 	"OL,Zapper Trigger,Mouse,Joystick;",
+	"OM,Crosshairs,ON,OFF;",
 	"OA,Multitap,Disabled,Enabled;",
 `ifdef DEBUG_AUDIO
 	"-;",
@@ -363,7 +364,7 @@ zapper zap (
 	.cycle(cycle),
 	.scanline(scanline),
 	.color(color),
-	.reticule(reticule),
+	.reticle(reticle),
 	.light(light),
 	.trigger(trigger)
 );
@@ -629,7 +630,7 @@ wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
 assign VGA_SL = sl[1:0];
 
-wire [1:0] reticule;
+wire [1:0] reticle;
 wire hold_reset;
 
 video video
@@ -645,7 +646,7 @@ video video
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
 	.emphasis(emphasis),
-	.reticule(reticule),
+	.reticle(~status[22] ? reticle : 2'b00),
 
 	.ce_pix(CE_PIXEL)
 );

@@ -56,29 +56,6 @@ module cart_top (
 	input             fds_swap        // FDS Disk Swap Pause
 );
 
-// module cart_top (
-// 	output       CIC_toMB,
-// 	input        CIC_toPak,
-// 	input        CIC_CLK,
-// 	input        CIC_RST_n,
-// 	input  [7:0] PPU_data_in,
-// 	input  [7:0] PPU_data_out,
-// 	input [13:0] PPU_addr,
-// 	input        PPU_a13_n,
-// 	input        PPU_rd_n,
-// 	input        PPU_wr_n,
-// 	output       CIRAM_a10,
-// 	output       CIRAM_ce_n,
-// 	input        ROMSEL_n,       // ~(cpu_addr[15] & m2)
-// 	output       IRQ_n,
-// 	input        CPU_rnw,        //
-// 	input [14:0] CPU_addr,       // CPU Bus Address
-// 	input  [7:0] CPU_data_in,    // CPU BUS Data inout.
-// 	output [7:0] CPU_data_out,   // CPU BUS Data inout.
-// 	input        M2,             // CPU phi2 (slightly delayed)
-// 	input        clk_sys         // Only on 72 pin connectors, 21mhz NTSC or 27mhz PAL
-// );
-
 tri0 prg_allow_b, vram_a10_b, vram_ce_b, chr_allow_b, irq_b;
 tri0 [21:0] prg_addr_b, chr_addr_b;
 tri0 [15:0] flags_out_b, audio_out_b;
@@ -1327,6 +1304,68 @@ N106 n106(
 	.clk        (clk),
 	.ce         (ce),
 	.enable     (me[210] | me[19]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b)
+);
+
+//*****************************************************************************//
+// Name   : Waixing 162                                                        //
+// Mappers: 162                                                                //
+// Status : Working                                                            //
+// Notes  :                                                                    //
+// Games  : Zelda - San Shen Zhi Li                                            //
+//*****************************************************************************//
+Mapper162 map162(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[162] | me[163]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b)
+);
+
+//*****************************************************************************//
+// Name   : Waixing 164                                                        //
+// Mappers: 164                                                                //
+// Status : Working                                                            //
+// Notes  :                                                                    //
+// Games  : Final Fantasy V                                                    //
+//*****************************************************************************//
+Mapper164 map164(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[164]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
