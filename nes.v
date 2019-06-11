@@ -179,7 +179,6 @@ module NES(
 // PPU ---P---P---P---P---P---P---P---P---P---P---P---P
 //  M: M2 Tick, C: CPU Tick, P: PPU Tick -: Idle Cycle
 
-
 assign nes_div = div_sys;
 assign apu_ce = cpu_ce;
 
