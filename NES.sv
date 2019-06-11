@@ -161,7 +161,7 @@ parameter CONF_STR = {
 `endif
 	"-;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start,FDS,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12,Mic,Trigger;",
+	"J1,A,B,Select,Start,FDS,Trigger,Mic,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
 	"V,v",`BUILD_DATE
 };
 
@@ -326,14 +326,14 @@ reg  [23:0] joypad_bits, joypad_bits2;
 reg   [7:0] powerpad_d3, powerpad_d4;
 reg   [1:0] last_joypad_clock;
 
-wire [11:0] powerpad = joyA[20:9] | joyB[20:9] | joyC[20:9] | joyD[20:9];
+wire [11:0] powerpad = joyA[22:11] | joyB[22:11] | joyC[22:11] | joyD[22:11];
 
 wire [7:0] nes_joy_A = { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], joyA[4] };
 wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], joyB[4] };
 wire [7:0] nes_joy_C = { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], joyC[4] };
 wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], joyD[4] };
 
-wire mic_button = joyA[21] | joyB[21];
+wire mic_button = joyA[10] | joyB[10];
 wire fds_btn = joyA[8] | joyB[8];
 wire fds_swap = (fds_swap_invert ^ fds_btn);
 
@@ -352,7 +352,7 @@ zapper zap (
 	.trigger_mode(status[21]),
 	.ps2_mouse(ps2_mouse),
 	.analog(~status[18] ? joy_analog0 : joy_analog1),
-	.analog_trigger(~status[18] ? joyA[22] : joyB[22]),
+	.analog_trigger(~status[18] ? joyA[9] : joyB[9]),
 	.cycle(cycle),
 	.scanline(scanline),
 	.color(color),
