@@ -716,7 +716,7 @@ reg [17:0] fds_addr;
 // 65500 size; 512 sector size; After first size, beginning of side is in previous sector
 assign fdsddr_addr = {4'h0, (diskside==2'd0) ? fds_addr : fds_addr - 16'h0200};
 assign sd_lba = {23'h0, (diskside==2'd0) ? fds_addr[17:9] : fds_addr[17:9] - 9'h1};
-wire [17:0] img_last = (|img_size) ? img_size - 18'd1 : 18'd0;
+wire [17:0] img_last = (|img_size) ? img_size[17:0] - 18'd1 : 18'd0;
 wire [1:0] diskside_req_use = fds_swap_invert ? diskside_btn : diskside_req;
 wire [1:0] next_diskside = (last_diskside == diskside) ? 2'd0 : diskside + 2'd1;
 wire [1:0] next_btn_diskside = (last_diskside == diskside_btn) ? 2'd0 : diskside_btn + 2'd1;
