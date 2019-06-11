@@ -128,34 +128,22 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 `define DEBUG_AUDIO
 
 `include "build_id.v"
-parameter CONF_STR1 = {
+parameter CONF_STR = {
 	"NES;;",
 	"-;",
 	"FS,NES;",
 	"FS,FDS;",
-};
-
-parameter CONF_STR2 = {
-	",BIN,Load FDS BIOS;",
+	"H1F,BIN,Load FDS BIOS;",
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert mirroring,OFF,ON;",
 	"-;",
 	"C,Cheats;",
-};
-
-parameter CONF_STR3 = {
-	"K,Cheats enabled,ON,OFF;",
+	"H20K,Cheats enabled,ON,OFF;",
 	"-;",
-};
-
-parameter CONF_STR4 = {
-	"6,Load Backup RAM;"
-};
-
-parameter CONF_STR5 = {
-	"7,Save Backup RAM;",
-	"OH,Autosave,OFF,ON;",
+	"D0R6,Load Backup RAM;",
+	"D0R7,Save Backup RAM;",
+	"D0OH,Autosave,OFF,ON;",
 	"-;",
 	"O8,Aspect ratio,4:3,16:9;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
@@ -250,11 +238,11 @@ wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
 wire        ioctl_download;
 
-hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + ($size(CONF_STR5)>>3) + 4)) hps_io
+hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-	.conf_str({CONF_STR1,~bios_loaded ? "F" : "+",CONF_STR2,gg_avail? "O": "+",CONF_STR3,bk_ena ? "R" : "+",CONF_STR4,bk_ena ? "R" : "+",CONF_STR5}),
+	.conf_str(CONF_STR),
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
@@ -267,6 +255,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.joystick_analog_1(joy_analog1),
 
 	.status(status),
+	.status_menumask({~gg_avail, bios_loaded, ~bk_ena}),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_addr(ioctl_addr),
@@ -727,7 +716,7 @@ reg [17:0] fds_addr;
 // 65500 size; 512 sector size; After first size, beginning of side is in previous sector
 assign fdsddr_addr = {4'h0, (diskside==2'd0) ? fds_addr : fds_addr - 16'h0200};
 assign sd_lba = {23'h0, (diskside==2'd0) ? fds_addr[17:9] : fds_addr[17:9] - 9'h1};
-wire [17:0] img_last = (|img_size) ? img_size - 18'd1 : 0;
+wire [17:0] img_last = (|img_size) ? img_size - 18'd1 : 18'd0;
 wire [1:0] diskside_req_use = fds_swap_invert ? diskside_btn : diskside_req;
 wire [1:0] next_diskside = (last_diskside == diskside) ? 2'd0 : diskside + 2'd1;
 wire [1:0] next_btn_diskside = (last_diskside == diskside_btn) ? 2'd0 : diskside_btn + 2'd1;
