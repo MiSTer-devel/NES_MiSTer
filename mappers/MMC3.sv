@@ -334,8 +334,8 @@ end else if (ce) begin
 
 				5'b10_00_1: irq_latch <= prg_din ^ 8'hFF;              // IRQ latch ($C000-$DFFC)
 				5'b10_01_1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFD)
-				5'b10_10_1: begin irq_enable <= 0; irq_reg[0] <= 0; end// IRQ disable ($C002-$DFFE)
-				5'b10_11_1: irq_enable <= 1;                           // IRQ enable ($C003-$DFFF)
+				5'b10_10_1: irq_enable <= 1;                           // IRQ enable ($C002-$DFFE)
+				5'b10_11_1: begin irq_enable <= 0; irq_reg[0] <= 0; end// IRQ disable ($C003-$DFFF)
 
 				5'b11_00_1: mirroring <= !prg_din[6];  // Mirroring
 			endcase
