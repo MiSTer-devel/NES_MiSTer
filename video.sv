@@ -286,7 +286,7 @@ always @(posedge clk) begin
 			HBlank <= (hc >= HBL_START) && (hc <= HBL_END);                // 280 pixels
 			VBlank <= (vc >= VBL_START);                                   // 240 lines
 		end
-		HSync  <= ((hc >= 278) && (hc < 303));
+		HSync  <= ((hc >= 278) && (hc < 304));
 		VSync  <= ((vc >= 244) && (vc < 247));
 	end
 end
