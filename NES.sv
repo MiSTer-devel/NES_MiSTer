@@ -13,7 +13,7 @@ module emu
 	input         RESET,
 
 	//Must be passed to hps_io module
-	inout  [44:0] HPS_BUS,
+	inout  [45:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
@@ -47,7 +47,9 @@ module emu
 	output [15:0] AUDIO_R,
 	output        AUDIO_S, // 1 - signed audio samples, 0 - unsigned
 	output  [1:0] AUDIO_MIX, // 0 - no mix, 1 - 25%, 2 - 50%, 3 - 100% (mono)
-	input         TAPE_IN,
+
+	//ADC
+	inout   [3:0] ADC_BUS,
 
 	// SD-SPI
 	output        SD_SCK,
@@ -100,6 +102,7 @@ module emu
 	input         OSD_STATUS
 );
 
+assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 
 assign AUDIO_S   = 1'b1;
@@ -111,8 +114,8 @@ assign LED_USER  = downloading | (loader_fail & led_blink) | (bk_state != S_IDLE
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
-assign VIDEO_ARX = status[8] ? 8'd16 : 8'd4;
-assign VIDEO_ARY = status[8] ? 8'd9  : 8'd3;
+assign VIDEO_ARX = status[8] ? 8'd16 : (status[4] ? 8'd64 : 8'd128);
+assign VIDEO_ARY = status[8] ? 8'd9  : (status[4] ? 8'd49 : 8'd105);
 
 assign CLK_VIDEO = clk;
 
@@ -125,43 +128,32 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 `define DEBUG_AUDIO
 
 `include "build_id.v"
-parameter CONF_STR1 = {
+parameter CONF_STR = {
 	"NES;;",
 	"-;",
 	"FS,NES;",
 	"FS,FDS;",
-};
-
-parameter CONF_STR2 = {
-	",BIN,Load FDS BIOS;",
+	"H1F,BIN,Load FDS BIOS;",
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
-	"O5,Invert mirroring,OFF,ON;",
+	"O5,Invert Mirroring,Off,On;",
 	"-;",
 	"C,Cheats;",
-};
-
-parameter CONF_STR3 = {
-	"K,Cheats enabled,ON,OFF;",
+	"H20K,Cheats Enabled,On,Off;",
 	"-;",
-};
-
-parameter CONF_STR4 = {
-	"6,Load Backup RAM;"
-};
-
-parameter CONF_STR5 = {
-	"7,Save Backup RAM;",
-	"OH,Autosave,OFF,ON;",
+	"D0R6,Load Backup RAM;",
+	"D0R7,Save Backup RAM;",
+	"D0OH,Autosave,Off,On;",
 	"-;",
-	"O8,Aspect ratio,4:3,16:9;",
+	"O8,Aspect Ratio,4:3,16:9;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	"O4,Hide overscan,OFF,ON;",
+	"O4,Hide Overscan,Off,On;",
 	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Nintendulator;",
 	"-;",
-	"O9,Swap joysticks,NO,YES;",
+	"O9,Swap Joysticks,No,Yes;",
 	"OIJ,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2);",
 	"OL,Zapper Trigger,Mouse,Joystick;",
+	"OM,Crosshairs,On,Off;",
 	"OA,Multitap,Disabled,Enabled;",
 `ifdef DEBUG_AUDIO
 	"-;",
@@ -169,7 +161,7 @@ parameter CONF_STR5 = {
 `endif
 	"-;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start,FDS,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12,Mic,Trigger;",
+	"J1,A,B,Select,Start,FDS,Trigger,Mic,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
 	"V,v",`BUILD_DATE
 };
 
@@ -246,11 +238,11 @@ wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
 wire        ioctl_download;
 
-hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + ($size(CONF_STR5)>>3) + 4)) hps_io
+hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-	.conf_str({CONF_STR1,~bios_loaded ? "F" : "+",CONF_STR2,gg_avail? "O": "+",CONF_STR3,bk_ena ? "R" : "+",CONF_STR4,bk_ena ? "R" : "+",CONF_STR5}),
+	.conf_str(CONF_STR),
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
@@ -263,6 +255,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.joystick_analog_1(joy_analog1),
 
 	.status(status),
+	.status_menumask({~gg_avail, bios_loaded, ~bk_ena}),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_addr(ioctl_addr),
@@ -333,14 +326,14 @@ reg  [23:0] joypad_bits, joypad_bits2;
 reg   [7:0] powerpad_d3, powerpad_d4;
 reg   [1:0] last_joypad_clock;
 
-wire [11:0] powerpad = joyA[20:9] | joyB[20:9] | joyC[20:9] | joyD[20:9];
+wire [11:0] powerpad = joyA[22:11] | joyB[22:11] | joyC[22:11] | joyD[22:11];
 
 wire [7:0] nes_joy_A = { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], joyA[4] };
 wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], joyB[4] };
 wire [7:0] nes_joy_C = { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], joyC[4] };
 wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], joyD[4] };
 
-wire mic_button = joyA[21] | joyB[21];
+wire mic_button = joyA[10] | joyB[10];
 wire fds_btn = joyA[8] | joyB[8];
 wire fds_swap = (fds_swap_invert ^ fds_btn);
 
@@ -359,11 +352,11 @@ zapper zap (
 	.trigger_mode(status[21]),
 	.ps2_mouse(ps2_mouse),
 	.analog(~status[18] ? joy_analog0 : joy_analog1),
-	.analog_trigger(~status[18] ? joyA[22] : joyB[22]),
+	.analog_trigger(~status[18] ? joyA[9] : joyB[9]),
 	.cycle(cycle),
 	.scanline(scanline),
 	.color(color),
-	.reticule(reticule),
+	.reticle(reticle),
 	.light(light),
 	.trigger(trigger)
 );
@@ -629,7 +622,7 @@ wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
 assign VGA_SL = sl[1:0];
 
-wire [1:0] reticule;
+wire [1:0] reticle;
 wire hold_reset;
 
 video video
@@ -645,7 +638,7 @@ video video
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
 	.emphasis(emphasis),
-	.reticule(reticule),
+	.reticle(~status[22] ? reticle : 2'b00),
 
 	.ce_pix(CE_PIXEL)
 );
@@ -723,7 +716,7 @@ reg [17:0] fds_addr;
 // 65500 size; 512 sector size; After first size, beginning of side is in previous sector
 assign fdsddr_addr = {4'h0, (diskside==2'd0) ? fds_addr : fds_addr - 16'h0200};
 assign sd_lba = {23'h0, (diskside==2'd0) ? fds_addr[17:9] : fds_addr[17:9] - 9'h1};
-wire [17:0] img_last = (|img_size) ? img_size - 18'd1 : 0;
+wire [17:0] img_last = (|img_size) ? img_size[17:0] - 18'd1 : 18'd0;
 wire [1:0] diskside_req_use = fds_swap_invert ? diskside_btn : diskside_req;
 wire [1:0] next_diskside = (last_diskside == diskside) ? 2'd0 : diskside + 2'd1;
 wire [1:0] next_btn_diskside = (last_diskside == diskside_btn) ? 2'd0 : diskside_btn + 2'd1;

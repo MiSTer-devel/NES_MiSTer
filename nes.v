@@ -144,7 +144,7 @@ module NES(
 	output  [7:0] memory_dout,
 
 	// Override for BRAM
-	output [14:0] bram_addr,      // address to access
+	output [15:0] bram_addr,      // address to access
 	input   [7:0] bram_din,       // Data from BRAM
 	output  [7:0] bram_dout,
 	output        bram_write,     // is a write operation
@@ -178,7 +178,6 @@ module NES(
 // CPU ----M------C----M------C----M------C----M------C
 // PPU ---P---P---P---P---P---P---P---P---P---P---P---P
 //  M: M2 Tick, C: CPU Tick, P: PPU Tick -: Idle Cycle
-
 
 assign nes_div = div_sys;
 assign apu_ce = cpu_ce;
