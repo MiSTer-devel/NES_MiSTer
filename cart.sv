@@ -53,7 +53,7 @@ module cart_top (
 	output reg  [1:0] diskside_auto,
 	input       [1:0] diskside,
 	input             fds_busy,       // FDS Disk Swap Busy
-	input             fds_swap        // FDS Disk Swap Pause
+	input             fds_eject       // FDS Disk Swap Pause
 );
 
 tri0 prg_allow_b, vram_a10_b, vram_ce_b, chr_allow_b, irq_b;
@@ -1420,7 +1420,7 @@ MapperFDS mapfds(
 	.diskside_auto_b (fds_diskside_auto),
 	.diskside   (diskside),
 	.fds_busy   (fds_busy),
-	.fds_swap   (fds_swap)
+	.fds_eject  (fds_eject)
 );
 
 wire [5:0] prg_mask;

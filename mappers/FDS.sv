@@ -26,7 +26,7 @@ module MapperFDS(
 	inout [1:0] diskside_auto_b,
 	input [1:0] diskside,
 	input       fds_busy,
-	input       fds_swap
+	input       fds_eject
 );
 
 assign prg_aout_b      = enable ? prg_aout : 22'hZ;
@@ -73,7 +73,7 @@ MAPFDS fds(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-	ce, prg_allow, audio_exp, diskside_auto, diskside, fds_busy, fds_swap);
+	ce, prg_allow, audio_exp, diskside_auto, diskside, fds_busy, fds_eject);
 
 assign chr_aout[21:19] = 3'b100;
 assign chr_aout[9:0] = chr_ain[9:0];
@@ -145,7 +145,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	output reg [1:0] diskside_auto,
 	input [1:0] diskside,
 	input fds_busy,
-	input fds_swap
+	input fds_eject
 );
 
 	localparam WRITE_LO=16'hF4CD, WRITE_HI=16'hF4CE, READ_LO=16'hF4D0, READ_HI=16'hF4D1;
@@ -182,7 +182,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
 // Unlicensed games sometimes doesn't use standard bios load process. This
 // break automatic diskside trick.
 // diskside_manual to be manage from OSD user input allow to add diskswap capabilities.
-// (automatic fds_swap should be preferably stopped before changing diskside_manual)
+// (automatic fds_eject should be preferably stopped before changing diskside_manual)
 
 //	reg [1:0] diskside_auto;
 //	wire[1:0] diskside;
@@ -368,21 +368,22 @@ end
 assign irq=timer_irq; // | disk_irq
 
 //disk eject:   toggle flag continuously except when select button is held
-//reg [2:0] control_cnt; //use fds_swap instead
-reg [21:0] clkcount;
+//reg [2:0] control_cnt; //use fds_eject instead
+//reg [21:0] clkcount;
 
-assign disk_eject=clkcount[21] | fds_swap;
+//assign disk_eject=clkcount[21] | fds_eject;
+assign disk_eject=fds_eject;
 
-always@(posedge clk20) begin
-	if (ce) begin
-		clkcount<=clkcount+1'd1;
+//always@(posedge clk20) begin
+//	if (ce) begin
+//		clkcount<=clkcount+1'd1;
 //		if(prgain==16'h4016) begin
 //			if(nesprg_we)                           control_cnt<=0;
 //			else if(~nesprg_we & control_cnt!=7)    control_cnt<=control_cnt+1'd1;
 //			//if(~nesprg_we & control_cnt==2)          button<=|nesprgdin[1:0];
 //		end
-	end
-end
+//	end
+//end
 
 //bankswitch control: 6000-DFFF = sram, E000-FFFF = bios or disk
 reg [18:13] prgbank;
