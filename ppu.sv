@@ -111,6 +111,7 @@ module ClockGen(
 	input clk,
 	input ce,
 	input reset,
+	input [1:0] sys_type,
 	input is_rendering,
 	output reg [8:0] scanline,
 	output reg [8:0] cycle,
@@ -120,10 +121,39 @@ module ClockGen(
 	output exiting_vblank,
 	output entering_vblank,
 	output reg is_pre_render,
-	output short_frame
+	output short_frame,
+	output is_vbe_sl
 );
 
 reg even_frame_toggle = 0;
+
+// Dendy is 291 to 310
+wire [8:0] vblank_start_sl;
+wire [8:0] vblank_end_sl;
+wire [8:0] last_sl;
+wire skip_en;
+
+always_comb begin
+	case (sys_type)
+		2'b00,2'b11: begin // NTSC/Vs.
+			vblank_start_sl = 9'd241;
+			vblank_end_sl   = 9'd260;
+			skip_en         = 1'b1;
+		end
+
+		2'b01: begin       // PAL
+			vblank_start_sl = 9'd241;
+			vblank_end_sl   = 9'd310;
+			skip_en         = 1'b0;
+		end
+
+		2'b10: begin       // Dendy
+			vblank_start_sl = 9'd291;
+			vblank_end_sl   = 9'd310;
+			skip_en         = 1'b0;
+		end
+	endcase
+end
 
 assign at_last_cycle_group = (cycle[8:3] == 42);
 
@@ -135,8 +165,10 @@ assign end_of_line = at_last_cycle_group && (cycle[3:0] == (skip_pixel ? 3 : 4))
 
 // Confimed with Visual 2C02
 // All vblank clocked registers should have changed and be readable by cycle 1 of 241/261
-assign entering_vblank = (cycle == 0) && scanline == 241;
+assign entering_vblank = (cycle == 0) && scanline == vblank_start_sl;
 assign exiting_vblank = (cycle == 0) && scanline == 511;
+
+assign is_vbe_sl = (scanline == vblank_end_sl);
 
 // New value for is_in_vblank flag
 wire new_is_in_vblank = entering_vblank ? 1'b1 : exiting_vblank ? 1'b0 : is_in_vblank;
@@ -156,13 +188,13 @@ always @(posedge clk) if (reset) begin
 	even_frame_toggle <= 0; // Resets to 0, the first frame will always end with 341 pixels.
 end else if (ce && end_of_line) begin
 	// Once the scanline counter reaches end of 260, it gets reset to -1.
-	scanline <= (scanline == 260) ? 9'b111111111 : scanline + 1'd1;
+	scanline <= (scanline == vblank_end_sl) ? 9'b111111111 : scanline + 1'd1;
 	// The pre render flag is set while we're on scanline -1.
-	is_pre_render <= (scanline == 260);
+	is_pre_render <= (scanline == vblank_end_sl);
 
 	// Visual 2C02 shows the register flipping here
 	if (scanline == 255)
-		even_frame_toggle <= ~even_frame_toggle;
+		even_frame_toggle <= skip_en ? ~even_frame_toggle : 1'b1;
 end
 
 endmodule // ClockGen
@@ -259,7 +291,8 @@ module SpriteRAM(
 	input oam_load,            // Load oam_ptr with specified value, when writing to NES $2004.
 	input [7:0] data_in,       // New value for oam or oam_ptr
 	output reg spr_overflow,   // Set to true if we had more than 8 objects on a scan line. Reset when exiting vblank.
-	output reg sprite0         // True if sprite#0 is included on the scan line currently being painted.
+	output reg sprite0,        // True if sprite#0 is included on the scan line currently being painted.
+	input is_vbe               // Last line before pre-render
 );
 
 reg [7:0] sprtemp[0:31];   // Sprite Temporary Memory. 32 bytes.
@@ -365,7 +398,7 @@ always @(posedge clk) if (ce) begin
 		sprite0_curr <= 0;
 		sprite0 <= sprite0_curr;
 	end
-	if (cycle == 340 && scanline == 260) // Confirmed with visual 2C02. Effective by Line 261, pixel 1, but visible on 0.
+	if (cycle == 340 && is_vbe) // Confirmed with visual 2C02. Effective by Line 261, pixel 1, but visible on 0.
 		spr_overflow <= 0;
 end
 
@@ -546,28 +579,29 @@ end
 endmodule  // PaletteRam
 
 module PPU(
-	input clk,
-	input ce,
-	input reset,          // input clock  21.48 MHz / 4. 1 clock cycle = 1 pixel
-	output [5:0] color,   // output color value, one pixel outputted every clock
-	input [7:0] din,      // input data from bus
-	output [7:0] dout,    // output data to CPU
-	input [2:0] ain,      // input address from CPU
-	input read,           // read
-	input write,          // write
-	output reg nmi,       // one while inside vblank
-	input pre_read,
-	input pre_write,
-	output vram_r,        // read from vram active
-	output vram_w,        // write to vram active
-	output [13:0] vram_a, // vram address
-	input [7:0] vram_din, // vram input
-	output [7:0] vram_dout,
-	output [8:0] scanline,
-	output [8:0] cycle,
+	input         clk,
+	input         ce,
+	input         reset,            // input clock  21.48 MHz / 4. 1 clock cycle = 1 pixel
+	inout   [1:0] sys_type,         // System type. 0 = NTSC 1 = PAL 2 = Dendy 3 = Vs.
+	output  [5:0] color,            // output color value, one pixel outputted every clock
+	input   [7:0] din,              // input data from bus
+	output  [7:0] dout,             // output data to CPU
+	input   [2:0] ain,              // input address from CPU
+	input         read,             // read
+	input         write,            // write
+	output reg    nmi,              // one while inside vblank
+	input         pre_read,
+	input         pre_write,
+	output        vram_r,           // read from vram active
+	output        vram_w,           // write to vram active
+	output [13:0] vram_a,           // vram address
+	input   [7:0] vram_din,         // vram input
+	output  [7:0] vram_dout,
+	output  [8:0] scanline,
+	output  [8:0] cycle,
 	output [19:0] mapper_ppu_flags,
 	output reg [2:0] emphasis,
-	output short_frame
+	output       short_frame
 );
 
 // These are stored in control register 0
@@ -611,11 +645,13 @@ reg rendering_enabled;
 
 // 2C02 has an "is_vblank" flag that is true from pixel 0 of line 241 to pixel 0 of line 0;
 wire is_rendering = rendering_enabled && (scanline < 240 || is_pre_render_line);
+wire is_vbe_sl;
 
 ClockGen clock(
 	.clk                 (clk),
 	.ce                  (ce),
 	.reset               (reset),
+	.sys_type            (sys_type),
 	.is_rendering        (rendering_enabled),
 	.scanline            (scanline),
 	.cycle               (cycle),
@@ -625,7 +661,8 @@ ClockGen clock(
 	.exiting_vblank      (exiting_vblank),
 	.entering_vblank     (entering_vblank),
 	.is_pre_render       (is_pre_render_line),
-	.short_frame         (short_frame)
+	.short_frame         (short_frame),
+	.is_vbe_sl           (is_vbe_sl)
 );
 
 // The loopy module handles updating of the loopy address
@@ -698,7 +735,8 @@ SpriteRAM sprite_ram(
 	.oam_load        (write && (ain == 4)), // Write to oam[oam_ptr]
 	.data_in         (din),
 	.spr_overflow    (sprite_overflow),
-	.sprite0         (obj0_on_line)
+	.sprite0         (obj0_on_line),
+	.is_vbe          (is_vbe_sl)
 );
 
 wire [4:0] obj_pixel_noblank;
@@ -742,7 +780,7 @@ wire [4:0] obj_pixel = {obj_pixel_noblank[4:2], show_obj_on_pixel ? obj_pixel_no
 reg sprite0_hit_bg;            // True if sprite#0 has collided with the BG in the last frame.
 always @(posedge clk) if (ce) begin
 	rendering_enabled <= (enable_objects | enable_playfield);
-	if (cycle == 340 && scanline == 260) // confirmed with visual 2C02 (261, 1);
+	if (cycle == 340 && is_vbe_sl) // confirmed with visual 2C02 (261, 1);
 		sprite0_hit_bg <= 0;
 	else if (
 		is_rendering        &&    // Object rendering is enabled
@@ -824,7 +862,7 @@ if (ce) begin
 				object_clip <= din[2];
 				enable_playfield <= din[3];
 				enable_objects <= din[4];
-				emphasis <= din[7:5];
+				emphasis <= (sys_type == 2'd1 || sys_type == 2'd2) ? {din[7], din[5], din[6]} : din[7:5];
 			end
 		endcase
 	end

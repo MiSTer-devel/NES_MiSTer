@@ -127,6 +127,12 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 `define DEBUG_AUDIO
 
+// Status Bit Map:
+// 0         1         2         3 
+// 01234567890123456789012345678901
+// 0123456789ABCDEFGHIJKLMNOPQRSTUV
+//  XXXXXXXXXX XXXXXXXXXXXXX     XX
+
 `include "build_id.v"
 parameter CONF_STR = {
 	"NES;;",
@@ -134,6 +140,8 @@ parameter CONF_STR = {
 	"FS,NES;",
 	"FS,FDS;",
 	"H1F,BIN,Load FDS BIOS;",
+	"-;",
+	"ONO,System Type,NTSC,PAL,Dendy;",
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert Mirroring,Off,On;",
@@ -443,6 +451,7 @@ wire lightgun_en = |status[19:18];
 NES nes (
 	.clk             (clk),
 	.reset_nes       (reset_nes),
+	.sys_type        (status[24:23]),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 32'd0 : mapper_flags),
 	.gg              (status[20]),

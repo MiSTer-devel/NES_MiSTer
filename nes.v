@@ -120,6 +120,7 @@ endmodule
 module NES(
 	input         clk,
 	input         reset_nes,
+	input   [1:0] sys_type,
 	output  [2:0] nes_div,
 	input  [31:0] mapper_flags,
 	output [15:0] sample,         // sample generated from APU
@@ -168,21 +169,35 @@ module NES(
 /*************            Clocks            ***************/
 /**********************************************************/
 
-// Data is latched by the CPU at the end of M2. This means that the bus should be latched
-// just prior to the CPU tick. Reads from CPU should not occur prior to M2.
-// Therefor, PPU phases 1 and 3 are read, and 2 is write, under the configuration
-// illustrated below. The cart slot is clocked by M2, and NMI's and IRQs can only
-// occur during M2 as well. Note that M2 is not a 50% duty cycle, but 5/8ths on NTSC.
-//
 // Cyc 123456789ABC123456789ABC123456789ABC123456789ABC
 // CPU ----M------C----M------C----M------C----M------C
 // PPU ---P---P---P---P---P---P---P---P---P---P---P---P
 //  M: M2 Tick, C: CPU Tick, P: PPU Tick -: Idle Cycle
+//
+// On Mister, we must pre-fetch data from memory 4 cycles before it is needed. 
+// Memory requests are aligned to the PPU clock and there are two types: CPU pre-fetch
+// and PPU pre-fetch. The CPU pre-fetch needs to be completed before the end of the CPU cycle, and
+// the PPU pre-fetch needs to be completed before each PPU CE is ticked. 
+// The PPU_CE that acknowledges reads and writes always occurs after the M2 rising edge, and cart/mapper
+// CE's are always triggered on the rising edge of M2, which means that PPU will always see
+// any changes made by the cart mappers. Because the mapper on MiSTer is capable of changing the data that
+// is given to the CPU (banking, etc) the best time to run it is the first PPU cycle where the data from the
+// CPU is visible on the bus.
+//
+// The obvious issue is that the CPU and PPU pre-fetches will collide. Fortunately, because Nintendo 
+// wanted to save pins, the ppu has to take two PPU ticks for every read, meaning there will always be
+// a minimum of one free PPU cycle in which to fit the CPU read. This does however create the issue that
+// we always need perfect alignment. 
+//
+// Therefore, we can dervive the following order of operations:
+// - CPU pre-fetch should happen during first free PPU tick in a CPU cycle.
+// - Cart CE should happen on the second PPU tick in a CPU cycle always
+// - PPU read/write should happen on the last PPU tick in a CPU cycle (usually third)
 
-assign nes_div = div_sys;
+assign nes_div = div_sys[1:0] <= 2'd3 ? div_sys[1:0] : 2'd3;
 assign apu_ce = cpu_ce;
 
-wire reset = reset_nes;
+wire reset = reset_nes | (last_sys_type != sys_type);
 
 wire [7:0] from_data_bus;
 wire [7:0] cpu_dout;
@@ -191,23 +206,21 @@ wire [7:0] cpu_dout;
 // master cycles and low for 6 master cycles. It is considered active when low or "even".
 reg odd_or_even = 0; // 1 == odd, 0 == even
 
-wire PAL = 1'b0;
-
-wire [4:0] div_cpu_n = PAL ? 5'd16 : 5'd12;  // CPU NTSC is master / 12, PAL is div 16
-wire [2:0] div_ppu_n = PAL ? 3'd5  : 3'd4;   // PPU NTSC is div 4, PAL is div 5
-wire [4:0] div_m2_n = div_cpu_n[4:1] - 1'b1; // For NTSC, 5/8 duty cycle phi-2
+wire [4:0] div_cpu_n = 5'd12; //(sys_type == 2'd1) ? 5'd16 : (sys_type == 2'd2 ? 5'd15 : 5'd12);
+wire [2:0] div_ppu_n = 3'd4;  //(sys_type == 2'd1) ? 3'd5 : (sys_type == 2'd2 ? 3'd5 : 3'd4);
 
 reg [4:0] div_cpu = 5'd1;
 reg [2:0] div_ppu = 3'd1;
 reg [2:0] div_sys = 3'd0;
+
 wire cpu_ce = (div_cpu == div_cpu_n);
 wire ppu_ce = (div_ppu == div_ppu_n);
 
-wire cart_ce  = (div_cpu == div_ppu_n);     // We can do this early to give more time for getting the data
-wire cart_pre = (div_cpu >= 'd1) && (div_cpu <= div_ppu_n);
+wire cart_ce  = (div_cpu <= div_ppu_n && ppu_ce); // First PPU cycle where cpu data is visible.
+wire cart_pre = (ppu_tick == 0);
 
-wire M2 = (div_cpu >= div_m2_n) && (div_cpu < div_cpu_n);
-wire m2_pre = (div_cpu >= 'd5) && (div_cpu <= 'd8);
+wire cpu_fetch = (ppu_tick == 1);
+//wire ppu_io = 
 
 // The infamous NES jitter is important for accuracy, but wreks havok on modern devices and scalers,
 // so what I do here is pause the whole system for one PPU clock and insert a "fake" ppu clock to
@@ -219,13 +232,23 @@ reg freeze_clocks = 0;
 reg [4:0] faux_pixel_cnt;
 
 wire use_fake_h = freeze_clocks && faux_pixel_cnt < 6;
+reg [1:0] ppu_tick = 0;
+
+reg [1:0] last_sys_type;
 
 always @(posedge clk) begin
 	if (~freeze_clocks | ~(div_ppu == (div_ppu_n - 1'b1))) begin
-		div_cpu <= (div_cpu == div_cpu_n) ? 1'b1 : div_cpu + 1'b1;
-		div_ppu <= (div_ppu == div_ppu_n) ? 1'b1 : div_ppu + 1'b1;
+		div_cpu <= cpu_ce ? 1'b1 : div_cpu + 1'b1;
+		div_ppu <= ppu_ce ? 1'b1 : div_ppu + 1'b1;
+
+		// reset the ticker on the first ppu tick at or after a cpu tick.
+		if ((div_cpu < div_ppu_n || cpu_ce) && ppu_ce)
+			ppu_tick <= 0;
+		else if (ppu_ce)
+			ppu_tick <= ppu_tick + 1'b1;
 	end
-		div_sys <= (div_sys == div_ppu_n - 1'b1) ? 1'b0 : div_sys + 1'b1;
+	
+	div_sys <= (div_sys == div_ppu_n - 1'b1) ? 1'b0 : div_sys + 1'b1;
 	
 	if (faux_pixel_cnt == 3)
 		freeze_clocks <= 1'b0;
@@ -242,6 +265,14 @@ always @(posedge clk) begin
 		odd_or_even <= 1'b0;
 	else if (cpu_ce) 
 		odd_or_even <= ~odd_or_even;
+
+	// Realign if the system type changes.
+	last_sys_type <= sys_type;
+	if (last_sys_type != sys_type) begin
+		div_cpu <= 5'd1;
+		div_ppu <= 3'd1;
+		div_sys <= 0;
+	end
 end
 
 
@@ -322,6 +353,7 @@ wire [15:0] sample_apu;
 APU apu(
 	.MMC5           (1'b0),
 	.clk            (clk),
+	.PAL            (sys_type == 2'b01),
 	.ce             (cpu_ce),
 	.reset          (reset),
 	.ADDR           (addr[4:0]),
@@ -370,10 +402,10 @@ assign joypad_clock = {joypad2_cs && mr_int, joypad1_cs && mr_int};
 // The real PPU has a CS pin which is a combination of the output of the 74319 (ppu address selector)
 // and the M2 pin from the CPU. This will only be low for 1 and 7/8th PPU cycles, or
 // 7 and 1/2 master cycles on NTSC. Therefore, the PPU should read or write once per cpu cycle, and
-// with our alignment, this should occur at PPU cycle 1 (the *second* cycle).
+// with our alignment, this should occur at PPU cycle 2 (the *third* cycle).
 
-wire mr_ppu     = mr_int && M2; // Read *from* the PPU.
-wire mw_ppu     = mw_int && M2; // Write *to* the PPU.
+wire mr_ppu     = mr_int && (ppu_tick == 1); // Read *from* the PPU.
+wire mw_ppu     = mw_int && (ppu_tick == 1); // Write *to* the PPU.
 wire ppu_cs = addr >= 'h2000 && addr < 'h4000;
 wire [7:0] ppu_dout;            // Data from PPU to CPU
 wire chr_read, chr_write;       // If PPU reads/writes from VRAM
@@ -388,6 +420,7 @@ PPU ppu(
 	.clk              (clk),
 	.ce               (ppu_ce),
 	.reset            (reset),
+	.sys_type         (sys_type),
 	.color            (color),
 	.din              (dbus),
 	.dout             (ppu_dout),
@@ -395,8 +428,8 @@ PPU ppu(
 	.read             (ppu_cs && mr_ppu),
 	.write            (ppu_cs && mw_ppu),
 	.nmi              (nmi),
-	.pre_read         (m2_pre & mr_int & ppu_cs),
-	.pre_write        (m2_pre & mw_int & ppu_cs),
+	.pre_read         (cpu_fetch & mr_int & ppu_cs),
+	.pre_write        (cpu_fetch & mw_int & ppu_cs),
 	.vram_r           (chr_read),
 	.vram_w           (chr_write),
 	.vram_a           (chr_addr),
