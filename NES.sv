@@ -335,7 +335,15 @@ wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], j
 
 wire mic_button = joyA[10] | joyB[10];
 wire fds_btn = joyA[8] | joyB[8];
-wire fds_swap = (fds_swap_invert ^ fds_btn);
+
+reg [21:0] clkcount;
+always@(posedge clk) begin
+	if (nes_ce) begin
+		clkcount<=clkcount+1'd1;
+	end
+end
+
+wire fds_eject = fds_swap_invert ? fds_btn : (clkcount[21] | fds_btn);
 
 reg [2:0] nes_ce;
 
@@ -436,7 +444,6 @@ wire light;
 
 wire [1:0] diskside_req;
 reg [1:0] diskside;
-//reg fds_swap;
 
 wire lightgun_en = |status[19:18];
 
@@ -468,7 +475,7 @@ NES nes (
 	.diskside_req    (diskside_req),
 	.diskside        (diskside),
 	.fds_busy        (fds_busy),
-	.fds_swap        (fds_swap),
+	.fds_eject       (fds_eject),
 	// Memory transactions
 	.memory_addr     (memory_addr),
 	.memory_read_cpu (memory_read_cpu),
@@ -744,7 +751,7 @@ always @(posedge clk) begin
 	old_fds_btn <= fds_btn;
 	
 	if(~old_ack & sd_ack) {sd_rd, sd_wr} <= 0;
-	if(~old_fds_btn & fds_btn) diskside_btn <= next_btn_diskside;
+	if(~old_fds_btn & fds_btn & ~fds_busy) diskside_btn <= next_btn_diskside;
 	if (downloading) begin
 		diskside <= 2'd0;
 		bram_init <= ~fds;
