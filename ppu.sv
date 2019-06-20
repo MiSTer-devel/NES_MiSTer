@@ -529,6 +529,7 @@ endmodule  // BgPainter
 
 module PixelMuxer(
 	input [3:0] bg,
+	input no_obj,
 	input [3:0] obj,
 	input obj_prio,
 	output [3:0] out,
@@ -538,7 +539,7 @@ module PixelMuxer(
 wire bg_flag = bg[0] | bg[1];
 wire obj_flag = obj[0] | obj[1];
 
-assign is_obj = !(obj_prio && bg_flag) && obj_flag;
+assign is_obj = !(obj_prio && bg_flag) && obj_flag && ~no_obj;
 assign out = is_obj ? obj : bg;
 
 endmodule
@@ -800,6 +801,7 @@ wire [3:0] pixel;
 wire pixel_is_obj;
 
 PixelMuxer pixel_muxer(
+	.no_obj   (~|scanline),
 	.bg       (bg_pixel),
 	.obj      (obj_pixel[3:0]),
 	.obj_prio (obj_pixel[4]),
@@ -837,7 +839,9 @@ PaletteRam palette_ram(
 	.write (write && (ain == 7) && is_pal_address) // Condition for writing
 );
 
-assign color = grayscale ? {color2[5:4], 4'b0} : color2;
+// PAL/Dendy masks scanline 0 and 2 pixels on each side with black.
+wire pal_mask = ~|scanline || cycle < 2 || cycle > 253;
+assign color = (|sys_type && pal_mask) ? 6'h0E : (grayscale ? {color2[5:4], 4'b0} : color2);
 
 reg enable_playfield, enable_objects;
 
@@ -846,6 +850,7 @@ if (ce) begin
 	if (reset) begin
 		{obj_patt, bg_patt, obj_size, vbl_enable} <= 0; // 2000 resets to 0
 		{grayscale, playfield_clip, object_clip, enable_playfield, enable_objects, emphasis} <= 0; // 2001 resets to 0
+		nmi_occured <= 0;
 	end else if (write) begin
 		case (ain)
 			0: begin // PPU Control Register 1
@@ -862,7 +867,7 @@ if (ce) begin
 				object_clip <= din[2];
 				enable_playfield <= din[3];
 				enable_objects <= din[4];
-				emphasis <= (sys_type == 2'd1 || sys_type == 2'd2) ? {din[7], din[5], din[6]} : din[7:5];
+				emphasis <= |sys_type ? {din[7], din[5], din[6]} : din[7:5];
 			end
 		endcase
 	end

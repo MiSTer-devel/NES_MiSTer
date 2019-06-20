@@ -37,6 +37,7 @@ module DmaController(
 	output pause_cpu               // CPU is pausede
 );
 
+// XXX: OAM DMA appears to be 1 cycle too short
 reg dmc_state;
 reg [1:0] spr_state;
 reg [7:0] sprite_dma_lastval;
@@ -169,6 +170,8 @@ module NES(
 /*************            Clocks            ***************/
 /**********************************************************/
 
+// Master clock speed: NTSC/Dendy: 21.477272, PAL: 21.2813696
+
 // Cyc 123456789ABC123456789ABC123456789ABC123456789ABC
 // CPU ----M------C----M------C----M------C----M------C
 // PPU ---P---P---P---P---P---P---P---P---P---P---P---P
@@ -194,7 +197,7 @@ module NES(
 // - Cart CE should happen on the second PPU tick in a CPU cycle always
 // - PPU read/write should happen on the last PPU tick in a CPU cycle (usually third)
 
-assign nes_div = div_sys[1:0] <= 2'd3 ? div_sys[1:0] : 2'd3;
+assign nes_div = div_sys;
 assign apu_ce = cpu_ce;
 
 wire reset = reset_nes | (last_sys_type != sys_type);
@@ -206,21 +209,25 @@ wire [7:0] cpu_dout;
 // master cycles and low for 6 master cycles. It is considered active when low or "even".
 reg odd_or_even = 0; // 1 == odd, 0 == even
 
-wire [4:0] div_cpu_n = 5'd12; //(sys_type == 2'd1) ? 5'd16 : (sys_type == 2'd2 ? 5'd15 : 5'd12);
-wire [2:0] div_ppu_n = 3'd4;  //(sys_type == 2'd1) ? 3'd5 : (sys_type == 2'd2 ? 3'd5 : 3'd4);
+// XXX: Because we are using div4 clock divider for PAL, master clock should be 21.2813696
+// Clock Dividers
+wire [4:0] div_cpu_n = 5'd12;
+wire [2:0] div_ppu_n = 3'd4; 
 
+// Counters
 reg [4:0] div_cpu = 5'd1;
 reg [2:0] div_ppu = 3'd1;
-reg [2:0] div_sys = 3'd0;
+reg [1:0] div_sys = 2'd0;
 
-wire cpu_ce = (div_cpu == div_cpu_n);
-wire ppu_ce = (div_ppu == div_ppu_n);
+// CE's
+wire cpu_ce  = (div_cpu == div_cpu_n);
+wire ppu_ce  = (div_ppu == div_ppu_n);
+wire cart_ce = (cart_pre & ppu_ce); // First PPU cycle where cpu data is visible.
 
-wire cart_ce  = (div_cpu <= div_ppu_n && ppu_ce); // First PPU cycle where cpu data is visible.
-wire cart_pre = (ppu_tick == 0);
-
-wire cpu_fetch = (ppu_tick == 1);
-//wire ppu_io = 
+// Prefetch
+wire cart_pre  = (ppu_tick == (cpu_tick_count[2] ? 1 : 0));
+wire ppu_fetch = (ppu_tick == (cpu_tick_count[2] ? 2 : 1));
+wire ppu_io    = (ppu_tick == (cpu_tick_count[2] ? 2 : 1));
 
 // The infamous NES jitter is important for accuracy, but wreks havok on modern devices and scalers,
 // so what I do here is pause the whole system for one PPU clock and insert a "fake" ppu clock to
@@ -235,21 +242,32 @@ wire use_fake_h = freeze_clocks && faux_pixel_cnt < 6;
 reg [1:0] ppu_tick = 0;
 
 reg [1:0] last_sys_type;
+reg [2:0] cpu_tick_count;
+
+wire skip_ppu_cycle = (cpu_tick_count == 4) && (ppu_tick == 0);
 
 always @(posedge clk) begin
 	if (~freeze_clocks | ~(div_ppu == (div_ppu_n - 1'b1))) begin
-		div_cpu <= cpu_ce ? 1'b1 : div_cpu + 1'b1;
+		if (~skip_ppu_cycle)
+			div_cpu <= cpu_ce || (ppu_ce && div_cpu > div_cpu_n) ? 1'b1 : div_cpu + 1'b1;
+
 		div_ppu <= ppu_ce ? 1'b1 : div_ppu + 1'b1;
 
 		// reset the ticker on the first ppu tick at or after a cpu tick.
-		if ((div_cpu < div_ppu_n || cpu_ce) && ppu_ce)
+		if (cpu_ce)
 			ppu_tick <= 0;
 		else if (ppu_ce)
 			ppu_tick <= ppu_tick + 1'b1;
 	end
+
+	// Add one extra PPU tick every 5 cpu cycles for PAL.
+	if (cpu_ce && sys_type[0])
+		cpu_tick_count <= cpu_tick_count[2] ? 3'd0 : cpu_tick_count + 1'b1;
 	
-	div_sys <= (div_sys == div_ppu_n - 1'b1) ? 1'b0 : div_sys + 1'b1;
+	// SDRAM Clock
+	div_sys <= div_sys + 1'b1;
 	
+	// De-Jitter shenanigans
 	if (faux_pixel_cnt == 3)
 		freeze_clocks <= 1'b0;
 
@@ -272,6 +290,7 @@ always @(posedge clk) begin
 		div_cpu <= 5'd1;
 		div_ppu <= 3'd1;
 		div_sys <= 0;
+		cpu_tick_count <= 0;
 	end
 end
 
@@ -353,7 +372,7 @@ wire [15:0] sample_apu;
 APU apu(
 	.MMC5           (1'b0),
 	.clk            (clk),
-	.PAL            (sys_type == 2'b01),
+	.PAL            (sys_type[1]),
 	.ce             (cpu_ce),
 	.reset          (reset),
 	.ADDR           (addr[4:0]),
@@ -404,8 +423,8 @@ assign joypad_clock = {joypad2_cs && mr_int, joypad1_cs && mr_int};
 // 7 and 1/2 master cycles on NTSC. Therefore, the PPU should read or write once per cpu cycle, and
 // with our alignment, this should occur at PPU cycle 2 (the *third* cycle).
 
-wire mr_ppu     = mr_int && (ppu_tick == 1); // Read *from* the PPU.
-wire mw_ppu     = mw_int && (ppu_tick == 1); // Write *to* the PPU.
+wire mr_ppu     = mr_int && ppu_io; // Read *from* the PPU.
+wire mw_ppu     = mw_int && ppu_io; // Write *to* the PPU.
 wire ppu_cs = addr >= 'h2000 && addr < 'h4000;
 wire [7:0] ppu_dout;            // Data from PPU to CPU
 wire chr_read, chr_write;       // If PPU reads/writes from VRAM
@@ -428,8 +447,8 @@ PPU ppu(
 	.read             (ppu_cs && mr_ppu),
 	.write            (ppu_cs && mw_ppu),
 	.nmi              (nmi),
-	.pre_read         (cpu_fetch & mr_int & ppu_cs),
-	.pre_write        (cpu_fetch & mw_int & ppu_cs),
+	.pre_read         (ppu_fetch & mr_int & ppu_cs),
+	.pre_write        (ppu_fetch & mw_int & ppu_cs),
 	.vram_r           (chr_read),
 	.vram_w           (chr_write),
 	.vram_a           (chr_addr),

@@ -114,8 +114,8 @@ assign LED_USER  = downloading | (loader_fail & led_blink) | (bk_state != S_IDLE
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
-assign VIDEO_ARX = status[8] ? 8'd16 : (status[4] ? 8'd64 : 8'd128);
-assign VIDEO_ARY = status[8] ? 8'd9  : (status[4] ? 8'd49 : 8'd105);
+assign VIDEO_ARX = status[8] ? 8'd16 : (hide_overscan ? 8'd64 : 8'd128);
+assign VIDEO_ARY = status[8] ? 8'd9  : (hide_overscan ? 8'd49 : 8'd105);
 
 assign CLK_VIDEO = clk;
 
@@ -180,7 +180,7 @@ wire [31:0] status;
 
 wire arm_reset = status[0];
 wire mirroring_osd = status[5];
-wire hide_overscan = status[4];
+wire hide_overscan = status[4] && ~|status[24:23];
 wire [3:0] palette2_osd = status[15:12];
 wire joy_swap = status[9];
 wire fds_swap_invert = status[16];
