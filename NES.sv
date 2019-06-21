@@ -114,8 +114,8 @@ assign LED_USER  = downloading | (loader_fail & led_blink) | (bk_state != S_IDLE
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
-assign VIDEO_ARX = status[8] ? 8'd16 : (status[4] ? 8'd64 : 8'd128);
-assign VIDEO_ARY = status[8] ? 8'd9  : (status[4] ? 8'd49 : 8'd105);
+assign VIDEO_ARX = status[8] ? 8'd16 : (hide_overscan ? 8'd64 : 8'd128);
+assign VIDEO_ARY = status[8] ? 8'd9  : (hide_overscan ? 8'd49 : 8'd105);
 
 assign CLK_VIDEO = clk;
 
@@ -127,6 +127,12 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 `define DEBUG_AUDIO
 
+// Status Bit Map:
+// 0         1         2         3 
+// 01234567890123456789012345678901
+// 0123456789ABCDEFGHIJKLMNOPQRSTUV
+//  XXXXXXXXXX XXXXXXXXXXXXX     XX
+
 `include "build_id.v"
 parameter CONF_STR = {
 	"NES;;",
@@ -134,6 +140,8 @@ parameter CONF_STR = {
 	"FS,NES;",
 	"FS,FDS;",
 	"H1F,BIN,Load FDS BIOS;",
+	"-;",
+	"ONO,System Type,NTSC,PAL,Dendy;",
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert Mirroring,Off,On;",
@@ -172,7 +180,7 @@ wire [31:0] status;
 
 wire arm_reset = status[0];
 wire mirroring_osd = status[5];
-wire hide_overscan = status[4];
+wire hide_overscan = status[4] && ~|status[24:23];
 wire [3:0] palette2_osd = status[15:12];
 wire joy_swap = status[9];
 wire fds_swap_invert = status[16];
@@ -450,6 +458,7 @@ wire lightgun_en = |status[19:18];
 NES nes (
 	.clk             (clk),
 	.reset_nes       (reset_nes),
+	.sys_type        (status[24:23]),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 32'd0 : mapper_flags),
 	.gg              (status[20]),
