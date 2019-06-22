@@ -503,7 +503,7 @@ NES nes (
 	// Memory transactions
 	.memory_addr     (memory_addr),
 	.memory_read_cpu (memory_read_cpu),
-	.memory_din_cpu  (memory_din_cpu),
+	.memory_din_cpu  (ovr_ena ? bram_din : memory_din_cpu),
 	.memory_read_ppu (memory_read_ppu),
 	.memory_din_ppu  (memory_din_ppu),
 	.memory_write    (memory_write),
@@ -590,27 +590,52 @@ sdram sdram
 	.init           ( !clock_locked            ),
 
 	// cpu/chipset interface
-	.addr           ( (downloading || loader_busy) ? {3'b000, loader_addr_mem} : {3'b000, memory_addr} ),
-	
-	.we             ( memory_write || loader_write_mem	),
-	.din            ( (downloading || loader_busy) ? loader_write_data_mem : memory_dout ),
-	
+	.addr           ( mem_addr ),
+
+	.we             ( mem_we  ),
+	.din            ( mem_din ),
+
 	.oeA            ( memory_read_cpu ),
 	.doutA          ( memory_din_cpu  ),
-	
-	.oeB            ( memory_read_ppu ),
-	.doutB          ( memory_din_ppu  ),
 
-	.bk_clk         ( clk ),
-	.bk_addr        ( bk_busy ? {fds_addr[15:9],sd_buff_addr} : fds_addr[15:0] ),
-	.bk_dout        ( sd_buff_din ),
-	.bk_din         ( bk_busy ? sd_buff_dout : fds_data ),
-	.bk_we          ( bk_busy ? sd_buff_wr & sd_ack : bram_we ),
-	.bko_addr       ( bram_addr ),
-	.bko_dout       ( bram_din ),
-	.bko_din        ( bram_dout ),
-	.bko_we         ( bram_write ),
-	.bk_override    ( bram_override )
+	.oeB            ( memory_read_ppu ),
+	.doutB          ( memory_din_ppu  )
+);
+
+wire [21:0] mem_addr = (downloading || loader_busy) ? loader_addr_mem : memory_addr;
+wire        mem_we = memory_write || loader_write_mem;
+wire  [7:0] mem_din = (downloading || loader_busy) ? loader_write_data_mem : memory_dout;
+
+reg ovr_we;
+reg ovr_ena;
+reg [15:0] ovr_addr;
+always @(posedge clk85) begin
+	reg old_we, old_rd;
+	
+	old_we <= mem_we;
+	old_rd <= memory_read_cpu;
+
+	ovr_we <= 0;
+	if((~old_rd & memory_read_cpu) | (~old_we & mem_we)) begin
+		ovr_addr <= mem_addr[15:0];
+		ovr_ena <= (mem_addr[21:16] == 'b111100);
+		ovr_we <= mem_we;
+	end
+end
+
+dpram #(" ", 16) ovr_ram
+(
+	.clock_a(clk85),
+	.address_a(bram_override ? bram_addr : ovr_addr),
+	.data_a(bram_override ? bram_dout : mem_din),
+	.wren_a(bram_override ? bram_write : (ovr_we & ovr_ena)),
+	.q_a(bram_din),
+
+	.clock_b(clk),
+	.address_b(bk_busy ? {fds_addr[15:9],sd_buff_addr} : fds_addr[15:0]),
+	.data_b(bk_busy ? sd_buff_dout : fds_data),
+	.wren_b(bk_busy ? sd_buff_wr & sd_ack : bram_we),
+	.q_b(sd_buff_din)
 );
 
 reg bk_pending;

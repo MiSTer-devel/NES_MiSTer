@@ -44,18 +44,7 @@ module sdram (
 	input 		 	  oeA,        // cpu requests data
 	output reg [7:0] doutA,	   // data output to cpu
 	input 		 	  oeB,        // ppu requests data
-	output reg [7:0] doutB, 	   // data output to ppu
-	
-	input	           bk_clk,
-	input	    [15:0] bk_addr,
-	input	     [7:0] bk_din,
-	output     [7:0] bk_dout,
-	input	           bk_we,
-	input	    [15:0] bko_addr,
-	input	     [7:0] bko_din,
-	output     [7:0] bko_dout,
-	input	           bko_we,
-	input	           bk_override
+	output reg [7:0] doutB 	   // data output to ppu
 );
 
 // no burst configured
@@ -137,8 +126,7 @@ reg addr0;
 always @(posedge clk)
 	if((q == 1) && oe) addr0 <= addr[0];
 
-wire    ovr_ena = (addr[24:16] == 10'b000111100);
-wire [7:0] dout = ovr_ena ? dpram_dout : addr0 ? sd_data[7:0] : sd_data[15:8];
+wire [7:0] dout = addr0 ? sd_data[7:0] : sd_data[15:8];
 
 always @(posedge clk) begin
 	if(q == STATE_CMD_READ) begin
@@ -171,103 +159,5 @@ assign sd_addr = (reset != 0)?reset_addr:run_addr;
 assign sd_ba = addr[23:22];
 
 assign sd_dqm = we?{ addr[0], ~addr[0] }:2'b00;
-
-reg dpram_we;
-always @(posedge clk) begin
-	reg old_we;
-	
-	old_we <= we;
-	dpram_we <= ~old_we & we & ovr_ena;
-end
-
-reg [7:0] dpram_dout;
-assign bko_dout = dpram_dout;
-
-ovr_dpram ovr_ram
-(
-	.clock_a(clk),
-	.address_a(bk_override ? bko_addr : addr[15:0]),
-	.data_a(bk_override ? bko_din : din),
-	.wren_a(bk_override ? bko_we : dpram_we),
-	.q_a(dpram_dout),
-
-	.clock_b(bk_clk),
-	.address_b(bk_addr),
-	.data_b(bk_din),
-	.wren_b(bk_we),
-	.q_b(bk_dout)
-);
-
-endmodule
-
-//////////////////////////////////////////////
-
-module ovr_dpram
-(
-	input	[15:0] address_a,
-	input	[15:0] address_b,
-	input	       clock_a,
-	input	       clock_b,
-	input	 [7:0] data_a,
-	input	 [7:0] data_b,
-	input	       wren_a,
-	input	       wren_b,
-	output [7:0] q_a,
-	output [7:0] q_b
-);
-
-altsyncram	altsyncram_component
-(
-	.address_a (address_a),
-	.address_b (address_b),
-	.clock0 (clock_a),
-	.clock1 (clock_b),
-	.data_a (data_a),
-	.data_b (data_b),
-	.wren_a (wren_a),
-	.wren_b (wren_b),
-	.q_a (q_a),
-	.q_b (q_b),
-	.aclr0 (1'b0),
-	.aclr1 (1'b0),
-	.addressstall_a (1'b0),
-	.addressstall_b (1'b0),
-	.byteena_a (1'b1),
-	.byteena_b (1'b1),
-	.clocken0 (1'b1),
-	.clocken1 (1'b1),
-	.clocken2 (1'b1),
-	.clocken3 (1'b1),
-	.eccstatus (),
-	.rden_a (1'b1),
-	.rden_b (1'b1)
-);
-defparam
-	altsyncram_component.address_reg_b = "CLOCK1",
-	altsyncram_component.clock_enable_input_a = "BYPASS",
-	altsyncram_component.clock_enable_input_b = "BYPASS",
-	altsyncram_component.clock_enable_output_a = "BYPASS",
-	altsyncram_component.clock_enable_output_b = "BYPASS",
-	altsyncram_component.indata_reg_b = "CLOCK1",
-	altsyncram_component.intended_device_family = "Cyclone V",
-	altsyncram_component.lpm_type = "altsyncram",
-	altsyncram_component.numwords_a = 65536,
-	altsyncram_component.numwords_b = 65536,
-	altsyncram_component.operation_mode = "BIDIR_DUAL_PORT",
-	altsyncram_component.outdata_aclr_a = "NONE",
-	altsyncram_component.outdata_aclr_b = "NONE",
-	altsyncram_component.outdata_reg_a = "UNREGISTERED",
-	altsyncram_component.outdata_reg_b = "UNREGISTERED",
-	altsyncram_component.power_up_uninitialized = "FALSE",
-	altsyncram_component.read_during_write_mode_port_a = "NEW_DATA_NO_NBE_READ",
-	altsyncram_component.read_during_write_mode_port_b = "NEW_DATA_NO_NBE_READ",
-	altsyncram_component.widthad_a = 16,
-	altsyncram_component.widthad_b = 16,
-	altsyncram_component.width_a = 8,
-	altsyncram_component.width_b = 8,
-	altsyncram_component.width_byteena_a = 1,
-	altsyncram_component.width_byteena_b = 1,
-	altsyncram_component.wrcontrol_wraddress_reg_b = "CLOCK1";
-
 
 endmodule
