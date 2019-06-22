@@ -131,7 +131,7 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-//  XXXXXXXXXX XXXXXXXXXXXXX     XX
+// XXXXXXXXXXX XXXXXXXXXXXXX     XX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -293,18 +293,33 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 
 wire clock_locked;
 wire clk85;
-wire clk;
+
+assign SDRAM_CLK = ~clk85;
 
 pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk85),
-	.outclk_1(SDRAM_CLK),
-	.outclk_2(clk),
 	.locked(clock_locked)
 );
 
+
+// using gated clock
+wire clk = clk85 & ce_clk;
+(* direct_enable *) reg ce_clk;
+always @(negedge clk85) begin
+	reg [1:0] div = 0;
+	div <= div + 1'd1;
+	ce_clk <= !div;
+end
+
+/*
+// using divider
+wire clk = clkdiv[1];
+reg [1:0] clkdiv;
+always @(posedge clk85) clkdiv <= clkdiv + 1'd1;
+*/
 
 // reset after download
 reg [7:0] download_reset_cnt;
