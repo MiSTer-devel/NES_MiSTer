@@ -571,8 +571,6 @@ NES nes (
 
 wire [2:0] emphasis;
 
-assign SDRAM_CKE         = 1'b1;
-
 wire [7:0] xor_data;
 wire [7:0] bios_data;
 wire bios_write = (loader_write && bios_download && ~bios_loaded);
@@ -627,32 +625,38 @@ end
 
 sdram sdram
 (
-	// interface to the MT48LC16M16 chip
-	.sd_data        ( SDRAM_DQ                 ),
-	.sd_addr        ( SDRAM_A                  ),
-	.sd_dqm         ( {SDRAM_DQMH, SDRAM_DQML} ),
-	.sd_cs          ( SDRAM_nCS                ),
-	.sd_ba          ( SDRAM_BA                 ),
-	.sd_we          ( SDRAM_nWE                ),
-	.sd_ras         ( SDRAM_nRAS               ),
-	.sd_cas         ( SDRAM_nCAS               ),
+	.SDRAM_DQ   ( SDRAM_DQ   ),
+	.SDRAM_A    ( SDRAM_A    ),
+	.SDRAM_DQML ( SDRAM_DQML ),
+	.SDRAM_DQMH ( SDRAM_DQMH ),
+	.SDRAM_BA   ( SDRAM_BA   ),
+	.SDRAM_nCS  ( SDRAM_nCS  ),
+	.SDRAM_nWE  ( SDRAM_nWE  ),
+	.SDRAM_nRAS ( SDRAM_nRAS ),
+	.SDRAM_nCAS ( SDRAM_nCAS ),
+	.SDRAM_CKE  ( SDRAM_CKE  ),
 
 	// system interface
-	.clk            ( clk85                    ),
-	.clkref         ( nes_ce[1]                ),
-	.init           ( !clock_locked            ),
+	.clk        ( clk85           ),
+	.init       ( !clock_locked   ),
 
 	// cpu/chipset interface
-	.addr           ( mem_addr ),
+	.ch0_addr   ( mem_addr        ),
+	.ch0_wr     ( mem_we          ),
+	.ch0_din    ( mem_din         ),
+	.ch0_rd     ( memory_read_cpu ),
+	.ch0_dout   ( memory_din_cpu  ),
 
-	.we             ( mem_we  ),
-	.din            ( mem_din ),
+	.ch1_addr   ( memory_addr     ),
+	.ch1_rd     ( memory_read_ppu ),
+	.ch1_dout   ( memory_din_ppu  ),
 
-	.oeA            ( memory_read_cpu ),
-	.doutA          ( memory_din_cpu  ),
-
-	.oeB            ( memory_read_ppu ),
-	.doutB          ( memory_din_ppu  )
+	// reserved for backup ram save/load
+	.ch2_addr   (  ),
+	.ch2_wr     (  ),
+	.ch2_din    (  ),
+	.ch0_rd     (  ),
+	.ch0_dout   (  )
 );
 
 wire [21:0] mem_addr = (downloading || loader_busy) ? loader_addr_mem : memory_addr;
