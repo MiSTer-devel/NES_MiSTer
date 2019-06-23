@@ -21,37 +21,37 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>. 
 //
 
-module sdram (
-
+module sdram
+(
 	// interface to the MT48LC16M16 chip
-	inout [15:0]  	  sd_data,    // 16 bit bidirectional data bus
-	output [12:0]	  sd_addr,    // 13 bit multiplexed address bus
-	output [1:0] 	  sd_dqm,     // two byte masks
-	output [1:0] 	  sd_ba,      // two banks
+	inout     [15:0] sd_data,    // 16 bit bidirectional data bus
+	output    [12:0] sd_addr,    // 13 bit multiplexed address bus
+	output     [1:0] sd_dqm,     // two byte masks
+	output     [1:0] sd_ba,      // two banks
 	output 			  sd_cs,      // a single chip select
 	output 			  sd_we,      // write enable
 	output 			  sd_ras,     // row address select
 	output 			  sd_cas,     // columns address select
 
 	// cpu/chipset interface
-	input 		 	  init,			// init signal after FPGA config to initialize RAM
-	input 		 	  clk,			// sdram is accessed at up to 128MHz
-	input				  clkref,		// reference clock to sync to
-	
-	input [24:0]     addr,       // 25 bit byte address
+	input 		 	  init,       // init signal after FPGA config to initialize RAM
+	input 		 	  clk,        // sdram is accessed at up to 128MHz
+	input				  clkref,     // reference clock to sync to
+
+	input     [24:0] addr,       // 25 bit byte address
 	input 		 	  we,         // cpu/chipset requests write
-	input [7:0]  	  din,			// data input from chipset/cpu
+	input      [7:0] din,        // data input from chipset/cpu
 	input 		 	  oeA,        // cpu requests data
-	output reg [7:0] doutA,	   // data output to cpu
+	output reg [7:0] doutA,	     // data output to cpu
 	input 		 	  oeB,        // ppu requests data
-	output reg [7:0] doutB 	   // data output to ppu
+	output reg [7:0] doutB 	     // data output to ppu
 );
 
 // no burst configured
 localparam RASCAS_DELAY   = 3'd2;   // tRCD=20ns -> 2 cycles@85MHz
 localparam BURST_LENGTH   = 3'b000; // 000=1, 001=2, 010=4, 011=8
 localparam ACCESS_TYPE    = 1'b0;   // 0=sequential, 1=interleaved
-localparam CAS_LATENCY    = 3'd3;   // 2/3 allowed
+localparam CAS_LATENCY    = 3'd2;   // 2/3 allowed
 localparam OP_MODE        = 2'b00;  // only 00 (standard operation) allowed
 localparam NO_WRITE_BURST = 1'b1;   // 0= write burst enabled, 1=only single access write
 
@@ -64,8 +64,8 @@ localparam MODE = { 3'b000, NO_WRITE_BURST, OP_MODE, CAS_LATENCY, ACCESS_TYPE, B
 
 localparam STATE_FIRST     = 4'd0;   // first state in cycle
 localparam STATE_CMD_START = 4'd1;   // state in which a new command can be started
-localparam STATE_CMD_CONT  = STATE_CMD_START  + RASCAS_DELAY; // 4 command can be continued
-localparam STATE_CMD_READ  = 4'd7;   // read state
+localparam STATE_CMD_CONT  = STATE_CMD_START + RASCAS_DELAY; // 3 - command can be continued
+localparam STATE_CMD_READ  = STATE_CMD_CONT + CAS_LATENCY + 1'd1; // 6 - read state
 localparam STATE_LAST      = 4'd15;  // last state in cycle
 
 reg [3:0] q;
@@ -87,8 +87,7 @@ end
 reg [16:0] reset;
 always @(posedge clk) begin
 	if(init)	reset <= 17'h14c08;
-	else if((q == STATE_LAST) && (reset != 0))
-		reset <= reset - 17'd1;
+	else if((q == STATE_LAST) && (reset != 0)) reset <= reset - 17'd1;
 end
 
 // ---------------------------------------------------------------------
@@ -118,13 +117,12 @@ assign sd_we  = sd_cmd[0];
 // the eight bits are sent on both bytes ports. Which one's actually
 // written depends on the state of dqm of which only one is active
 // at a time when writing
-assign sd_data = we?{din, din}:16'bZZZZZZZZZZZZZZZZ;
+assign sd_data = we ? {din, din} : 16'bZZZZZZZZZZZZZZZZ;
 
 wire oe = oeA || oeB;
 
 reg addr0;
-always @(posedge clk)
-	if((q == 1) && oe) addr0 <= addr[0];
+always @(posedge clk) if((q == STATE_CMD_START) && oe) addr0 <= addr[0];
 
 wire [7:0] dout = addr0 ? sd_data[7:0] : sd_data[15:8];
 
@@ -136,28 +134,23 @@ always @(posedge clk) begin
 end
 
 wire [3:0] reset_cmd = 
-	((q == STATE_CMD_START) && (reset == 13))?CMD_PRECHARGE:
-	((q == STATE_CMD_START) && (reset ==  2))?CMD_LOAD_MODE:
+	((q == STATE_CMD_START) && (reset == 13)) ? CMD_PRECHARGE:
+	((q == STATE_CMD_START) && (reset ==  2)) ? CMD_LOAD_MODE:
 	CMD_INHIBIT;
 
 wire [3:0] run_cmd =
-	((we || oe) && (q == STATE_CMD_START))?CMD_ACTIVE:
-	(we && 			(q == STATE_CMD_CONT ))?CMD_WRITE:
-	(!we &&  oe &&	(q == STATE_CMD_CONT ))?CMD_READ:
-	(!we && !oe && (q == STATE_CMD_START))?CMD_AUTO_REFRESH:
+	((we ||  oe) && (q == STATE_CMD_START)) ? CMD_ACTIVE:
+	(               (q == STATE_CMD_START)) ? CMD_AUTO_REFRESH:
+	( we         && (q == STATE_CMD_CONT )) ? CMD_WRITE:
+	(        oe  && (q == STATE_CMD_CONT )) ? CMD_READ:
 	CMD_INHIBIT;
-	
-assign sd_cmd = (reset != 0)?reset_cmd:run_cmd;
 
-wire [12:0] reset_addr = (reset == 13)?13'b0010000000000:MODE;
-	
-wire [12:0] run_addr = 
-	(q == STATE_CMD_START)?addr[21:9]:{ 4'b0010, addr[24], addr[8:1]};
+wire [12:0] reset_addr = (reset == 13) ? 13'b0010000000000 : MODE;
+wire [12:0] run_addr = (q == STATE_CMD_START) ? addr[21:9] : { 4'b0010, addr[24], addr[8:1]};
 
-assign sd_addr = (reset != 0)?reset_addr:run_addr;
-
-assign sd_ba = addr[23:22];
-
-assign sd_dqm = we?{ addr[0], ~addr[0] }:2'b00;
+assign sd_cmd  = reset ? reset_cmd  : run_cmd;
+assign sd_addr = reset ? reset_addr : run_addr;
+assign sd_ba   = addr[23:22];
+assign sd_dqm  = we ? {addr[0], ~addr[0]} : 2'b00;
 
 endmodule

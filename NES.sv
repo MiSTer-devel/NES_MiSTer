@@ -223,11 +223,6 @@ always_ff @(posedge clk) begin
 		filter_cnt<= filter_cnt + 1'b1;
 end
 
-
-
-wire forced_scandoubler;
-wire ps2_kbd_clk, ps2_kbd_data;
-
 reg  [31:0] sd_lba;
 reg         sd_rd = 0;
 reg         sd_wr = 0;
@@ -239,12 +234,15 @@ wire        sd_buff_wr;
 wire        img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
-wire [7:0]  filetype;
+
+wire  [7:0] filetype;
+wire        ioctl_download;
 wire [24:0] ioctl_addr;
 reg         ioctl_wait;
+
 wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
-wire        ioctl_download;
+wire        forced_scandoubler;
 
 hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 (
@@ -293,6 +291,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 
 wire clock_locked;
 wire clk85;
+wire clk;
 
 assign SDRAM_CLK = ~clk85;
 
@@ -301,12 +300,67 @@ pll pll
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk85),
+	.reconfig_to_pll(reconfig_to_pll),
+	.reconfig_from_pll(reconfig_from_pll),
 	.locked(clock_locked)
 );
 
+wire [63:0] reconfig_to_pll;
+wire [63:0] reconfig_from_pll;
+wire        cfg_waitrequest;
+reg         cfg_write;
+reg   [5:0] cfg_address;
+reg  [31:0] cfg_data;
+
+pll_cfg pll_cfg
+(
+	.mgmt_clk(CLK_50M),
+	.mgmt_reset(0),
+	.mgmt_waitrequest(cfg_waitrequest),
+	.mgmt_read(0),
+	.mgmt_readdata(),
+	.mgmt_write(cfg_write),
+	.mgmt_address(cfg_address),
+	.mgmt_writedata(cfg_data),
+	.reconfig_to_pll(reconfig_to_pll),
+	.reconfig_from_pll(reconfig_from_pll)
+);
+
+always @(posedge CLK_50M) begin
+	reg pald = 0, pald2 = 0;
+	reg [2:0] state = 0;
+
+	pald  <= status[23];
+	pald2 <= pald;
+
+	cfg_write <= 0;
+	if(pald2 != pald) state <= 1;
+
+	if(!cfg_waitrequest) begin
+		if(state) state<=state+1'd1;
+		case(state)
+			1: begin
+					cfg_address <= 0;
+					cfg_data <= 0;
+					cfg_write <= 1;
+				end
+			3: begin
+					cfg_address <= 7;
+					cfg_data <= pald2 ? 2201376898 : 2537933971;
+					cfg_write <= 1;
+				end
+			5: begin
+					cfg_address <= 2;
+					cfg_data <= 0;
+					cfg_write <= 1;
+				end
+		endcase
+	end
+end
+
 
 // using gated clock
-wire clk = clk85 & ce_clk;
+assign clk = clk85 & ce_clk;
 (* direct_enable *) reg ce_clk;
 always @(negedge clk85) begin
 	reg [1:0] div = 0;
@@ -316,7 +370,7 @@ end
 
 /*
 // using divider
-wire clk = clkdiv[1];
+assign clk = clkdiv[1];
 reg [1:0] clkdiv;
 always @(posedge clk85) clkdiv <= clkdiv + 1'd1;
 */
@@ -332,7 +386,6 @@ end
 // hold machine in reset until first download starts
 reg init_reset_n = 0;
 always @(posedge clk) if(downloading) init_reset_n <= 1;
-
 
 wire  [8:0] cycle;
 wire  [8:0] scanline;

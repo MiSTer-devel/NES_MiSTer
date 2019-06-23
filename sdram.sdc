@@ -1,5 +1,5 @@
 
-create_generated_clock -source [get_pins -compatibility_mode {*|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
+create_generated_clock -source [get_pins -compatibility_mode {*|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk}] \
                        -name SDRAM_CLK [get_ports {SDRAM_CLK}] -invert
 
 derive_pll_clocks
