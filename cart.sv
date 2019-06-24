@@ -612,9 +612,9 @@ Mapper65 map65(
 // Mappers: 11, 38, 66, 86, 87, 101, 140                                       //
 // Status : 38/66 - Working, 38/87/101/140 - Needs eval, 86 - No Audio Samples //
 // Notes  :                                                                    //
-// Games  : Doraemon, Dragon Power                                             //
+// Games  : Doraemon, Dragon Power, Sidewinder (145), Taiwan Mahjong 16 (149)  //
 //*****************************************************************************//
-wire mapper66_en = me[11] | me[38] | me[86] | me[87] | me[101] | me[140] | me[66];
+wire mapper66_en = me[11] | me[38] | me[86] | me[87] | me[101] | me[140] | me[66] | me[145] | me[149];
 Mapper66 map66(
 	.clk        (clk),
 	.ce         (ce),
@@ -858,15 +858,16 @@ Mapper78 map78(
 
 //*****************************************************************************//
 // Name   : NINA                                                               //
-// Mappers: 79, 113                                                            //
+// Mappers: 79, 113, 133, 146, 148                                             //
 // Status : Working                                                            //
-// Notes  :                                                                    //
-// Games  : Tiles of Fate, Dudes with Attitude, Krazy Kreatures                //
+// Notes  : 133 uses simplified (72 pin) version, 146 Duplicate of 79?         //
+// Games  : Tiles of Fate, Dudes with Attitude, Krazy Kreatures,               //
+//          Twin Eagle (146), Mahjong World (148), Jovial Race (133)           //
 //*****************************************************************************//
 Mapper79 map79(
 	.clk        (clk),
 	.ce         (ce),
-	.enable     (me[79] | me[113]),
+	.enable     (me[79] | me[113] | me[133] | me[146] | me[148]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
@@ -1366,6 +1367,101 @@ Mapper164 map164(
 	.clk        (clk),
 	.ce         (ce),
 	.enable     (me[164]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b)
+);
+
+//*****************************************************************************//
+// Name   : Sachen 8259                                                        //
+// Mappers: 137, 138, 139, 141, 150, 243                                       //
+// Status : Working                                                            //
+// Notes  :                                                                    //
+// Games  : The Great Wall (137), Silver Eagle (138), Hell Fighter (139),      //
+//          Super Cart 6 - 6 in 1(141), Strategist (150), Poker III (243)      //
+//*****************************************************************************//
+Sachen8259 sachen(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[137] | me[138] | me[139] | me[141] | me[150] | me[243]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b)
+);
+
+//*****************************************************************************//
+// Name   : Sachen JV001                                                       //
+// Mappers: 136, 147, 132, 173, 172, 36                                        //
+// Status : Working                                                            //
+// Notes  : 147 only tested with 60 pin version                                //
+// Games  : Wei Lai Xiao Zi (136), Chinese Kungfu (147), Creatom (132),        //
+//          F-15 City War (173), Mahjong Block (172), Strike Wolf (36)         //
+//*****************************************************************************//
+SachenJV001 sachenj(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[136] | me[147] | me[132] | me[173] | me[172] | me[36]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b)
+);
+
+//*****************************************************************************//
+// Name   : Sachen NROM                                                        //
+// Mappers: 143                                                                //
+// Status : Working                                                            //
+// Notes  :                                                                    //
+// Games  : Dancing Blocks, Magical Mathematics                                //
+//*****************************************************************************//
+SachenNROM sachenn(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[143]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
