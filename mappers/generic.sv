@@ -202,6 +202,8 @@ endmodule
 // 101 - Jaleco JF-11,JF-14
 // 140 - Jaleco JF-11,JF-14
 // 66 - GxROM
+// 145 - Sachen
+// 149 - Sachen
 module Mapper66(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk
@@ -242,7 +244,7 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-reg [15:0] flags_out = 0;
+wire [15:0] flags_out = {13'h0, prg_conflict, 2'b00};
 
 
 reg [1:0] prg_bank;
@@ -254,6 +256,8 @@ wire Mapper140 = (mapper == 140);
 wire Mapper101 = (mapper == 101);
 wire Mapper86 = (mapper == 86);
 wire Mapper87 = (mapper == 87);
+wire Mapper145 = (mapper == 145);
+wire Mapper149 = (mapper == 149);
 
 always @(posedge clk)
 if (~enable) begin
@@ -263,6 +267,8 @@ end else if (ce) begin
 	if (prg_ain[15] & prg_write) begin
 		if (GXROM)
 			{prg_bank, chr_bank} <= {prg_din[5:4], 2'b0, prg_din[1:0]};
+		else if (Mapper149)
+			{chr_bank} <= {3'b0, prg_din[7]};
 		else // Color Dreams
 			{chr_bank, prg_bank} <= {prg_din[7:4], prg_din[1:0]};
 	end else if ((prg_ain[15:12]==4'h7) & prg_write & BitCorps) begin
@@ -277,6 +283,9 @@ end else if (ce) begin
 		end else if (Mapper86) begin
 			{prg_bank, chr_bank} <= {prg_din[5:4], 1'b0, prg_din[6], prg_din[1:0]};
 		end
+	end else if ((prg_ain[15:8]==8'h41) & prg_write) begin
+		if (Mapper145)
+			{chr_bank} <= {3'b0, prg_din[7]};
 	end
 end
 
@@ -286,6 +295,7 @@ assign chr_allow = flags[15];
 assign chr_aout = {5'b10_000, chr_bank, chr_ain[12:0]};
 assign vram_ce = chr_ain[13];
 assign vram_a10 = flags[14] ? chr_ain[10] : chr_ain[11];
+wire prg_conflict = prg_ain[15] && (Mapper149);
 
 endmodule
 
@@ -615,6 +625,7 @@ assign vram_a10 = vram_a10_t;
 endmodule
 
 // #79,#113 - NINA-03 / NINA-06
+// #133,#146,#148 - Sachen
 module Mapper79(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk
@@ -655,12 +666,14 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-reg [15:0] flags_out = 0;
+wire [15:0] flags_out = {13'h0, prg_conflict, 2'b00};
 
 reg [2:0] prg_bank;
 reg [3:0] chr_bank;
 reg mirroring;  // 0: Horizontal, 1: Vertical
 wire mapper113 = (flags[7:0] == 113); // NINA-06
+wire mapper133 = (flags[7:0] == 133);
+wire mapper148 = (flags[7:0] == 148);
 
 always @(posedge clk)
 if (~enable) begin
@@ -669,7 +682,13 @@ if (~enable) begin
 	mirroring <= 0;
 end else if (ce) begin
 	if (prg_ain[15:13] == 3'b010 && prg_ain[8] && prg_write)
-		{mirroring, chr_bank[3], prg_bank, chr_bank[2:0]} <= prg_din;
+		if (mapper133)
+			{mirroring, chr_bank[3], prg_bank, chr_bank[2:0]} <= {4'h0,prg_din[2],1'b0,prg_din[1:0]};
+		else
+			{mirroring, chr_bank[3], prg_bank, chr_bank[2:0]} <= prg_din;
+	if (prg_ain[15] == 1'b1 && prg_write)
+		if (mapper148)
+			{mirroring, chr_bank[3], prg_bank, chr_bank[2:0]} <= prg_din;
 end
 
 assign prg_aout = {4'b00_00, prg_bank, prg_ain[14:0]};
@@ -679,6 +698,7 @@ assign chr_aout = {5'b10_000, chr_bank, chr_ain[12:0]};
 assign vram_ce = chr_ain[13];
 wire mirrconfig = mapper113 ? mirroring : flags[14]; // Mapper #13 has mapper controlled mirroring
 assign vram_a10 = mirrconfig ? chr_ain[10] : chr_ain[11]; // 0: horiz, 1: vert
+wire prg_conflict = prg_ain[15] && mapper148;
 
 endmodule
 
