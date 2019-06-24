@@ -114,8 +114,8 @@ assign LED_USER  = downloading | (loader_fail & led_blink) | (bk_state != S_IDLE
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
-assign VIDEO_ARX = status[8] ? 8'd16 : (status[4] ? 8'd64 : 8'd128);
-assign VIDEO_ARY = status[8] ? 8'd9  : (status[4] ? 8'd49 : 8'd105);
+assign VIDEO_ARX = status[8] ? 8'd16 : (hide_overscan ? 8'd64 : 8'd128);
+assign VIDEO_ARY = status[8] ? 8'd9  : (hide_overscan ? 8'd49 : 8'd105);
 
 assign CLK_VIDEO = clk;
 
@@ -127,6 +127,12 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 `define DEBUG_AUDIO
 
+// Status Bit Map:
+// 0         1         2         3 
+// 01234567890123456789012345678901
+// 0123456789ABCDEFGHIJKLMNOPQRSTUV
+// XXXXXXXXXXX XXXXXXXXXXXXX     XX
+
 `include "build_id.v"
 parameter CONF_STR = {
 	"NES;;",
@@ -134,6 +140,8 @@ parameter CONF_STR = {
 	"FS,NES;",
 	"FS,FDS;",
 	"H1F,BIN,Load FDS BIOS;",
+	"-;",
+	"ONO,System Type,NTSC,PAL,Dendy;",
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
 	"O5,Invert Mirroring,Off,On;",
@@ -172,7 +180,7 @@ wire [31:0] status;
 
 wire arm_reset = status[0];
 wire mirroring_osd = status[5];
-wire hide_overscan = status[4];
+wire hide_overscan = status[4] && ~|status[24:23];
 wire [3:0] palette2_osd = status[15:12];
 wire joy_swap = status[9];
 wire fds_swap_invert = status[16];
@@ -215,11 +223,6 @@ always_ff @(posedge clk) begin
 		filter_cnt<= filter_cnt + 1'b1;
 end
 
-
-
-wire forced_scandoubler;
-wire ps2_kbd_clk, ps2_kbd_data;
-
 reg  [31:0] sd_lba;
 reg         sd_rd = 0;
 reg         sd_wr = 0;
@@ -231,12 +234,15 @@ wire        sd_buff_wr;
 wire        img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
-wire [7:0]  filetype;
+
+wire  [7:0] filetype;
+wire        ioctl_download;
 wire [24:0] ioctl_addr;
 reg         ioctl_wait;
+
 wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
-wire        ioctl_download;
+wire        forced_scandoubler;
 
 hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 (
@@ -287,16 +293,87 @@ wire clock_locked;
 wire clk85;
 wire clk;
 
+assign SDRAM_CLK = ~clk85;
+
 pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk85),
-	.outclk_1(SDRAM_CLK),
-	.outclk_2(clk),
+	.reconfig_to_pll(reconfig_to_pll),
+	.reconfig_from_pll(reconfig_from_pll),
 	.locked(clock_locked)
 );
 
+wire [63:0] reconfig_to_pll;
+wire [63:0] reconfig_from_pll;
+wire        cfg_waitrequest;
+reg         cfg_write;
+reg   [5:0] cfg_address;
+reg  [31:0] cfg_data;
+
+pll_cfg pll_cfg
+(
+	.mgmt_clk(CLK_50M),
+	.mgmt_reset(0),
+	.mgmt_waitrequest(cfg_waitrequest),
+	.mgmt_read(0),
+	.mgmt_readdata(),
+	.mgmt_write(cfg_write),
+	.mgmt_address(cfg_address),
+	.mgmt_writedata(cfg_data),
+	.reconfig_to_pll(reconfig_to_pll),
+	.reconfig_from_pll(reconfig_from_pll)
+);
+
+always @(posedge CLK_50M) begin
+	reg pald = 0, pald2 = 0;
+	reg [2:0] state = 0;
+
+	pald  <= status[23];
+	pald2 <= pald;
+
+	cfg_write <= 0;
+	if(pald2 != pald) state <= 1;
+
+	if(!cfg_waitrequest) begin
+		if(state) state<=state+1'd1;
+		case(state)
+			1: begin
+					cfg_address <= 0;
+					cfg_data <= 0;
+					cfg_write <= 1;
+				end
+			3: begin
+					cfg_address <= 7;
+					cfg_data <= pald2 ? 2201376898 : 2537933971;
+					cfg_write <= 1;
+				end
+			5: begin
+					cfg_address <= 2;
+					cfg_data <= 0;
+					cfg_write <= 1;
+				end
+		endcase
+	end
+end
+
+
+// using gated clock
+assign clk = clk85 & ce_clk;
+(* direct_enable *) reg ce_clk;
+always @(negedge clk85) begin
+	reg [1:0] div = 0;
+	div <= div + 1'd1;
+	ce_clk <= !div;
+end
+
+/*
+// using divider
+assign clk = clkdiv[1];
+reg [1:0] clkdiv;
+always @(posedge clk85) clkdiv <= clkdiv + 1'd1;
+*/
 
 // reset after download
 reg [7:0] download_reset_cnt;
@@ -309,7 +386,6 @@ end
 // hold machine in reset until first download starts
 reg init_reset_n = 0;
 always @(posedge clk) if(downloading) init_reset_n <= 1;
-
 
 wire  [8:0] cycle;
 wire  [8:0] scanline;
@@ -450,6 +526,7 @@ wire lightgun_en = |status[19:18];
 NES nes (
 	.clk             (clk),
 	.reset_nes       (reset_nes),
+	.sys_type        (status[24:23]),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 32'd0 : mapper_flags),
 	.gg              (status[20]),
@@ -479,7 +556,7 @@ NES nes (
 	// Memory transactions
 	.memory_addr     (memory_addr),
 	.memory_read_cpu (memory_read_cpu),
-	.memory_din_cpu  (memory_din_cpu),
+	.memory_din_cpu  (ovr_ena ? bram_din : memory_din_cpu),
 	.memory_read_ppu (memory_read_ppu),
 	.memory_din_ppu  (memory_din_ppu),
 	.memory_write    (memory_write),
@@ -493,8 +570,6 @@ NES nes (
 );
 
 wire [2:0] emphasis;
-
-assign SDRAM_CKE         = 1'b1;
 
 wire [7:0] xor_data;
 wire [7:0] bios_data;
@@ -550,43 +625,74 @@ end
 
 sdram sdram
 (
-	// interface to the MT48LC16M16 chip
-	.sd_data        ( SDRAM_DQ                 ),
-	.sd_addr        ( SDRAM_A                  ),
-	.sd_dqm         ( {SDRAM_DQMH, SDRAM_DQML} ),
-	.sd_cs          ( SDRAM_nCS                ),
-	.sd_ba          ( SDRAM_BA                 ),
-	.sd_we          ( SDRAM_nWE                ),
-	.sd_ras         ( SDRAM_nRAS               ),
-	.sd_cas         ( SDRAM_nCAS               ),
+	.SDRAM_DQ   ( SDRAM_DQ   ),
+	.SDRAM_A    ( SDRAM_A    ),
+	.SDRAM_DQML ( SDRAM_DQML ),
+	.SDRAM_DQMH ( SDRAM_DQMH ),
+	.SDRAM_BA   ( SDRAM_BA   ),
+	.SDRAM_nCS  ( SDRAM_nCS  ),
+	.SDRAM_nWE  ( SDRAM_nWE  ),
+	.SDRAM_nRAS ( SDRAM_nRAS ),
+	.SDRAM_nCAS ( SDRAM_nCAS ),
+	.SDRAM_CKE  ( SDRAM_CKE  ),
 
 	// system interface
-	.clk            ( clk85                    ),
-	.clkref         ( nes_ce[1]                ),
-	.init           ( !clock_locked            ),
+	.clk        ( clk85           ),
+	.init       ( !clock_locked   ),
 
 	// cpu/chipset interface
-	.addr           ( (downloading || loader_busy) ? {3'b000, loader_addr_mem} : {3'b000, memory_addr} ),
-	
-	.we             ( memory_write || loader_write_mem	),
-	.din            ( (downloading || loader_busy) ? loader_write_data_mem : memory_dout ),
-	
-	.oeA            ( memory_read_cpu ),
-	.doutA          ( memory_din_cpu  ),
-	
-	.oeB            ( memory_read_ppu ),
-	.doutB          ( memory_din_ppu  ),
+	.ch0_addr   ( mem_addr        ),
+	.ch0_wr     ( mem_we          ),
+	.ch0_din    ( mem_din         ),
+	.ch0_rd     ( memory_read_cpu ),
+	.ch0_dout   ( memory_din_cpu  ),
 
-	.bk_clk         ( clk ),
-	.bk_addr        ( bk_busy ? {fds_addr[15:9],sd_buff_addr} : fds_addr[15:0] ),
-	.bk_dout        ( sd_buff_din ),
-	.bk_din         ( bk_busy ? sd_buff_dout : fds_data ),
-	.bk_we          ( bk_busy ? sd_buff_wr & sd_ack : bram_we ),
-	.bko_addr       ( bram_addr ),
-	.bko_dout       ( bram_din ),
-	.bko_din        ( bram_dout ),
-	.bko_we         ( bram_write ),
-	.bk_override    ( bram_override )
+	.ch1_addr   ( memory_addr     ),
+	.ch1_rd     ( memory_read_ppu ),
+	.ch1_dout   ( memory_din_ppu  ),
+
+	// reserved for backup ram save/load
+	.ch2_addr   (  ),
+	.ch2_wr     (  ),
+	.ch2_din    (  ),
+	.ch0_rd     (  ),
+	.ch0_dout   (  )
+);
+
+wire [21:0] mem_addr = (downloading || loader_busy) ? loader_addr_mem : memory_addr;
+wire        mem_we = memory_write || loader_write_mem;
+wire  [7:0] mem_din = (downloading || loader_busy) ? loader_write_data_mem : memory_dout;
+
+reg ovr_we;
+reg ovr_ena;
+reg [15:0] ovr_addr;
+always @(posedge clk85) begin
+	reg old_we, old_rd;
+	
+	old_we <= mem_we;
+	old_rd <= memory_read_cpu;
+
+	ovr_we <= 0;
+	if((~old_rd & memory_read_cpu) | (~old_we & mem_we)) begin
+		ovr_addr <= mem_addr[15:0];
+		ovr_ena <= (mem_addr[21:16] == 'b111100);
+		ovr_we <= mem_we;
+	end
+end
+
+dpram #(" ", 16) ovr_ram
+(
+	.clock_a(clk85),
+	.address_a(bram_override ? bram_addr : ovr_addr),
+	.data_a(bram_override ? bram_dout : mem_din),
+	.wren_a(bram_override ? bram_write : (ovr_we & ovr_ena)),
+	.q_a(bram_din),
+
+	.clock_b(clk),
+	.address_b(bk_busy ? {fds_addr[15:9],sd_buff_addr} : fds_addr[15:0]),
+	.data_b(bk_busy ? sd_buff_dout : fds_data),
+	.wren_b(bk_busy ? sd_buff_wr & sd_ack : bram_we),
+	.q_b(sd_buff_din)
 );
 
 reg bk_pending;

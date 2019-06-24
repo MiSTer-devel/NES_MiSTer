@@ -666,7 +666,7 @@ reg         adj_write;
 reg   [5:0] adj_address;
 reg  [31:0] adj_data;
 
-pll_hdmi_cfg pll_hdmi_cfg
+pll_cfg pll_cfg
 (
 	.mgmt_clk(FPGA_CLK1_50),
 	.mgmt_reset(reset_req),
@@ -806,7 +806,7 @@ assign VGA_R  = VGA_EN ? 6'bZZZZZZ : vga_o[23:18];
 assign VGA_G  = VGA_EN ? 6'bZZZZZZ : vga_o[15:10];
 assign VGA_B  = VGA_EN ? 6'bZZZZZZ : vga_o[7:2];
 
-assign VGA_SOG = (~VGA_EN & sog) ? 1'b0 : 1'bZ;
+assign VGA_SOG = (~VGA_EN & sog & ~(vs1 ^ hs1)) ?  1'b1 : 1'bZ;
 
 /////////////////////////  Audio output  ////////////////////////////////
 
