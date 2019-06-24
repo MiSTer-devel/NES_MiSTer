@@ -180,7 +180,8 @@ wire [31:0] status;
 
 wire arm_reset = status[0];
 wire mirroring_osd = status[5];
-wire hide_overscan = status[4] && ~|status[24:23];
+wire pal_video = |status[24:23];
+wire hide_overscan = status[4] && ~pal_video;
 wire [3:0] palette2_osd = status[15:12];
 wire joy_swap = status[9];
 wire fds_swap_invert = status[16];
@@ -752,7 +753,7 @@ video video
 	.palette(palette2_osd),
 	.emphasis(emphasis),
 	.reticle(~status[22] ? reticle : 2'b00),
-
+	.pal_video(pal_video),
 	.ce_pix(CE_PIXEL)
 );
 
