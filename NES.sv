@@ -856,7 +856,7 @@ always @(posedge clk) begin
 		end
 	end else begin
 		if(old_ack & ~sd_ack) begin
-			if(sd_lba[8:0]== (fds ? img_last[17:9] : 9'h02F)) begin
+			if(sd_lba[8:0]== (fds ? img_last[17:9] : 9'h03F)) begin
 				bk_loading <= 0;
 				bk_state <= S_IDLE;
 				bram_init <= 1;
