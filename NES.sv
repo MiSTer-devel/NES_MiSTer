@@ -180,7 +180,8 @@ wire [31:0] status;
 
 wire arm_reset = status[0];
 wire mirroring_osd = status[5];
-wire hide_overscan = status[4] && ~|status[24:23];
+wire pal_video = |status[24:23];
+wire hide_overscan = status[4] && ~pal_video;
 wire [3:0] palette2_osd = status[15:12];
 wire joy_swap = status[9];
 wire fds_swap_invert = status[16];
@@ -487,10 +488,21 @@ wire bios_download;
 
 GameLoader loader
 (
-	clk, loader_reset, downloading, filetype,
-	loader_input, loader_clk, mirroring_osd,
-	loader_addr, loader_write_data, loader_write, bios_download,
-	loader_flags, loader_busy, loader_done, loader_fail
+	.clk              ( clk               ),
+	.reset            ( loader_reset      ),
+	.downloading      ( downloading       ),
+	.filetype         ( filetype          ),
+	.indata           ( loader_input      ),
+	.indata_clk       ( loader_clk        ),
+	.invert_mirroring ( mirroring_osd     ),
+	.mem_addr         ( loader_addr       ),
+	.mem_data         ( loader_write_data ),
+	.mem_write        ( loader_write      ),
+	.bios_download    ( bios_download     ),
+	.mapper_flags     ( loader_flags      ),
+	.busy             ( loader_busy       ),
+	.done             ( loader_done       ),
+	.error            ( loader_fail       )      
 );
 
 always @(posedge clk) begin
@@ -752,7 +764,7 @@ video video
 	.palette(palette2_osd),
 	.emphasis(emphasis),
 	.reticle(~status[22] ? reticle : 2'b00),
-
+	.pal_video(pal_video),
 	.ce_pix(CE_PIXEL)
 );
 
@@ -783,7 +795,7 @@ always_ff @(posedge clk) begin
 			8:  gg_code[39:32]   <= file_input;  // Compare Bottom Word
 			9:  gg_code[47:40]   <= file_input;  // Compare Bottom Word
 			10: gg_code[55:48]   <= file_input;  // Compare top Word
-			11: gg_code[63:56]   <= file_input;  // Compare top Word
+			11: gg_code[63:56]   <= file_input;  // Compare top Word                                       
 			12: gg_code[7:0]     <= file_input;  // Replace Bottom Word
 			13: gg_code[15:8]    <= file_input;  // Replace Bottom Word
 			14: gg_code[23:16]   <= file_input;  // Replace Top Word
