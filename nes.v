@@ -146,7 +146,7 @@ module NES(
 	output  [7:0] memory_dout,
 
 	// Override for BRAM
-	output [15:0] bram_addr,      // address to access
+	output [17:0] bram_addr,      // address to access
 	input   [7:0] bram_din,       // Data from BRAM
 	output  [7:0] bram_dout,
 	output        bram_write,     // is a write operation

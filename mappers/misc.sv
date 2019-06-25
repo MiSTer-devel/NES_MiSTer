@@ -126,7 +126,7 @@ module Mapper16(
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 	// Special ports
-	output [14:0] mapper_addr,
+	output [17:0] mapper_addr,
 	input   [7:0] mapper_data_in,
 	output  [7:0] mapper_data_out,
 	output        mapper_prg_write,
@@ -279,7 +279,7 @@ assign vram_ce = chr_ain[13];
 wire sda_out;
 wire [7:0] ram_addr;
 wire ram_read;
-assign mapper_addr[14:8] = 0;
+assign mapper_addr[17:8] = 0;
 assign mapper_addr[7:0] = ram_addr;
 assign mapper_ovr = 1'b1;
 

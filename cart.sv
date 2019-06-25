@@ -42,7 +42,7 @@ module cart_top (
 	output reg        chr_allow,      // CHR Allow write
 	output reg        vram_a10,       // CHR Value for A10 address line
 	output reg        vram_ce,        // CHR True if the address should be routed to the internal 2kB VRAM.
-	output reg [15:0] mapper_addr,
+	output reg [17:0] mapper_addr,
 	input       [7:0] mapper_data_in,
 	output reg  [7:0] mapper_data_out,
 	output reg        mapper_prg_write,
@@ -421,7 +421,7 @@ Mapper15 map15(
 //*****************************************************************************//
 wire map16_prg_write, map16_ovr;
 wire [7:0] map16_data_out;
-wire [15:0] map16_mapper_addr;
+wire [17:0] map16_mapper_addr;
 Mapper16 map16(
 	.clk        (clk),
 	.ce         (ce),
@@ -1554,7 +1554,7 @@ always @* begin
 
 	// Currently only used for Mapper 16 EEPROM. Expand if needed.
 	{mapper_addr, mapper_data_out, mapper_prg_write, mapper_ovr} = (me[159] | me[16]) ?
-		{map16_mapper_addr, map16_data_out, map16_prg_write, map16_ovr} : 26'd0;
+		{map16_mapper_addr, map16_data_out, map16_prg_write, map16_ovr} : 28'd0;
 
 	{diskside_auto} = {fds_diskside_auto};
 

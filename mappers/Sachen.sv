@@ -61,12 +61,11 @@ reg [2:0] mirroring;
 
 always @(posedge clk)
 if (~enable) begin
-	//prg_bank <= 3'd7;
+	//any resets?
 end else if (ce && prg_write) begin
 	if ({prg_ain[15:14], prg_ain[8], prg_ain[0]} == 4'b0110) begin
 		register <= prg_din[2:0];
 	end else if ({prg_ain[15:14], prg_ain[8], prg_ain[0]} == 4'b0111) begin
-		// The Inner CHR Bank Select only can be written while the PRG ROM bank is 4, 5, 6, or 7
 		case (register)
 			0: begin 
 			   chr_bank_0 <= prg_din[2:0];  // Select 2 KB CHR bank at PPU $0000-$07FF;
@@ -135,7 +134,7 @@ assign prg_aout = {4'b00_00, prg_bank, prg_ain[14:0]};
 assign chr_allow = flags[15];
 assign chr_aout = {3'b10_0, chrsel, chr_ain[9:0]};
 assign vram_ce = chr_ain[13];
-//assign vram_a10 = mirroring[0] ? chr_ain[11] : chr_ain[10];
+//assign vram_a10 = ; //done above
 assign prg_allow = prg_ain[15] && !prg_write;
 
 endmodule
@@ -194,8 +193,8 @@ reg invert_reg;
 reg [3:0] alt_chr;
 reg mirroring;
 
+//wire mapper136 = (flags[7:0] == 136); //default
 wire mapper132 = (flags[7:0] == 132);
-wire mapper136 = (flags[7:0] == 136);
 wire mapper147 = (flags[7:0] == 147);
 wire mapper173 = (flags[7:0] == 173);
 wire mapper172 = (flags[7:0] == 172);
