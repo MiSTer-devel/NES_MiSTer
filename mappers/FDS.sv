@@ -188,11 +188,11 @@ module MAPFDS(              //signal descriptions in powerpak.v
 //	wire[1:0] diskside;
 //	assign diskside = diskside_auto + diskside_manual;
 	wire diskend=(diskpos==65499);
-	always@* case(diskside) //16+65500*diskside (+h200 = bram buffer size)
+	always@* case(diskside) //16+65500*diskside
 		0:sideoffset=18'h00010;
-		1:sideoffset=18'h001Ec;//18'h0ffec; // - h200
-		2:sideoffset=18'h001C8;//18'h1ffc8; // - h200
-		3:sideoffset=18'h001A4;//18'h2ffa4; // - h200
+		1:sideoffset=18'h0ffec;
+		2:sideoffset=18'h1ffc8;
+		3:sideoffset=18'h2ffa4;
 	endcase
 	assign romoffset=diskpos + sideoffset;
 
