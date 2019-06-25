@@ -372,7 +372,8 @@ always @(posedge clk) if (ce) begin
 	sprite0_curr <= (state == 2'b01 && oam_ptr[7:2] == 0 && spr_is_inside || sprite0_curr);
 
 	// Always writing to temp ram while we're in state 0 or 1.
-	if (!state[1]) sprtemp[sprtemp_ptr] <= oam_bus;
+	// Only write during rendering and sprite evaluation cycles (0-255)
+	if (sprites_enabled && ~cycle[8] && !state[1]) sprtemp[sprtemp_ptr] <= oam_bus;
 
 	// Update state machine on every second cycle.
 	if (cycle[0]) begin
@@ -529,7 +530,6 @@ endmodule  // BgPainter
 
 module PixelMuxer(
 	input [3:0] bg,
-	input no_obj,
 	input [3:0] obj,
 	input obj_prio,
 	output [3:0] out,
@@ -539,7 +539,7 @@ module PixelMuxer(
 wire bg_flag = bg[0] | bg[1];
 wire obj_flag = obj[0] | obj[1];
 
-assign is_obj = !(obj_prio && bg_flag) && obj_flag && ~no_obj;
+assign is_obj = !(obj_prio && bg_flag) && obj_flag;
 assign out = is_obj ? obj : bg;
 
 endmodule
@@ -801,7 +801,6 @@ wire [3:0] pixel;
 wire pixel_is_obj;
 
 PixelMuxer pixel_muxer(
-	.no_obj   (~|scanline),
 	.bg       (bg_pixel),
 	.obj      (obj_pixel[3:0]),
 	.obj_prio (obj_pixel[4]),
