@@ -93,7 +93,7 @@ assign wr = {ch2_wr, ch1_wr, ch0_wr};
 always @(posedge clk) begin
 	reg old_ref;
 	reg  [2:0] old_rd,old_wr;//,rd,wr;
-	reg [24:1] last_a[2] = '{'1,'1};
+	reg [24:1] last_a[3] = '{'1,'1,'1};
 
 	old_rd <= old_rd & rd;
 	old_wr <= old_wr & wr;
@@ -130,10 +130,10 @@ always @(posedge clk) begin
 			old_rd[2] <= rd[2];
 			old_wr[2] <= wr[2];
 			we <= wr[2];
-			if(wr[2]) last_a <= '{'1,'1};
 			{bank,a} <= ch2_addr;
 			data <= {ch2_din,ch2_din};
-			ram_req <= 1;
+			ram_req <= wr[2] || (last_a[2] != ch2_addr[24:1]);
+			last_a[2] <= wr[2] ? '1 : ch2_addr[24:1];
 			ch2_busy <= 1;
 			state <= STATE_START;
 		end
@@ -187,7 +187,7 @@ localparam CMD_LOAD_MODE       = 4'b0000;
 
 // SDRAM state machines
 always @(posedge clk) begin
-	reg [15:0] last_data[2];
+	reg [15:0] last_data[3];
 
 	casex({ram_req,we,mode,state})
 		{2'b1X, MODE_NORMAL, STATE_START}: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_ACTIVE;
@@ -240,7 +240,16 @@ always @(posedge clk) begin
 			end
 			else ch1_dout <= a[0] ? last_data[1][15:8] : last_data[1][7:0];
 		end
-		if(ch2_busy) ch2_dout <= we ? data[7:0] : a[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
+		if(ch2_busy) begin
+			if(ram_req) begin
+				if(we) ch2_dout <= data[7:0];
+				else begin
+					ch2_dout <= a[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
+					last_data[2] <= SDRAM_DQ;
+				end
+			end
+			else ch2_dout <= a[0] ? last_data[2][15:8] : last_data[2][7:0];
+		end
 	end
 end
 
