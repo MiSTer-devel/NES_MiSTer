@@ -506,7 +506,13 @@ GameLoader loader
 	.error            ( loader_fail       )      
 );
 
+reg [24:0] rom_sz;
 always @(posedge clk) begin
+	reg done = 0;
+	
+	done <= loader_done;
+	if(~done & loader_done) rom_sz <= ioctl_addr - 1'd1;
+	
 	if (loader_done) mapper_flags <= loader_flags;
 	old_filetype <= filetype;
 end
@@ -808,7 +814,7 @@ reg  bram_init = 0;
 reg  fds_busy;
 reg  old_fds_btn;
 reg [1:0] diskside_btn;
-wire [17:0] img_last = (|img_size) ? img_size[17:0] - 18'd1 : 18'd0;
+wire [8:0] save_sz = fds ? rom_sz[17:9] : bram_override ? 9'd3 : 9'd63;
 wire [1:0] diskside_req_use = fds_swap_invert ? diskside_btn : diskside_req;
 wire [1:0] next_btn_diskside = (last_diskside == diskside_btn) ? 2'd0 : diskside_btn + 2'd1;
 
@@ -856,7 +862,7 @@ always @(posedge clk) begin
 		end
 	end else begin
 		if(old_ack & ~sd_ack) begin
-			if(sd_lba[8:0]== (fds ? img_last[17:9] : 9'h03F)) begin
+			if(sd_lba[8:0] == save_sz) begin
 				bk_loading <= 0;
 				bk_state <= S_IDLE;
 				bram_init <= 1;
