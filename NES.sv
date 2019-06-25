@@ -829,8 +829,7 @@ always @(posedge clk) begin
 			bk_loading <= bk_load;
 			bk_request <= 1;
 		end else if(bram_init && (diskside_req_use != diskside) && ~downloading && ~bk_request && fds) begin		
-			bk_loading <= 0;
-			bk_request <= 1;
+			diskside <= (diskside_req_use == diskside) ? diskside : diskside_req_use;
 		end
 		if(old_downloading & ~downloading & |img_size & bk_ena) begin
 			bk_loading <= 1;
@@ -849,7 +848,6 @@ always @(posedge clk) begin
 				bk_loading <= 0;
 				bk_state <= S_IDLE;
 				bram_init <= 1;
-				diskside <= (diskside_req_use == diskside) ? diskside : diskside_req_use;
 			end else begin
 				sd_lba <= sd_lba + 1'd1;
 				sd_rd  <=  bk_loading;
