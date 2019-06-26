@@ -301,6 +301,7 @@ pll pll
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk85),
+	.outclk_1(clk),
 	.reconfig_to_pll(reconfig_to_pll),
 	.reconfig_from_pll(reconfig_from_pll),
 	.locked(clock_locked)
@@ -358,23 +359,6 @@ always @(posedge CLK_50M) begin
 		endcase
 	end
 end
-
-
-// using gated clock
-assign clk = clk85 & ce_clk;
-(* direct_enable *) reg ce_clk;
-always @(negedge clk85) begin
-	reg [1:0] div = 0;
-	div <= div + 1'd1;
-	ce_clk <= !div;
-end
-
-/*
-// using divider
-assign clk = clkdiv[1];
-reg [1:0] clkdiv;
-always @(posedge clk85) clkdiv <= clkdiv + 1'd1;
-*/
 
 // reset after download
 reg [7:0] download_reset_cnt;
