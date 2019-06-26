@@ -394,11 +394,6 @@ wire [15:0] sample;
 wire  [5:0] color;
 wire        joypad_strobe;
 wire  [1:0] joypad_clock;
-wire [21:0] memory_addr;
-wire        memory_read_cpu, memory_read_ppu;
-wire        memory_write;
-wire  [7:0] memory_din_cpu, memory_din_ppu;
-wire  [7:0] memory_dout;
 reg  [23:0] joypad_bits, joypad_bits2;
 reg   [7:0] powerpad_d3, powerpad_d4;
 reg   [1:0] last_joypad_clock;
@@ -572,14 +567,19 @@ NES nes (
 	.diskside        (diskside),
 	.fds_busy        (fds_busy),
 	.fds_eject       (fds_eject),
+
 	// Memory transactions
-	.memory_addr     (memory_addr),
-	.memory_read_cpu (memory_read_cpu),
-	.memory_din_cpu  (memory_din_cpu),
-	.memory_read_ppu (memory_read_ppu),
-	.memory_din_ppu  (memory_din_ppu),
-	.memory_write    (memory_write),
-	.memory_dout     (memory_dout),
+	.cpumem_addr     (cpu_addr ),
+	.cpumem_read     (cpu_read ),
+	.cpumem_write    (cpu_write),
+	.cpumem_dout     (cpu_dout ),
+	.cpumem_din      (cpu_din  ),
+	.ppumem_addr     (ppu_addr ),
+	.ppumem_read     (ppu_read ),
+	.ppumem_write    (ppu_write),
+	.ppumem_dout     (ppu_dout ),
+	.ppumem_din      (ppu_din  ),
+
 	.bram_addr       (bram_addr),
 	.bram_din        (bram_din),
 	.bram_dout       (bram_dout),
@@ -587,6 +587,10 @@ NES nes (
 	.bram_override   (bram_en),
 	.save_written    (save_written)
 );
+
+wire [21:0] cpu_addr, ppu_addr;
+wire        cpu_read, cpu_write, ppu_read, ppu_write;
+wire  [7:0] cpu_dout, cpu_din, ppu_dout, ppu_din;
 
 wire [2:0] emphasis;
 
@@ -659,15 +663,17 @@ sdram sdram
 	.init       ( !clock_locked   ),
 
 	// cpu/chipset interface
-	.ch0_addr   ( (downloading || loader_busy) ? loader_addr_mem : memory_addr        ),
-	.ch0_wr     ( memory_write || loader_write_mem ),
-	.ch0_din    ( (downloading || loader_busy) ? loader_write_data_mem : memory_dout  ),
-	.ch0_rd     ( memory_read_cpu ),
-	.ch0_dout   ( memory_din_cpu  ),
+	.ch0_addr   ( (downloading || loader_busy) ? loader_addr_mem       : ppu_addr  ),
+	.ch0_wr     (                                loader_write_mem      | ppu_write ),
+	.ch0_din    ( (downloading || loader_busy) ? loader_write_data_mem : ppu_dout  ),
+	.ch0_rd     ( ppu_read ),
+	.ch0_dout   ( ppu_din  ),
 
-	.ch1_addr   ( memory_addr     ),
-	.ch1_rd     ( memory_read_ppu ),
-	.ch1_dout   ( memory_din_ppu  ),
+	.ch1_addr   ( cpu_addr  ),
+	.ch1_wr     ( cpu_write ),
+	.ch1_din    ( cpu_dout  ),
+	.ch1_rd     ( cpu_read  ),
+	.ch1_dout   ( cpu_din   ),
 
 	// reserved for backup ram save/load
 	.ch2_addr   ( {4'b1111, save_addr} ),
