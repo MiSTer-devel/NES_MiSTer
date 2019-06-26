@@ -647,11 +647,11 @@ sdram sdram
 	.init       ( !clock_locked   ),
 
 	// cpu/chipset interface
-	.ch0_addr   ( (downloading || loader_busy) ? loader_addr_mem       : ppu_addr  ),
+	.ch0_addr   (  (downloading | loader_busy) ? loader_addr_mem       : ppu_addr  ),
 	.ch0_wr     (                                loader_write_mem      | ppu_write ),
-	.ch0_din    ( (downloading || loader_busy) ? loader_write_data_mem : ppu_dout  ),
-	.ch0_rd     ( ppu_read ),
-	.ch0_dout   ( ppu_din  ),
+	.ch0_din    (  (downloading | loader_busy) ? loader_write_data_mem : ppu_dout  ),
+	.ch0_rd     ( ~(downloading | loader_busy)                         & ppu_read  ),
+	.ch0_dout   ( ppu_din   ),
 
 	.ch1_addr   ( cpu_addr  ),
 	.ch1_wr     ( cpu_write ),
