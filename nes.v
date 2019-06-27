@@ -327,7 +327,7 @@ wire [15:0] sample_apu;
 APU apu(
 	.MMC5           (1'b0),
 	.clk            (clk),
-	.PAL            (sys_type[1]),
+	.PAL            (sys_type[0]),
 	.ce             (cpu_ce),
 	.reset          (reset),
 	.ADDR           (addr[4:0]),

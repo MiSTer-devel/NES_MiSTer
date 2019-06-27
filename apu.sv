@@ -481,10 +481,10 @@ module DmcChan(input MMC5,
       Freq <= 0;
       Dac <= 0;
       SampleAddress <= 0;
-      SampleLen <= 0;
+      SampleLen <= 1;
       ShiftReg <= 8'h0; // XXX: should be 0 or 07? Visual 2C02 says 0, as does Mesen.
       Cycles <= 439;
-      Address <= 0;
+      Address <= 15'h4000;
       BytesLeft <= 0;
       BitsUsed <= 0;
       SampleBuffer <= 0;
@@ -645,10 +645,12 @@ reg FrameInterrupt, DisableFrameInterrupt;
 reg [7:0] last_4017 = 0;
 reg [2:0] delayed_clear;
 reg delayed_interrupt;
-wire set_irq = ((Cycles == 29828) || (Cycles == 29829) || delayed_interrupt) && ~DisableFrameInterrupt && ~FrameSeqMode;
+wire set_irq_ntsc = (Cycles == cyc_ntsc[3]) || (Cycles == cyc_ntsc[4]);
+wire set_irq_pal = (Cycles == cyc_pal[3]) || (Cycles == cyc_pal[4]);
+wire set_irq = ( (PAL ? set_irq_pal : set_irq_ntsc) || delayed_interrupt) && ~DisableFrameInterrupt && ~FrameSeqMode;
 
-int cyc_ntsc[7] = '{8312, 16626, 24938, 33251, 33252, 41564, 41565};
-int cyc_pal[7]  = '{7456, 14912, 22370, 29828, 29829, 37280, 37281};
+int cyc_pal[7] = '{8312, 16626, 24938, 33251, 33252, 41564, 41565};
+int cyc_ntsc[7]  = '{7456, 14912, 22370, 29828, 29829, 37280, 37281};
 
 always @(posedge clk) if (reset) begin
   delayed_interrupt <= 0;
