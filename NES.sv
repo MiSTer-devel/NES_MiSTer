@@ -392,14 +392,14 @@ wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], j
 wire mic_button = joyA[10] | joyB[10];
 wire fds_btn = joyA[8] | joyB[8];
 
-reg [21:0] clkcount;
+reg [22:0] clkcount;
 always@(posedge clk) begin
-	if (nes_ce) begin
+	if (nes_ce == 3) begin
 		clkcount<=clkcount+1'd1;
 	end
 end
 
-wire fds_eject = fds_swap_invert ? fds_btn : (clkcount[21] | fds_btn);
+wire fds_eject = swap_delay[2] | fds_swap_invert ? fds_btn : (clkcount[21] | fds_btn);
 
 reg [2:0] nes_ce;
 
@@ -815,6 +815,7 @@ wire bk_busy = (bk_state == S_COPY);
 reg  bram_init = 0;
 reg  fds_busy;
 reg  old_fds_btn;
+reg [2:0] swap_delay;
 reg [1:0] diskside_btn;
 wire [8:0] save_sz = fds ? rom_sz[17:9] : bram_en ? 9'd3 : 9'd63;
 wire [1:0] diskside_req_use = fds_swap_invert ? diskside_btn : diskside_req;
@@ -836,7 +837,10 @@ always @(posedge clk) begin
 	old_fds_btn <= fds_btn;
 	
 	if(~old_ack & sd_ack) {sd_rd, sd_wr} <= 0;
-	if(~old_fds_btn & fds_btn & ~fds_busy) diskside_btn <= next_btn_diskside;
+	if (swap_delay == {1'b1, clkcount[22:21]}) begin
+		swap_delay[2] <= 0;
+	end
+	if(~old_fds_btn & fds_btn & ~fds_busy & ~swap_delay[2]) diskside_btn <= next_btn_diskside;
 
 	if (downloading) begin
 		diskside <= 2'd0;
@@ -849,7 +853,8 @@ always @(posedge clk) begin
 			bk_loading <= bk_load;
 			bk_request <= 1;
 		end else if(bram_init && (diskside_req_use != diskside) && ~downloading && ~bk_request && fds) begin		
-			diskside <= (diskside_req_use == diskside) ? diskside : diskside_req_use;
+			diskside <= diskside_req_use;
+			swap_delay <= {1'b1, ~clkcount[22:21]};
 		end
 		if(old_downloading & ~downloading & |img_size & bk_ena) begin
 			bk_loading <= 1;
@@ -947,13 +952,15 @@ wire is_dirty = !is_nes20 && ((ines[9][7:1] != 0)
 // Read the mapper number
 wire [7:0] mapper = {is_dirty ? 4'b0000 : ines[7][7:4], ines[6][7:4]};
 wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
+wire [3:0] prgram = {is_nes20 ? ines[10][3:0] : 4'h00};
 
 wire has_saves = ines[6][1];
 
 // ines[6][0] is mirroring
 // ines[6][3] is 4 screen mode
 // ines[8][7:4] is NES 2.0 submapper
-assign mapper_flags = {6'b0, has_saves, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
+// ines[10][3:0] is NES 2.0 PRG RAM shift size (64 << size)
+assign mapper_flags = {2'b0, prgram, has_saves, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
 
 reg [3:0] clearclk; //Wait for SDRAM
 reg copybios;

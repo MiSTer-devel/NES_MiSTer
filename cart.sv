@@ -1483,6 +1483,71 @@ SachenNROM sachenn(
 );
 
 //*****************************************************************************//
+// Name   : JY Company                                                         //
+// Mappers: 90, 209, 211, 35                                                   //
+// Status : Working (needs testing)                                            //
+// Notes  : 211 and 35 can be considered duplicates.                           //
+// Games  : Aladdin (90), Power Rangers 3 (209), Warioland II (35),            //
+//          Tiny Toon Adventures 6 (211)                                       //
+//*****************************************************************************//
+JYCompany jycompany(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[90] | me[209] | me[211] | me[35]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b),
+	// Special ports
+	.ppu_ce     (ppu_ce)
+);
+
+//*****************************************************************************//
+// Name   : Mapper 225                                                         //
+// Mappers: 225, 255                                                           //
+// Status : Working                                                            //
+// Notes  : Defining 225 as with 74'670 (4-byte RAM) and 255 as without        //
+// Games  : 64-in-1 (225), 110-in-1 (255 - with glitched menu selection)       //
+//*****************************************************************************//
+Mapper225 map225(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[225] | me[255]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b)
+);
+
+//*****************************************************************************//
 // Name   : FDS                                                                //
 // Mappers: 20                                                                 //
 // Status : Audio good. Drive mechanics okay, but dated. Needs rewrite.        //
@@ -1519,7 +1584,7 @@ MapperFDS mapfds(
 	.fds_eject  (fds_eject)
 );
 
-wire [5:0] prg_mask;
+wire [6:0] prg_mask;
 wire [6:0] chr_mask;
 wire [255:0] me;
 
@@ -1528,13 +1593,14 @@ always @* begin
 	me[flags[7:0]] = 1'b1;
 
 	case(flags[10:8])
-		0: prg_mask = 6'b000000;
-		1: prg_mask = 6'b000001;
-		2: prg_mask = 6'b000011;
-		3: prg_mask = 6'b000111;
-		4: prg_mask = 6'b001111;
-		5: prg_mask = 6'b011111;
-		default: prg_mask = 6'b111111;
+		0: prg_mask = 7'b0000000;
+		1: prg_mask = 7'b0000001;
+		2: prg_mask = 7'b0000011;
+		3: prg_mask = 7'b0000111;
+		4: prg_mask = 7'b0001111;
+		5: prg_mask = 7'b0011111;
+		6: prg_mask = 7'b0111111;
+		7: prg_mask = 7'b1111111;
 	endcase
 
 	case(flags[13:11])
@@ -1562,8 +1628,8 @@ always @* begin
 	{prg_conflict, prg_open_bus, has_chr_dout} = {flags_out_b[2], flags_out_b[1], flags_out_b[0]};
 
 	// Address translation for SDRAM
-	if (prg_aout[21:20] == 2'b00)
-		prg_aout[19:0] = {prg_aout[19:14] & prg_mask, prg_aout[13:0]};
+	if (prg_aout[21] == 1'b0)
+		prg_aout[20:0] = {prg_aout[20:14] & prg_mask, prg_aout[13:0]};
 
 	if (chr_aout[21:20] == 2'b10)
 		chr_aout[19:0] = {chr_aout[19:13] & chr_mask, chr_aout[12:0]};

@@ -1360,3 +1360,93 @@ assign vram_ce = chr_ain[13];
 assign vram_a10 = flags[14] ? chr_ain[10] : chr_ain[11];
 
 endmodule
+
+// Combine with other mapper (15?)
+// #225 -  64-in-1
+// #255 -  110-in-1 - This runs with buggy menu selection.  It runs correctly as mapper 225.
+//  Unsure if any games require simulating missing 74-670 RAM (4 bytes).
+module Mapper225(
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+);
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? prg_dout : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire [7:0] prg_dout;
+wire prg_open_bus = mapper255 && prg_ram || (!prg_ram && !prg_ain[15]);
+wire prg_ram = (prg_ain[15:11] == 5'b01011);
+wire [15:0] flags_out = {14'h0, prg_open_bus, 1'b0};
+
+wire [7:0] mapper = flags[7:0];
+wire mapper255 = (mapper == 8'd255);
+
+// A~[1BMZ PPPP  PpCC CCCC]
+//     ||| ||||  |||| ||||
+//     +-----------++-++++ - Select 8 KiB CHR at PPU $0000
+//     ||| ||||  ||
+//     +---++++--++------- - Select 16 KiB PRG at CPU $8000 and $C000 if Z=1
+//     +---++++--+-------- - Select 32 KiB PRG at CPU $8000 if Z=0
+//      |+---------------- - Select PRG bank size: 0-32K 1-16K
+//      +----------------- - Nametable mirroring: 0-PPUA10 ("vertical") 1-PPUA11 ("horizontal")
+//74'670: (otherwise open bus)
+//   $5800-5803:  [.... RRRR]  RAM  (readable/writable)
+//                 (16 bits of RAM -- 4 bits in each of the 4 regs)
+//   $5804-5FFF:    mirrors $5800-5803
+reg [14:0] bank_mode;
+wire mirroring = bank_mode[13];
+wire prg_mode = bank_mode[12];
+reg [3:0] ram [3:0];
+
+always @(posedge clk) begin
+	if (~enable) begin
+		// resets?
+	end else if (ce) begin
+		if (prg_ain[15] && prg_write)
+			bank_mode <= prg_ain[14:0];
+		if (prg_ram && prg_write) // 5800-5FFF
+			ram[prg_ain[1:0]] <= prg_din[3:0];
+	end
+end
+
+assign prg_dout = {4'h0, ram[prg_ain[1:0]]};
+assign prg_aout = {1'b0, bank_mode[14], bank_mode[11:7], prg_mode ? bank_mode[6] : prg_ain[14], prg_ain[13:0]};
+assign prg_allow = prg_ain[15] && !prg_write;
+assign chr_allow = flags[15]; // CHR RAM?
+assign chr_aout = {2'b10, bank_mode[14], bank_mode[5:0], chr_ain[12:0]};
+assign vram_ce = chr_ain[13];
+assign vram_a10 = mirroring ? chr_ain[11] : chr_ain[10];
+
+endmodule
