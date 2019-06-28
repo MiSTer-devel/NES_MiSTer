@@ -268,7 +268,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 	.ioctl_addr(ioctl_addr),
 	.ioctl_wr(loader_clk),
 	.ioctl_dout(file_input),
-	.ioctl_wait(ioctl_wait),
+	.ioctl_wait(ioctl_wait | save_wait),
 	.ioctl_index(filetype),
 
 	.sd_lba(sd_lba),
@@ -301,6 +301,7 @@ pll pll
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk85),
+	.outclk_1(clk),
 	.reconfig_to_pll(reconfig_to_pll),
 	.reconfig_from_pll(reconfig_from_pll),
 	.locked(clock_locked)
@@ -359,23 +360,6 @@ always @(posedge CLK_50M) begin
 	end
 end
 
-
-// using gated clock
-assign clk = clk85 & ce_clk;
-(* direct_enable *) reg ce_clk;
-always @(negedge clk85) begin
-	reg [1:0] div = 0;
-	div <= div + 1'd1;
-	ce_clk <= !div;
-end
-
-/*
-// using divider
-assign clk = clkdiv[1];
-reg [1:0] clkdiv;
-always @(posedge clk85) clkdiv <= clkdiv + 1'd1;
-*/
-
 // reset after download
 reg [7:0] download_reset_cnt;
 wire download_reset = download_reset_cnt != 0;
@@ -394,11 +378,6 @@ wire [15:0] sample;
 wire  [5:0] color;
 wire        joypad_strobe;
 wire  [1:0] joypad_clock;
-wire [21:0] memory_addr;
-wire        memory_read_cpu, memory_read_ppu;
-wire        memory_write;
-wire  [7:0] memory_din_cpu, memory_din_ppu;
-wire  [7:0] memory_dout;
 reg  [23:0] joypad_bits, joypad_bits2;
 reg   [7:0] powerpad_d3, powerpad_d4;
 reg   [1:0] last_joypad_clock;
@@ -506,7 +485,13 @@ GameLoader loader
 	.error            ( loader_fail       )      
 );
 
+reg [24:0] rom_sz;
 always @(posedge clk) begin
+	reg done = 0;
+	
+	done <= loader_done;
+	if(~done & loader_done) rom_sz <= ioctl_addr - 1'd1;
+	
 	if (loader_done) mapper_flags <= loader_flags;
 	old_filetype <= filetype;
 end
@@ -527,7 +512,7 @@ wire [17:0] bram_addr;
 wire [7:0] bram_din;
 wire [7:0] bram_dout;
 wire bram_write;
-wire bram_override;
+wire bram_en;
 wire trigger;
 wire light;
 
@@ -566,21 +551,30 @@ NES nes (
 	.diskside        (diskside),
 	.fds_busy        (fds_busy),
 	.fds_eject       (fds_eject),
+
 	// Memory transactions
-	.memory_addr     (memory_addr),
-	.memory_read_cpu (memory_read_cpu),
-	.memory_din_cpu  (ovr_ena ? bram_din : memory_din_cpu),
-	.memory_read_ppu (memory_read_ppu),
-	.memory_din_ppu  (memory_din_ppu),
-	.memory_write    (memory_write),
-	.memory_dout     (memory_dout),
+	.cpumem_addr     (cpu_addr ),
+	.cpumem_read     (cpu_read ),
+	.cpumem_write    (cpu_write),
+	.cpumem_dout     (cpu_dout ),
+	.cpumem_din      (cpu_din  ),
+	.ppumem_addr     (ppu_addr ),
+	.ppumem_read     (ppu_read ),
+	.ppumem_write    (ppu_write),
+	.ppumem_dout     (ppu_dout ),
+	.ppumem_din      (ppu_din  ),
+
 	.bram_addr       (bram_addr),
 	.bram_din        (bram_din),
 	.bram_dout       (bram_dout),
 	.bram_write      (bram_write),
-	.bram_override   (bram_override),
+	.bram_override   (bram_en),
 	.save_written    (save_written)
 );
+
+wire [21:0] cpu_addr, ppu_addr;
+wire        cpu_read, cpu_write, ppu_read, ppu_write;
+wire  [7:0] cpu_dout, cpu_din, ppu_dout, ppu_din;
 
 wire [2:0] emphasis;
 
@@ -653,59 +647,73 @@ sdram sdram
 	.init       ( !clock_locked   ),
 
 	// cpu/chipset interface
-	.ch0_addr   ( mem_addr        ),
-	.ch0_wr     ( mem_we          ),
-	.ch0_din    ( mem_din         ),
-	.ch0_rd     ( memory_read_cpu ),
-	.ch0_dout   ( memory_din_cpu  ),
+	.ch0_addr   (  (downloading | loader_busy) ? loader_addr_mem       : ppu_addr  ),
+	.ch0_wr     (                                loader_write_mem      | ppu_write ),
+	.ch0_din    (  (downloading | loader_busy) ? loader_write_data_mem : ppu_dout  ),
+	.ch0_rd     ( ~(downloading | loader_busy)                         & ppu_read  ),
+	.ch0_dout   ( ppu_din   ),
 
-	.ch1_addr   ( memory_addr     ),
-	.ch1_rd     ( memory_read_ppu ),
-	.ch1_dout   ( memory_din_ppu  ),
+	.ch1_addr   ( cpu_addr  ),
+	.ch1_wr     ( cpu_write ),
+	.ch1_din    ( cpu_dout  ),
+	.ch1_rd     ( cpu_read  ),
+	.ch1_dout   ( cpu_din   ),
 
 	// reserved for backup ram save/load
-	.ch2_addr   (  ),
-	.ch2_wr     (  ),
-	.ch2_din    (  ),
-	.ch0_rd     (  ),
-	.ch0_dout   (  )
+	.ch2_addr   ( {4'b1111, save_addr} ),
+	.ch2_wr     ( save_wr ),
+	.ch2_din    ( sd_buff_dout ),
+	.ch2_rd     ( save_rd ),
+	.ch2_dout   ( save_dout ),
+	.ch2_busy   ( save_busy )
 );
 
-wire [21:0] mem_addr = (downloading || loader_busy) ? loader_addr_mem : memory_addr;
-wire        mem_we = memory_write || loader_write_mem;
-wire  [7:0] mem_din = (downloading || loader_busy) ? loader_write_data_mem : memory_dout;
+wire  [7:0] save_dout;
+assign sd_buff_din = bram_en ? eeprom_dout : save_dout;
 
-reg ovr_we;
-reg ovr_ena;
-reg [17:0] ovr_addr;
-always @(posedge clk85) begin
-	reg old_we, old_rd;
-	
-	old_we <= mem_we;
-	old_rd <= memory_read_cpu;
-
-	ovr_we <= 0;
-	if((~old_rd & memory_read_cpu) | (~old_we & mem_we)) begin
-		ovr_addr <= mem_addr[17:0];
-		ovr_ena <= (mem_addr[21:18] == 'b1111);
-		ovr_we <= mem_we;
-	end
-end
-
-dpram #(" ", 18) ovr_ram
+wire [7:0] eeprom_dout;
+dpram #(" ", 11) eeprom
 (
 	.clock_a(clk85),
-	.address_a(bram_override ? bram_addr : ovr_addr),
-	.data_a(bram_override ? bram_dout : mem_din),
-	.wren_a(bram_override ? bram_write : (ovr_we & ovr_ena)),
+	.address_a(bram_addr),
+	.data_a(bram_dout),
+	.wren_a(bram_write),
 	.q_a(bram_din),
 
 	.clock_b(clk),
-	.address_b(bk_busy ? {sd_lba[8:0],sd_buff_addr} : loader_addr_mem[17:0]),
-	.data_b(bk_busy ? sd_buff_dout : loader_write_data_mem),
-	.wren_b(bk_busy ? sd_buff_wr & sd_ack : loader_write_mem && ~bios_download && loader_addr_mem[18]),
-	.q_b(sd_buff_din)
+	.address_b({sd_lba[1:0],sd_buff_addr}),
+	.data_b(sd_buff_dout),
+	.wren_b(sd_buff_wr & sd_ack),
+	.q_b(eeprom_dout)
 );
+
+wire save_busy;
+reg save_rd, save_wr;
+reg save_wait;
+reg [17:0] save_addr;
+
+always @(posedge clk) begin
+
+	if(~save_busy & ~save_rd & ~save_wr) save_wait <= 0;
+
+	if(~bk_busy) begin
+		save_addr <= '1;
+		save_wait <= 0;
+	end
+	else if(sd_ack & ~save_busy ) begin
+		if(~bk_loading && (save_addr != {sd_lba[8:0], sd_buff_addr})) begin
+			save_rd <= 1;
+			save_addr <= {sd_lba[8:0], sd_buff_addr};
+			save_wait <= 1;
+		end
+		if(bk_loading && sd_buff_wr) begin
+			save_wr <= 1;
+			save_addr <= {sd_lba[8:0], sd_buff_addr};
+			save_wait <= 1;
+		end
+	end
+	if(~bk_busy | save_busy | bram_en) {save_rd, save_wr} <= 0;
+end
 
 reg bk_pending;
 wire save_written;
@@ -808,7 +816,7 @@ reg  bram_init = 0;
 reg  fds_busy;
 reg  old_fds_btn;
 reg [1:0] diskside_btn;
-wire [17:0] img_last = (|img_size) ? img_size[17:0] - 18'd1 : 18'd0;
+wire [8:0] save_sz = fds ? rom_sz[17:9] : bram_en ? 9'd3 : 9'd63;
 wire [1:0] diskside_req_use = fds_swap_invert ? diskside_btn : diskside_req;
 wire [1:0] next_btn_diskside = (last_diskside == diskside_btn) ? 2'd0 : diskside_btn + 2'd1;
 
@@ -856,7 +864,7 @@ always @(posedge clk) begin
 		end
 	end else begin
 		if(old_ack & ~sd_ack) begin
-			if(sd_lba[8:0]== (fds ? img_last[17:9] : 9'h03F)) begin
+			if(sd_lba[8:0] == save_sz) begin
 				bk_loading <= 0;
 				bk_state <= S_IDLE;
 				bram_init <= 1;
@@ -963,7 +971,7 @@ always @(posedge clk) begin
 		busy <= 0;
 		done <= 0;
 		ctr <= 0;
-		mem_addr <= type_fds ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
+		mem_addr <= type_fds ? 22'b11_1100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
 		bios_download <= 0;
 		copybios <= 0;
 	end else begin
@@ -984,7 +992,7 @@ always @(posedge clk) begin
 					state <= S_LOADPRG;
 				 //FDS
 				 end else if ((ines[0] == 8'h46) && (ines[1] == 8'h44) && (ines[2] == 8'h53) && (ines[3] == 8'h1A)) begin
-					mem_addr <= 22'b00_0100_0000_0000_0001_0000;  // Address for FDS skip Header
+					mem_addr <= 22'b11_1100_0000_0000_0001_0000;  // Address for FDS skip Header
 					state <= S_LOADFDS;
 					bytes_left <= 21'b1;
 				 end else if (type_bios) begin // Bios
@@ -994,7 +1002,7 @@ always @(posedge clk) begin
 					bios_download <= 1;
 				 end else if(type_fds) begin // FDS
 					state <= S_LOADFDS;
-					mem_addr <= 22'b00_0100_0000_0000_0010_0000;  // Address for FDS no Header
+					mem_addr <= 22'b11_1100_0000_0000_0010_0000;  // Address for FDS no Header
 					bytes_left <= 21'b1;
 				 end else begin
 					state <= S_ERROR;

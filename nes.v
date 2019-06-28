@@ -70,54 +70,6 @@ assign aout = dmc_ack ? dmc_dma_addr : !odd_cycle ? sprite_dma_addr : 16'h2004;
 
 endmodule
 
-// Multiplexes accesses by the PPU and the PRG into a single memory, used for both
-// ROM and internal memory.
-// PPU has priority, its read/write will be honored asap, while the CPU's reads
-// will happen only every second cycle when the PPU is idle.
-// Data read by PPU will be available on the next clock cycle.
-// Data read by CPU will be available within at most 2 clock cycles.
-
-module MemoryMultiplex(
-	input clk,
-	input ce,
-	input reset,
-	input [21:0] prg_addr,
-	input prg_read,
-	input prg_write,
-	input [7:0] prg_din,
-	input [21:0] chr_addr,
-	input chr_read,
-	input chr_write,
-	input [7:0] chr_din,
-	// Access signals for the SRAM.
-	output [21:0] memory_addr,   // address to access
-	output memory_read_cpu,      // read into CPU latch
-	output memory_read_ppu,      // read into PPU latch
-	output memory_write,         // is a write operation
-	output [7:0] memory_dout
-);
-
-reg saved_prg_read, saved_prg_write;
-assign memory_addr = (chr_read || chr_write) ? chr_addr : prg_addr;
-assign memory_write = (chr_read || chr_write) ? chr_write : saved_prg_write;
-assign memory_read_ppu = chr_read;
-assign memory_read_cpu = !(chr_read || chr_write) && (prg_read || saved_prg_read);
-assign memory_dout = chr_write ? chr_din : prg_din;
-always @(posedge clk) if (reset) begin
-	saved_prg_read <= 0;
-	saved_prg_write <= 0;
-end else if (ce) begin
-	if (chr_read || chr_write) begin
-		saved_prg_read <= prg_read || saved_prg_read;
-		saved_prg_write <= prg_write || saved_prg_write;
-	end else begin
-		saved_prg_read <= 0;
-		saved_prg_write <= prg_write;
-	end
-end
-
-endmodule
-
 module NES(
 	input         clk,
 	input         reset_nes,
@@ -136,14 +88,17 @@ module NES(
 	input   [1:0] diskside,
 	input   [4:0] audio_channels, // Enabled audio channels
 
-	// Access signals for the SRAM.
-	output [21:0] memory_addr,    // address to access
-	output        memory_read_cpu,// read into CPU latch
-	input   [7:0] memory_din_cpu, // next cycle, contents of latch A (CPU's data)
-	output        memory_read_ppu,// read into CPU latch
-	input   [7:0] memory_din_ppu, // next cycle, contents of latch B (PPU's data)
-	output        memory_write,   // is a write operation
-	output  [7:0] memory_dout,
+	// Access signals for the SDRAM.
+	output [21:0] cpumem_addr,
+	output        cpumem_read,
+	output        cpumem_write,
+	output  [7:0] cpumem_dout,
+	input   [7:0] cpumem_din,
+	output [21:0] ppumem_addr,
+	output        ppumem_read,
+	output        ppumem_write,
+	output  [7:0] ppumem_dout,
+	input   [7:0] ppumem_din,
 
 	// Override for BRAM
 	output [17:0] bram_addr,      // address to access
@@ -372,7 +327,7 @@ wire [15:0] sample_apu;
 APU apu(
 	.MMC5           (1'b0),
 	.clk            (clk),
-	.PAL            (sys_type[1]),
+	.PAL            (sys_type[0]),
 	.ce             (cpu_ce),
 	.reset          (reset),
 	.ADDR           (addr[4:0]),
@@ -467,7 +422,7 @@ PPU ppu(
 /**********************************************************/
 
 wire [15:0] prg_addr = addr;
-wire [7:0] prg_din = dbus & (prg_conflict ? memory_din_cpu : 8'hFF);
+wire [7:0] prg_din = dbus & (prg_conflict ? cpumem_din : 8'hFF);
 
 wire prg_read  = mr_int && cart_pre && !apu_cs && !ppu_cs;
 wire prg_write = mw_int && cart_pre && !apu_cs && !ppu_cs;
@@ -536,7 +491,7 @@ CODES codes (
 	.reset      (gg_reset),
 	.enable     (~gg),
 	.addr_in    (addr),
-	.data_in    (prg_allow ? memory_din_cpu : prg_dout_mapper),
+	.data_in    (prg_allow ? cpumem_din : prg_dout_mapper),
 	.code       (gg_code),
 	.available  (gg_avail),
 	.genie_ovr  (genie_ovr),
@@ -548,26 +503,17 @@ CODES codes (
 /*************       Bus Arbitration        ***************/
 /**********************************************************/
 
-assign chr_to_ppu = has_chr_from_ppu_mapper ? chr_from_ppu_mapper : memory_din_ppu;
+assign chr_to_ppu = has_chr_from_ppu_mapper ? chr_from_ppu_mapper : ppumem_din;
 
-MemoryMultiplex mem(
-	.clk             (clk),
-	.ce              (ppu_ce),
-	.reset           (reset),
-	.prg_addr        (prg_linaddr),
-	.prg_read        ((prg_read & prg_allow) | (prg_write && prg_conflict)),
-	.prg_write       (prg_write && prg_allow),
-	.prg_din         (prg_din),
-	.chr_addr        (chr_linaddr),
-	.chr_read        (chr_read),
-	.chr_write       (chr_write && (chr_allow || vram_ce)),
-	.chr_din         (chr_from_ppu),
-	.memory_addr     (memory_addr),
-	.memory_read_cpu (memory_read_cpu),
-	.memory_read_ppu (memory_read_ppu),
-	.memory_write    (memory_write),
-	.memory_dout     (memory_dout)
-);
+assign cpumem_addr  = prg_linaddr;
+assign cpumem_read  = (prg_read & prg_allow) | (prg_write && prg_conflict);
+assign cpumem_write = prg_write && prg_allow;
+assign cpumem_dout  = prg_din;
+assign ppumem_addr  = chr_linaddr;
+assign ppumem_read  = chr_read;
+assign ppumem_write = chr_write && (chr_allow || vram_ce);
+assign ppumem_dout  = chr_from_ppu;
+
 
 // These registers are open bus if FDS is not in use
 // Some games hacks (Super Mario All-Stars) rely on this behavior
@@ -597,7 +543,7 @@ always @* begin
 	end else if (ppu_cs) begin
 		raw_data_bus = ppu_dout;
 	end else if (prg_allow) begin
-		raw_data_bus = memory_din_cpu;
+		raw_data_bus = cpumem_din;
 	end else if (prg_open_bus) begin
 		raw_data_bus = open_bus_data;
 	end else begin
