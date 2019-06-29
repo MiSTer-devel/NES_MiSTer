@@ -6,14 +6,15 @@ set_global_assignment -name SYSTEMVERILOG_FILE ddram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE EEPROM_24C0x.sv
 set_global_assignment -name VERILOG_FILE jt49_dcrm2.v
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/VRC.sv
-set_global_assignment -name SYSTEMVERILOG_FILE mappers/Sachen.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/Sunsoft.sv
+set_global_assignment -name SYSTEMVERILOG_FILE mappers/Sachen.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/Namco.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/MMC5.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/MMC3.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/MMC2.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/MMC1.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/misc.sv
+set_global_assignment -name SYSTEMVERILOG_FILE mappers/JYCompany.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/generic.sv
 set_global_assignment -name SYSTEMVERILOG_FILE mappers/FDS.sv
 set_global_assignment -name SYSTEMVERILOG_FILE cheatcodes.sv
