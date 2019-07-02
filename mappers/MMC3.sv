@@ -22,7 +22,8 @@ module Rambo1(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	input [13:0] chr_ain_o
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -67,11 +68,11 @@ wire mapper64 = (flags[7:0] == 64);
 // This code detects rising edges on a12.
 reg old_a12_edge;
 reg [1:0] a12_ctr;
-wire a12_edge = (chr_ain[12] && a12_ctr == 0) || old_a12_edge;
+wire a12_edge = (chr_ain_o[12] && a12_ctr == 0) || old_a12_edge;
 
 always @(posedge clk) begin
 	old_a12_edge <= a12_edge && !ce;
-	a12_ctr <= chr_ain[12] ? 2'b11 : (a12_ctr != 0 && ce) ? a12_ctr - 2'b01 : a12_ctr;
+	a12_ctr <= chr_ain_o[12] ? 2'b11 : (a12_ctr != 0 && ce) ? a12_ctr - 2'b01 : a12_ctr;
 end
 
 always @(posedge clk)
@@ -203,7 +204,8 @@ module MMC3 (
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	input [13:0] chr_ain_o
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -405,7 +407,7 @@ end else if (ce) begin
 	// All MMC3C's and Sharp MMC3B's will generate an IRQ on each scanline while $C000 is $00.
 	// This is because this version of the MMC3 generates IRQs when the scanline counter is equal to 0.
 	// In the community, this is known as the "normal" or "new" behavior.
-	if (chr_ain[12] && a12_ctr == 0) begin
+	if (chr_ain_o[12] && a12_ctr == 0) begin
 		counter <= new_counter;
 
 		// MMC Scanline
@@ -415,7 +417,7 @@ end else if (ce) begin
 		irq_reload <= 0;
 	end
 
-	a12_ctr <= chr_ain[12] ? 4'b1111 : (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
+	a12_ctr <= chr_ain_o[12] ? 4'b1111 : (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
 end
 
 // The PRG bank to load. Each increment here is 8kb. So valid values are 0..63.
@@ -533,7 +535,8 @@ module Mapper165(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	input [13:0] chr_ain_o
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -619,7 +622,7 @@ end else if (ce) begin
 	// All MMC3C's and Sharp MMC3B's will generate an IRQ on each scanline while $C000 is $00.
 	// This is because this version of the MMC3 generates IRQs when the scanline counter is equal to 0.
 	// In the community, this is known as the "normal" or "new" behavior.
-	if (chr_ain[12] && a12_ctr == 0) begin
+	if (chr_ain_o[12] && a12_ctr == 0) begin
 		counter <= new_counter;
 
 		if ((counter != 0 || irq_reload) && new_counter == 0 && irq_enable) begin
@@ -629,7 +632,7 @@ end else if (ce) begin
 		irq_reload <= 0;
 	end
 
-	a12_ctr <= chr_ain[12] ? 4'b1111 : (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
+	a12_ctr <= chr_ain_o[12] ? 4'b1111 : (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
 end
 
 // The PRG bank to load. Each increment here is 8kb. So valid values are 0..63.

@@ -19,11 +19,11 @@ module multiplier (
 
   always @(posedge clk) begin
     if (start && ce) begin
-	  bindex <= 1 << 1;
+	  bindex <= 9'd1 << 1;
 	  product <= {8'h00, b[0] ? a : 8'h00};
 	  shift_a <= a << 1;
     end else if (bindex < 9'h100) begin
-	  product <= product + ((bindex[7:0] & b) ? shift_a : 0);
+	  product <= product + ((bindex[7:0] & b) ? shift_a : 16'd0);
 	  bindex <= bindex << 1;
 	  shift_a <= shift_a << 1;
     end
@@ -55,7 +55,8 @@ module JYCompany(
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 	// Special ports
-	input        ppu_ce
+	input        ppu_ce,
+	input [13:0] chr_ain_o
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -152,7 +153,7 @@ always @(posedge clk) begin
 		endcase
 	end
 	
-	if (ppu_ce) old_a12 <= chr_ain[12];
+	if (ppu_ce) old_a12 <= chr_ain_o[12];
 
 	if (irq_source && irq_enable && (irq_mode[7] != irq_mode[6])) begin
 		irq_prescalar <= irq_mode[6] ? (irq_prescalar + 8'd1) : (irq_prescalar - 8'd1);
@@ -180,7 +181,7 @@ end
 always @* begin
 	case(irq_mode[1:0])
 		2'b00: irq_source = ce;
-		2'b01: irq_source = ppu_ce && chr_ain[12] && !old_a12;
+		2'b01: irq_source = ppu_ce && chr_ain_o[12] && !old_a12;
 		2'b10: irq_source = ppu_ce && chr_read;
 		2'b11: irq_source = ce && prg_write;
 	endcase
@@ -250,7 +251,7 @@ always @(posedge clk)
 if (~enable)
 	chr_latch <= 2'b00;
 else if (ppu_ce && chr_read) begin
-	chr_latch[chr_ain[12]] <= outer_bank[7] && (((chr_ain & 14'h2ff8) == 14'h0fd8) ? 1'd0 : ((chr_ain & 14'h2ff8) == 14'h0fe8) ? 1'd1 : chr_latch[chr_ain[12]]);
+	chr_latch[chr_ain_o[12]] <= outer_bank[7] && (((chr_ain_o & 14'h2ff8) == 14'h0fd8) ? 1'd0 : ((chr_ain_o & 14'h2ff8) == 14'h0fe8) ? 1'd1 : chr_latch[chr_ain_o[12]]);
 end
 wire [2:0] chr_reg;
 always @* begin

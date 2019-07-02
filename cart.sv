@@ -32,10 +32,12 @@ module cart_top (
 	output reg        prg_allow,      // PRG Allow write access
 	output reg        prg_open_bus,   // PRG Data Not Driven
 	output reg        prg_conflict,   // PRG Data is ROM & prg_din
+	input             chr_ex,         // chr_addr is from an extra sprite read if high
 	input             chr_read,       // Read from CHR
 	input             chr_write,      // Write to CHR
 	input       [7:0] chr_din,        // PPU Data In
-	input      [13:0] chr_ain,        // Better known as "PPU Address in"
+	input      [13:0] chr_ain_orig,   // Better known as "PPU Address in"
+	input      [13:0] chr_ain_ex,     // Address for extra sprite fetches
 	output reg [21:0] chr_aout,       // CHR Input / Output Address Lines
 	output reg  [7:0] chr_dout,       // Value to override CHR data with
 	output reg        has_chr_dout,   // True if CHR data should be overridden
@@ -60,6 +62,8 @@ tri0 prg_allow_b, vram_a10_b, vram_ce_b, chr_allow_b, irq_b;
 tri0 [21:0] prg_addr_b, chr_addr_b;
 tri0 [15:0] flags_out_b, audio_out_b;
 tri1 [7:0] prg_dout_b, chr_dout_b;
+
+wire [13:0] chr_ain = chr_ex ? chr_ain_ex : chr_ain_orig;
 
 // This mapper used to be default if no other mapper was found
 // It seems MMC0 is handled by map28. Does it have any purpose?
@@ -243,7 +247,9 @@ MMC2 mmc2(
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
 	.audio_in   (audio_in),
-	.audio_b    (audio_out_b)
+	.audio_b    (audio_out_b),
+	// Special ports
+	.chr_ain_o  (chr_ain_orig)
 );
 
 //*****************************************************************************//
@@ -279,7 +285,9 @@ MMC3 mmc3 (
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
 	.audio_in   (audio_in),
-	.audio_b    (audio_out_b)
+	.audio_b    (audio_out_b),
+	// Special ports
+	.chr_ain_o  (chr_ain_orig)
 );
 
 //*****************************************************************************//
@@ -310,7 +318,9 @@ MMC4 mmc4(
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
 	.audio_in   (audio_in),
-	.audio_b    (audio_out_b)
+	.audio_b    (audio_out_b),
+	// Special ports
+	.chr_ain_o  (chr_ain_orig)
 );
 
 //*****************************************************************************//
@@ -978,7 +988,9 @@ Mapper165 map165(
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
 	.audio_in   (audio_in),
-	.audio_b    (audio_out_b)
+	.audio_b    (audio_out_b),
+	// Special ports
+	.chr_ain_o  (chr_ain_orig)
 );
 
 //*****************************************************************************//
@@ -1104,7 +1116,9 @@ Rambo1 rambo1(
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
 	.audio_in   (audio_in),
-	.audio_b    (audio_out_b)
+	.audio_b    (audio_out_b),
+	// Special ports
+	.chr_ain_o  (chr_ain_orig)
 );
 
 //*****************************************************************************//
@@ -1513,7 +1527,8 @@ JYCompany jycompany(
 	.audio_in   (audio_in),
 	.audio_b    (audio_out_b),
 	// Special ports
-	.ppu_ce     (ppu_ce)
+	.ppu_ce     (ppu_ce),
+	.chr_ain_o  (chr_ain_orig)
 );
 
 //*****************************************************************************//
