@@ -393,14 +393,14 @@ end else if (ce) begin
 				3'b1_10: chr_bank_2 <= prg_din;
 				3'b1_11: chr_bank_3 <= prg_din;
 			endcase
-
-		if (irq_enable) begin
-			irq_counter <= irq_counter - 16'd1;
-			if (irq_counter == 16'h0) begin
-				irq <= 1'b1; // IRQ
-				irq_enable <= 0;
-			end
+	end
+	if (irq_enable) begin
+		irq_counter <= irq_counter - 16'd1;
+		if (irq_counter == 16'h0) begin
+			irq <= 1'b1; // IRQ
+			irq_enable <= 0;
 		end
+
 		if (irq_ack)
 			irq <= 1'b0; // IRQ ACK
 	end
