@@ -60,7 +60,8 @@ module sdram
 	output reg        ch2_busy
 );
 
-assign SDRAM_CKE = ~init;
+assign SDRAM_CKE = 1;
+assign {SDRAM_DQMH,SDRAM_DQML} = SDRAM_A[12:11];
 
 localparam RASCAS_DELAY   = 3'd2; // tRCD=20ns -> 2 cycles@85MHz
 localparam BURST_LENGTH   = 3'd0; // 0=1, 1=2, 2=4, 3=8, 7=full page
@@ -73,6 +74,7 @@ localparam MODE = { 3'b000, NO_WRITE_BURST, OP_MODE, CAS_LATENCY, ACCESS_TYPE, B
 
 localparam STATE_IDLE  = 3'd0;             // state to check the requests
 localparam STATE_START = STATE_IDLE+1'd1;  // state in which a new command is started
+localparam STATE_NEXT  = STATE_START+1'd1; // state in which a new command is started
 localparam STATE_CONT  = STATE_START+RASCAS_DELAY;
 localparam STATE_READY = STATE_CONT+CAS_LATENCY+1'd1;
 localparam STATE_LAST  = STATE_READY;      // last state in cycle
@@ -185,13 +187,18 @@ localparam CMD_PRECHARGE       = 4'b0010;
 localparam CMD_AUTO_REFRESH    = 4'b0001;
 localparam CMD_LOAD_MODE       = 4'b0000;
 
+wire [1:0] dqm = {we & ~a[0], we & a[0]};
+
 // SDRAM state machines
 always @(posedge clk) begin
 	reg [15:0] last_data[3];
 
+	if(state == STATE_START) SDRAM_BA <= (mode == MODE_NORMAL) ? bank : 2'b00;
+
+	SDRAM_DQ <= 'Z;
 	casex({ram_req,we,mode,state})
 		{2'b1X, MODE_NORMAL, STATE_START}: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_ACTIVE;
-		{2'b11, MODE_NORMAL, STATE_CONT }: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_WRITE;
+		{2'b11, MODE_NORMAL, STATE_CONT }: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE, SDRAM_DQ} <= {CMD_WRITE, data};
 		{2'b10, MODE_NORMAL, STATE_CONT }: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_READ;
 		{2'b0X, MODE_NORMAL, STATE_START}: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_AUTO_REFRESH;
 
@@ -204,7 +211,8 @@ always @(posedge clk) begin
 
 	casex({ram_req,mode,state})
 		{1'b1,  MODE_NORMAL, STATE_START}: SDRAM_A <= a[13:1];
-		{1'b1,  MODE_NORMAL, STATE_CONT }: SDRAM_A <= {4'b0010, a[22:14]};
+		{1'b1,  MODE_NORMAL, STATE_NEXT}:  SDRAM_A <= '1;
+		{1'b1,  MODE_NORMAL, STATE_CONT }: SDRAM_A <= {dqm, 2'b10, a[22:14]};
 
 		// init
 		{1'bX,     MODE_LDM, STATE_START}: SDRAM_A <= MODE;
@@ -212,12 +220,6 @@ always @(posedge clk) begin
 
 		                          default: SDRAM_A <= 13'b0000000000000;
 	endcase
-
-	if(state == STATE_START) begin
-		SDRAM_BA <= (mode == MODE_NORMAL) ? bank : 2'b00;
-		SDRAM_DQ <= we ? data : 'Z;
-		{SDRAM_DQMH,SDRAM_DQML} <= ~we ? 2'b00 : {~a[0], a[0]};
-	end
 
 	if(state == STATE_READY) begin
 		if(ch0_busy) begin
