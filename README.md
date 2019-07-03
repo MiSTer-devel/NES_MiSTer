@@ -4,10 +4,12 @@ This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://git
 
 ## Features
  * Supports saves for most games
+ * Supports NTSC, PAL, and Dendy system types
  * FDS Support with expansion audio
  * Multiple Palette options
  * Zapper, Powerpad, and Microphone support
  * Supports four players
+ * Setting for increasing sprite per line by 8
  * Supports up to 32 cheat codes
  * Supports expansion audio from mappers including VRC6 & 7, MMC5, Namco 163 and Sunsoft 5b
  * Supports many popular mappers including VRC1-7, MMC0-5, and many more (see below)
@@ -22,8 +24,11 @@ Copy the NES_\*.rbf file to the root of the SD card. Create a **NES** folder on 
 ## Famicom Disk System Usage
 Before loading \*.FDS files, you must first load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom and placed in the same folder as the ROMs (NES).  Alternatively, it can be loaded from the OSD if boot0.rom doesn't exist. After loading the core and the bios you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the FDS button on the player 1 controller. The "Disk Swap" OSD option manually controls the disk side.  Each button press increments the disk side.  Press and hold the fds button to eject and increment the disk side in this mode.
 
+## Extra Sprites
+This feature will double the number of sprites drawn per scanlines, decreasing the flickering sprites that NES is known for. Some games relied on the 8 sprite behavior to work correctly, such as Simon's Quest swamps. Other mappers may be impacted by using extra sprites. While it works well in most games, glitches may occur with this enabled.
+
 ## Saving and Loading
-The battery backed RAM (Save RAM) for the NES does not write to disk automatically. When loading a game, you must select **Load Backup RAM** from the OSD menu. After saving in your game, you must then write the RAM to the SD card by selecting **Save Backup RAM** from the menu. If you do not save your RAM to disk, the contents will be lost next time you restart the core or switch games. Alternatively you can enable to Autosave option from the OSD menu, and if you do your games will be recorded to disk every time you open the OSD menu.  FDS saving uses the same method as for cartridge RAM saves.
+The battery backed RAM (Save RAM) for the NES does not write to disk automatically. When loading a game, you must select **Load Backup RAM** from the OSD menu. After saving in your game, you must then write the RAM to the SD card by selecting **Save Backup RAM** from the menu. If you do not save your RAM to disk, the contents will be lost next time you restart the core or switch games. Alternatively you can enable to Autosave option from the OSD menu, and if you do your games will be recorded to disk every time you open the OSD menu. FDS saving uses the same method as for cartridge RAM saves.
 
 ## Zapper Support
 The "Zapper" (aka Light Gun) can be used via two methods. You can select Peripheral: Zapper(Mouse) to use your mouse to aim and shoot with the left button. This mode uses relative mouse motion, so devices that rely on absolute coordinates will not work via this method. Alternatively, you can choose Zapper(Joy) to use the Analog stick to aim, and the defined Trigger button to fire. Guns such as Aimtrak have joystick modes which may be compatible with this method.
@@ -42,7 +47,7 @@ The "Zapper" (aka Light Gun) can be used via two methods. You can select Periphe
 |**112**|**113**|~~114~~|~~115~~|~~116~~|~~117~~|**118**|**119**|~~120~~||~~122~~|~~123~~||~~125~~|~~126~~|~~127~~|
 |~~128~~|~~129~~|~~130~~|~~131~~|**132**|**133**|~~134~~|~~135~~|**136**|**137**|**138**|**139**|**140**|**141**|~~142~~|**143**|
 |~~144~~|**145**|**146**|**147**|**148**|**149**|**150**|~~151~~|**152**|~~153~~|**154**|**155**|~~156~~|~~157~~|**158**|**159**|
-|~~160~~|~~161~~|~~162~~|~~163~~|~~164~~|**165**|~~166~~|~~167~~|~~168~~|~~169~~|||**172**|**173**|||
+|~~160~~|~~161~~|**162**|~~163~~|**164**|**165**|~~166~~|~~167~~|~~168~~|~~169~~|||**172**|**173**|||
 |||||**180**|~~181~~|~~182~~|~~183~~|**184**|**185**|~~186~~|~~187~~|~~188~~|~~189~~|**190**|**191**|
 |**192**|~~193~~|**194**|**195**|~~196~~||~~198~~|~~199~~|~~200~~|~~201~~|~~202~~|~~203~~|~~204~~|~~205~~|**206**|**207**|
 |~~208~~|**209**|**210**|**211**|~~212~~|~~213~~|~~214~~|~~215~~|~~216~~|~~217~~|**218**||||~~222~~||
