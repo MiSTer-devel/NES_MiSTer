@@ -347,7 +347,7 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-wire irq;
+reg irq;
 reg [15:0] flags_out = 0;
 
 reg [7:0] prg_bank_0;
@@ -400,10 +400,10 @@ end else if (ce) begin
 			irq <= 1'b1; // IRQ
 			irq_enable <= 0;
 		end
-
-		if (irq_ack)
-			irq <= 1'b0; // IRQ ACK
 	end
+
+	if (irq_ack)
+		irq <= 1'b0; // IRQ ACK
 end
 
 always begin
