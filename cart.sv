@@ -1091,9 +1091,9 @@ Mapper234 map234(
 //*****************************************************************************//
 // Name   : RAMBO1 (Tengen MMC3)                                               //
 // Mappers: 64, 158                                                            //
-// Status : Significant graphical errors                                       //
+// Status : Needs testing.  Irq might be slightly off.                         //
 // Notes  : Consider merging with MMC3                                         //
-// Games  : Shinobi, Rolling Thunder, Klax                                     //
+// Games  : Shinobi, Rolling Thunder, Klax, Skull and Crossbones               //
 //*****************************************************************************//
 Rambo1 rambo1(
 	.clk        (clk),
