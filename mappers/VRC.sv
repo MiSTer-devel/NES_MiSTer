@@ -586,17 +586,17 @@ wire wr_audio = prg_write && (prg_ain[15:6]==10'b1001_0000_00) && (prg_ain[4:0]=
 eseopll ym2143vrc7 (clk,~enable, ce_ym2143,wr_audio,ce_ym2143,ack,wr_audio,{15'b0,prg_ain[5]},prg_din,ym2143audio);
 
 // The strategy here:
-// VRC7 sound is very low, and the top two bit is seldom (if ever) used. It's output as signed, so
-// what we do is convert to unsigned, then drop the top bit, clipping if needed. It's still very
-// low compared to NES audio, so we drop the bottom bit of NES audio, mix the two, then boost the
-// mixed result times two, again clipping if needed. The result is audio mixed more or less correctly
-// and at a similar level to the audio from regular games. I do not know the polarity of
-// VRC7 audio.
+// VRC7 sound is very low, and the top bit is seldom (if ever) used. It's output as signed with
+// an actual used range of 6 * +/-512 = +/-3072.  What we do is convert to unsigned (+2048),
+// then clip to 4095. This clips the top 50% of the values, which are unlikely to be needed. This volume
+// is low compared to NES audio, so we mix accordingly, again clipping if needed. The result
+// is audio mixed more or less correctly and at a similar level to the audio from regular games.
 
-wire [13:0] audio_exp = ym2143audio + 13'd4095;
-wire [15:0] audio_clip = audio_exp[13] ? 16'hFFFF : {audio_exp[12:0], audio_exp[13:11]};
-wire [16:0] audio_mixed = audio_in[15:1] + audio_clip;
-assign audio = soff ? 16'h8000 : (audio_mixed[16] ? 16'hFFFF : audio_mixed[15:0]);
+wire [13:0] audio_exp = ym2143audio + 14'h800;
+wire [13:0] audio_clip = audio_exp > 14'hFFF ? 14'hFFF : audio_exp;
+wire [15:0] audio_boost = {audio_clip[11:0], 4'b0000};
+wire [16:0] audio_mixed = audio_in[15:1] + audio_boost[15:1] + audio_boost[15:2] + audio_boost[15:4];
+assign audio = soff ? audio_in[15:1] : (audio_mixed[16] ? 16'hFFFF : audio_mixed[15:0]);
 
 endmodule
 
