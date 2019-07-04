@@ -278,7 +278,7 @@ wire mapper194 = (flags[7:0] == 194);   // Has 2KB CHR RAM
 wire mapper195 = (flags[7:0] == 195);   // Has 4KB CHR RAM
 wire MMC6 = ((flags[7:0] == 4) && (flags[24:21] == 1)); // mapper 4, submapper 1 = MMC6
 
-wire four_screen_mirroring = flags[16] | DxROM;
+wire four_screen_mirroring = flags[16];// | DxROM; // not all DxROM are 4-screen
 reg mapper47_multicart;
 reg [2:0] mapper37_multicart;
 wire [7:0] new_counter = (counter == 0 || irq_reload) ? irq_latch : counter - 1'd1;
@@ -372,9 +372,10 @@ end else if (ce) begin
 			endcase
 		end
 
-	if (mapper154) begin
-		mirroring <= !prg_din[6];
-		end
+		if (mapper154)
+			mirroring <= !prg_din[6];
+		if (DxROM)
+			mirroring <= flags[14]; // Hard-wired mirroring
 	end
 	else if (regs_7e && prg_write && prg_ain[15:4]==12'h7EF) begin
 		casez({prg_ain[3:0], mapper82})
