@@ -184,7 +184,7 @@ assign at_last_cycle_group = (cycle[8:3] == 42);
 assign short_frame = end_of_line & skip_pixel;
 
 wire skip_pixel = is_pre_render && ~even_frame_toggle && is_rendering;
-assign end_of_line = at_last_cycle_group && (cycle[3:0] == (skip_pixel ? 3 : 4));
+assign end_of_line = at_last_cycle_group && (cycle[3:0] == (skip_pixel && skip_en ? 3 : 4));
 
 // Confimed with Visual 2C02
 // All vblank clocked registers should have changed and be readable by cycle 1 of 241/261
@@ -217,7 +217,7 @@ end else if (ce && end_of_line) begin
 	is_pre_render <= (scanline == vblank_end_sl);
 
 	if (scanline == 255)
-		even_frame_toggle <= skip_en ? ~even_frame_toggle : 1'b1;
+		even_frame_toggle <= skip_en ? ~even_frame_toggle : 1'b0;
 end
 
 endmodule // ClockGen
