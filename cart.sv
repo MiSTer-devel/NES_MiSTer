@@ -1093,7 +1093,7 @@ Mapper234 map234(
 // Mappers: 64, 158                                                            //
 // Status : Needs testing.  Irq might be slightly off.                         //
 // Notes  : Consider merging with MMC3                                         //
-// Games  : Shinobi, Rolling Thunder, Klax, Skull and Crossbones               //
+// Games  : Rolling Thunder, Klax, Skull and Crossbones, Alien Syndrome (158)  //
 //*****************************************************************************//
 Rambo1 rambo1(
 	.clk        (clk),
