@@ -71,7 +71,7 @@ endmodule
 
 module NES(
 	input         clk,
-	input         reset_nes,
+	input         reset,
 	input   [1:0] sys_type,
 	output  [1:0] nes_div,
 	input  [31:0] mapper_flags,
@@ -154,8 +154,6 @@ module NES(
 
 assign nes_div = div_sys;
 assign apu_ce = cpu_ce;
-
-wire reset = reset_nes | (last_sys_type != sys_type);
 
 wire [7:0] from_data_bus;
 wire [7:0] cpu_dout;

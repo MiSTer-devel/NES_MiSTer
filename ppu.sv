@@ -181,10 +181,10 @@ assign at_last_cycle_group = (cycle[8:3] == 42);
 
 // For NTSC only, the *last* cycle of odd frames is skipped.
 // In Visual 2C02, the counter starts at zero and flips at scanline 256.
-assign short_frame = end_of_line & skip_pixel && skip_en;
+assign short_frame = end_of_line & skip_pixel;
 
-wire skip_pixel = is_pre_render && ~even_frame_toggle && is_rendering;
-assign end_of_line = at_last_cycle_group && (cycle[3:0] == (skip_pixel && skip_en ? 3 : 4));
+wire skip_pixel = is_pre_render && ~even_frame_toggle && is_rendering && skip_en;
+assign end_of_line = at_last_cycle_group && (cycle[3:0] == (skip_pixel ? 3 : 4));
 
 // Confimed with Visual 2C02
 // All vblank clocked registers should have changed and be readable by cycle 1 of 241/261
@@ -217,7 +217,7 @@ end else if (ce && end_of_line) begin
 	is_pre_render <= (scanline == vblank_end_sl);
 
 	if (scanline == 255)
-		even_frame_toggle <= skip_en ? ~even_frame_toggle : 1'b0;
+		even_frame_toggle <= ~even_frame_toggle;
 end
 
 endmodule // ClockGen

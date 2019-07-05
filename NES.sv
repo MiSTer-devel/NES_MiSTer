@@ -146,7 +146,7 @@ parameter CONF_STR = {
 	"O5,Invert Mirroring,Off,On;",
 	"-;",
 	"C,Cheats;",
-	"H20K,Cheats Enabled,On,Off;",
+	"H2OK,Cheats Enabled,On,Off;",
 	"-;",
 	"D0R6,Load Backup RAM;",
 	"D0R7,Save Backup RAM;",
@@ -401,7 +401,7 @@ end
 
 wire fds_eject = swap_delay[2] | fds_swap_invert ? fds_btn : (clkcount[21] | fds_btn);
 
-reg [2:0] nes_ce;
+reg [1:0] nes_ce;
 
 reg [7:0] mic_cnt;
 
@@ -506,7 +506,19 @@ always @(posedge clk) begin
 	end;
 end
  
-wire reset_nes = ~init_reset_n || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading || bk_loading_req || hold_reset;
+wire reset_nes = 
+	~init_reset_n  ||
+	buttons[1]     ||
+	arm_reset      ||
+	download_reset ||
+	loader_fail    ||
+	bk_loading     ||
+	bk_loading_req ||
+	hold_reset     ||
+	(old_sys_type != status[24:23]);
+
+reg [1:0] old_sys_type;
+always @(posedge clk) old_sys_type <= status[24:23];
 
 wire [17:0] bram_addr;
 wire [7:0] bram_din;
@@ -524,7 +536,7 @@ wire lightgun_en = |status[19:18];
 NES nes (
 	.ex_sprites      (status[25]),
 	.clk             (clk),
-	.reset_nes       (reset_nes),
+	.reset           (reset_nes),
 	.sys_type        (status[24:23]),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 32'd0 : mapper_flags),
@@ -741,6 +753,7 @@ video video
 	.*,
 	.clk(clk),
 	.reset(reset_nes),
+	.cnt(nes_ce),
 	.hold_reset(hold_reset),
 	.count_v(scanline),
 	.count_h(cycle),
