@@ -201,7 +201,7 @@ always @(posedge clk) if (reset) begin
 	cycle <= 0;
 	is_in_vblank <= 0;
 end else if (ce) begin
-	cycle <= end_of_line ? 1'd0 : cycle + 1'd1;
+	cycle <= end_of_line ? 9'd0 : cycle + 9'd1;
 	is_in_vblank <= new_is_in_vblank;
 end
 
@@ -331,12 +331,10 @@ module OAMEval(
 	input clk,
 	input ce,
 	input reset,
-	input reset_line,          // OAM evaluator needs to be reset before processing is started.
 	input rendering_enabled,   // Set to 1 if evaluations are enabled
 	input obj_size,            // Set to 1 if objects are 16 pixels.
 	input [8:0] scanline,      // Current scan line (compared against Y)
 	input [8:0] cycle,         // Current cycle.
-	input is_pre_render,       // High if on the pre-render scanline
 	output [7:0] oam_bus,      // Current value on the OAM bus, returned to NES through $2004.
 	output reg [31:0] oam_bus_ex,
 	input oam_addr_write,      // Load oam with specified value, when writing to NES $2003.
@@ -380,7 +378,7 @@ wire visible = (scanline < 240);
 wire rendering = (scanline == 9'd511 || visible) && rendering_enabled;
 wire evaluating = visible && rendering_enabled;
 
-reg [6:0] oam_temp_addr;
+reg [5:0] oam_temp_addr;
 reg [6:0] feed_cnt;
 
 reg sprite0_curr;
@@ -461,14 +459,14 @@ end else if (ce) begin
 			if (~cycle[0]) begin
 				oam_temp[oam_temp_addr] <= 8'hFF;
 				// Clear extra sprite space too
-				oam_temp[oam_temp_addr + 8'd32] <= 8'hFF;
+				oam_temp[oam_temp_addr + 6'd32] <= 8'hFF;
 				oam_temp_addr <= oam_temp_addr + 1'b1;
 			end
 
 			// During init, we hunt for the 8th sprite in OAM, so we know where to start for extra sprites
 			if (~&spr_counter) begin
 				oam_addr_ex <= oam_addr_ex + 1'd1;
-				if (scanline >= oam[{oam_addr_ex, 2'b00}] && scanline < oam[{oam_addr_ex, 2'b00}] + (obj_size ? 16 : 8))
+				if (scanline[7:0] >= oam[{oam_addr_ex, 2'b00}] && scanline[7:0] < oam[{oam_addr_ex, 2'b00}] + (obj_size ? 16 : 8))
 					spr_counter <= spr_counter + 1'b1;
 			end
 		end else if (oam_state == STATE_EVAL) begin             // Evaluation State
@@ -477,8 +475,8 @@ end else if (ce) begin
 				// so extra sprite evaluation has to be done seperately.
 				if (&spr_counter && ~ex_ovr) begin
 					{ex_ovr, oam_addr_ex} <= oam_addr_ex + 7'd1;
-					if (scanline >= oam[{oam_addr_ex, 2'b00}] &&
-						scanline < oam[{oam_addr_ex, 2'b00}] + (obj_size ? 16 : 8)) begin
+					if (scanline[7:0] >= oam[{oam_addr_ex, 2'b00}] &&
+						scanline[7:0] < oam[{oam_addr_ex, 2'b00}] + (obj_size ? 16 : 8)) begin
 						if (oam_temp_slot_ex < 8) begin // Turbo style.
 							oam_temp_slot_ex <= oam_temp_slot_ex + 1'b1;
 							oam_temp[{oam_temp_slot_ex, 2'b00} + 6'd32] <= oam[{oam_addr_ex, 2'b00}];
@@ -495,11 +493,11 @@ end else if (ce) begin
 				end else begin
 					if (~n_ovr) begin
 						if (oam_temp_wren)
-							oam_temp[{oam_temp_slot, oam_addr[1:0]}] <= oam_data;
+							oam_temp[{1'b0, oam_temp_slot, oam_addr[1:0]}] <= oam_data;
 						else
 							oam_data <= oam_temp[{1'b0, oam_temp_slot, 2'b00}];
 						if (~|eval_counter) begin // m is 0
-							if (scanline >= oam_data && scanline < oam_data + (obj_size ? 16 : 8)) begin
+							if (scanline[7:0] >= oam_data && scanline[7:0] < oam_data + (obj_size ? 16 : 8)) begin
 								if (~oam_temp_wren)
 									spr_overflow <= 1;
 								if (~|oam_addr[7:2])
@@ -587,7 +585,7 @@ end else if (ce) begin
 			oam_data <= (oam_addr[1:0] == 2'b10) ? (oam_din & 8'hE3) : oam_din;
 			oam_addr <= oam_addr + 1'b1;
 		end else begin
-			oam_addr <= oam_addr + 3'd4;
+			oam_addr <= oam_addr + 8'd4;
 		end
 	end
 
@@ -1053,7 +1051,7 @@ SpriteAddressGenEx address_gen_ex(
 	.ce        (ce),
 	.enabled   (cycle[8] && !cycle[6]),  // Load sprites between 256..319
 	.obj_size  (obj_size),
-	.scanline  (scanline),
+	.scanline  (scanline[7:0]),
 	.obj_patt  (obj_patt),               // Object size and pattern table
 	.cycle     (cycle[2:0]),             // Cycle counter
 	.temp      (is_pre_render_line ? 32'hFFFFFFFF : oam_bus_ex),                // Info from temp buffer.
@@ -1234,22 +1232,22 @@ reg refresh_high, refresh_low;
 
 always @(posedge clk) begin
 	if (refresh_high) begin
-		decay_high = 3221590; // aprox 600ms decay rate
+		decay_high <= 3221590; // aprox 600ms decay rate
 		refresh_high <= 0;
 	end
 
 	if (refresh_low) begin
-		decay_low = 3221590;
+		decay_low <= 3221590;
 		refresh_low <= 0;
 	end
 
 	if (ce) begin
-		if (decay_high)
+		if (decay_high > 0)
 			decay_high <= decay_high - 1'b1;
 		else
 			latched_dout[7:5] <= 3'b000;
 
-		if (decay_low)
+		if (decay_low > 0)
 			decay_low <= decay_low - 1'b1;
 		else
 			latched_dout[4:0] <= 5'b00000;

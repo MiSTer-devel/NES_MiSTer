@@ -37,7 +37,6 @@ module DmaController(
 	output pause_cpu               // CPU is pausede
 );
 
-// XXX: OAM DMA appears to be 1 cycle too short
 reg dmc_state;
 reg [1:0] spr_state;
 reg [7:0] sprite_dma_lastval;
@@ -74,7 +73,7 @@ module NES(
 	input         clk,
 	input         reset_nes,
 	input   [1:0] sys_type,
-	output  [2:0] nes_div,
+	output  [1:0] nes_div,
 	input  [31:0] mapper_flags,
 	output [15:0] sample,         // sample generated from APU
 	output  [5:0] color,          // pixel generated from PPU
@@ -204,9 +203,9 @@ wire skip_ppu_cycle = (cpu_tick_count == 4) && (ppu_tick == 0);
 always @(posedge clk) begin
 	if (~freeze_clocks | ~(div_ppu == (div_ppu_n - 1'b1))) begin
 		if (~skip_ppu_cycle)
-			div_cpu <= cpu_ce || (ppu_ce && div_cpu > div_cpu_n) ? 1'b1 : div_cpu + 1'b1;
+			div_cpu <= cpu_ce || (ppu_ce && div_cpu > div_cpu_n) ? 5'd1 : div_cpu + 5'd1;
 
-		div_ppu <= ppu_ce ? 1'b1 : div_ppu + 1'b1;
+		div_ppu <= ppu_ce ? 3'd1 : div_ppu + 3'd1;
 
 		// reset the ticker on the first ppu tick at or after a cpu tick.
 		if (cpu_ce)

@@ -1349,7 +1349,7 @@ N106 n106(
 Mapper162 map162(
 	.clk        (clk),
 	.ce         (ce),
-	.enable     (me[162] | me[163]),
+	.enable     (me[162]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
@@ -1369,6 +1369,41 @@ Mapper162 map162(
 	.audio_in   (audio_in),
 	.audio_b    (audio_out_b)
 );
+
+//*****************************************************************************//
+// Name   : Nanjing 163                                                        //
+// Mappers: 163                                                                //
+// Status : Working                                                            //
+// Notes  :                                                                    //
+// Games  : Final Fantasy VII (163), Pokemon Yellow (163)                      //
+//*****************************************************************************//
+Nanjing map163(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[163]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b),
+	// Special Ports
+	.ppu_ce     (ppu_ce),
+	.ppuflags   (ppuflags)
+);
+
 
 //*****************************************************************************//
 // Name   : Waixing 164                                                        //
