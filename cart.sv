@@ -1570,7 +1570,7 @@ JYCompany jycompany(
 // Name   : Mapper 225                                                         //
 // Mappers: 225, 255                                                           //
 // Status : Working                                                            //
-// Notes  : Defining 225 as with 74'670 (4-byte RAM) and 255 as without        //
+// Notes  : Defining 225 as with 74'670 (4-nybble RAM) and 255 as without      //
 // Games  : 64-in-1 (225), 110-in-1 (255 - with glitched menu selection)       //
 //*****************************************************************************//
 Mapper225 map225(
