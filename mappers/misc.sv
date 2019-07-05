@@ -1495,7 +1495,7 @@ endmodule
 // Combine with other mapper (15?)
 // #225 -  64-in-1
 // #255 -  110-in-1 - This runs with buggy menu selection.  It runs correctly as mapper 225.
-//  Unsure if any games require simulating missing 74-670 RAM (4 bytes).
+//  Unsure if any games require simulating missing 74-670 RAM (4 nybbles).
 module Mapper225(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk

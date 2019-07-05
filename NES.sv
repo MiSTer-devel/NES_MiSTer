@@ -813,7 +813,6 @@ reg  bk_loading = 0;
 reg  bk_loading_req = 0;
 reg  bk_request = 0;
 wire bk_busy = (bk_state == S_COPY);
-reg  bram_init = 0;
 reg  fds_busy;
 reg  old_fds_btn;
 reg [2:0] swap_delay;
@@ -845,7 +844,6 @@ always @(posedge clk) begin
 
 	if (downloading) begin
 		diskside <= 2'd0;
-		bram_init <= ~fds;
 		bk_state <= S_IDLE;
 		bk_request <= 0;
 		diskside_btn <= 2'd0;
@@ -853,7 +851,7 @@ always @(posedge clk) begin
 		if((~old_load & bk_load) | (~old_save & bk_save)) begin
 			bk_loading <= bk_load;
 			bk_request <= 1;
-		end else if(bram_init && (diskside_req_use != diskside) && ~downloading && ~bk_request && fds) begin		
+		end else if((diskside_req_use != diskside) && ~downloading && ~bk_request && fds) begin		
 			diskside <= diskside_req_use;
 			swap_delay <= {1'b1, ~clkcount[22:21]};
 		end
@@ -873,7 +871,6 @@ always @(posedge clk) begin
 			if(sd_lba[8:0] == save_sz) begin
 				bk_loading <= 0;
 				bk_state <= S_IDLE;
-				bram_init <= 1;
 			end else begin
 				sd_lba <= sd_lba + 1'd1;
 				sd_rd  <=  bk_loading;
