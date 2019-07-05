@@ -969,7 +969,7 @@ reg copybios;
 typedef enum bit [2:0] { S_LOADHEADER, S_LOADPRG, S_LOADCHR, S_LOADFDS, S_ERROR, S_CLEARRAM, S_COPYBIOS, S_DONE } mystate;
 mystate state;
 
-wire type_bios = (filetype == 0 || filetype == 3); //*.BIOS or boot.rom or boot0.rom
+wire type_bios = (filetype == 0 || filetype == 2); //*.BIOS or boot.rom or boot0.rom
 //wire type_nes = (filetype == 1 || filetype==8'h40); //*.NES or boot1.rom  //default
 wire type_fds = (filetype == 8'b01000001 || filetype==8'h80); //*.FDS or boot2.rom
 
