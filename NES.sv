@@ -146,7 +146,7 @@ parameter CONF_STR = {
 	"O5,Invert Mirroring,Off,On;",
 	"-;",
 	"C,Cheats;",
-	"H20K,Cheats Enabled,On,Off;",
+	"H2OK,Cheats Enabled,On,Off;",
 	"-;",
 	"D0R6,Load Backup RAM;",
 	"D0R7,Save Backup RAM;",
@@ -507,14 +507,14 @@ always @(posedge clk) begin
 end
  
 wire reset_nes = 
-	~init_reset_n || 
-	buttons[1] || 
-	arm_reset || 
-	download_reset || 
-	loader_fail || 
-	bk_loading || 
-	bk_loading_req || 
-	hold_reset ||
+	~init_reset_n  ||
+	buttons[1]     ||
+	arm_reset      ||
+	download_reset ||
+	loader_fail    ||
+	bk_loading     ||
+	bk_loading_req ||
+	hold_reset     ||
 	(old_sys_type != status[24:23]);
 
 reg [1:0] old_sys_type;
