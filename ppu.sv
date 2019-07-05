@@ -181,7 +181,7 @@ assign at_last_cycle_group = (cycle[8:3] == 42);
 
 // For NTSC only, the *last* cycle of odd frames is skipped.
 // In Visual 2C02, the counter starts at zero and flips at scanline 256.
-assign short_frame = end_of_line & skip_pixel;
+assign short_frame = end_of_line & skip_pixel && skip_en;
 
 wire skip_pixel = is_pre_render && ~even_frame_toggle && is_rendering;
 assign end_of_line = at_last_cycle_group && (cycle[3:0] == (skip_pixel && skip_en ? 3 : 4));
