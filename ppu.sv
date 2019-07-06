@@ -522,15 +522,12 @@ end else if (ce) begin
 							eval_counter <= eval_counter + 2'd1;
 							{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd1;
 							
-							if (eval_counter == 1) begin
-
-							end
-
 							if (&eval_counter) begin // end of copy
 								if (oam_temp_wren) begin
 									last_y <= oam[{oam_addr[7:2], 2'b00}];
 									last_tile <= oam[{oam_addr[7:2], 2'b01}];
 									last_attr <= oam[{oam_addr[7:2], 2'b10}];
+									// Check for repeats to see if the game is trying to mask sprites
 									if (|oam_temp_slot &&
 										last_y == oam[{oam_addr[7:2], 2'b00}] &&
 										last_tile == oam[{oam_addr[7:2], 2'b01}] &&
@@ -551,9 +548,16 @@ end else if (ce) begin
 						oam_data <= oam_temp[{1'b0, oam_temp_slot, 2'b00}];
 					end
 				end
+				// Check if the 9th sprite is a repeat
+				if (last_y    == oam_temp[6'd32] &&
+					last_tile == oam_temp[6'd33] &&
+					last_attr == oam_temp[6'd34] &&
+					cycle == 9'h0FD && repeat_count < 7)
+					repeat_count <= repeat_count + 3'd1;
 			end
 		end else if (oam_state == STATE_FETCH) begin
 			feed_cnt <= feed_cnt + 1'd1;
+
 			case (feed_cnt[2:0])
 				0: begin // Y Coord
 					oam_data <= oam_temp[{feed_cnt[6:3], 2'b00}];
