@@ -195,13 +195,14 @@ assign vram_ce = chr_ain[13] && !four_screen;
 endmodule
 
 
-// 11 - Color Dreams
-// 38 - Bit Corps
-// 86 - Jaleco JF-13 -- no audio samples
-// 87 - Jaleco JF-11,JF-14
+// 11  - Color Dreams
+// 38  - Bit Corps
+// 46  - RumbleStation 15-in-1
+// 86  - Jaleco JF-13 -- no audio samples
+// 87  - Jaleco JF-11,JF-14
 // 101 - Jaleco JF-11,JF-14
 // 140 - Jaleco JF-11,JF-14
-// 66 - GxROM
+// 66  - GxROM
 // 145 - Sachen
 // 149 - Sachen
 module Mapper66(
@@ -247,13 +248,14 @@ wire vram_ce;
 wire [15:0] flags_out = {13'h0, prg_conflict, 2'b00};
 
 
-reg [1:0] prg_bank;
-reg [3:0] chr_bank;
+reg [4:0] prg_bank;
+reg [6:0] chr_bank;
 wire [7:0] mapper = flags[7:0];
 wire GXROM = (mapper == 66);
 wire BitCorps = (mapper == 38);
 wire Mapper140 = (mapper == 140);
 wire Mapper101 = (mapper == 101);
+wire Mapper46 = (mapper == 46);
 wire Mapper86 = (mapper == 86);
 wire Mapper87 = (mapper == 87);
 wire Mapper145 = (mapper == 145);
@@ -266,33 +268,37 @@ if (~enable) begin
 end else if (ce) begin
 	if (prg_ain[15] & prg_write) begin
 		if (GXROM)
-			{prg_bank, chr_bank} <= {prg_din[5:4], 2'b0, prg_din[1:0]};
+			{prg_bank[1:0], chr_bank[3:0]} <= {prg_din[5:4], 2'b0, prg_din[1:0]};
 		else if (Mapper149)
-			{chr_bank} <= {3'b0, prg_din[7]};
+			{chr_bank[3:0]} <= {3'b0, prg_din[7]};
+		else if (Mapper46)
+			{chr_bank[2:0], prg_bank[0]} <= {prg_din[6:4], prg_din[0]};
 		else // Color Dreams
-			{chr_bank, prg_bank} <= {prg_din[7:4], prg_din[1:0]};
+			{chr_bank[3:0], prg_bank[1:0]} <= {prg_din[7:4], prg_din[1:0]};
 	end else if ((prg_ain[15:12]==4'h7) & prg_write & BitCorps) begin
-		{chr_bank, prg_bank} <= {prg_din[3:0]};
+		{chr_bank[3:0], prg_bank[1:0]} <= {prg_din[3:0]};
+	end else if ((prg_ain >= 'h6000 && prg_ain < 'h8000) & prg_write & Mapper46) begin
+		{chr_bank[6:3], prg_bank[4:1]} <= {prg_din[7:4], prg_din[3:0]};
 	end else if ((prg_ain[15:12]==4'h6) & prg_write) begin
 		if (Mapper140) begin
-			{prg_bank, chr_bank} <= {prg_din[5:4], prg_din[3:0]};
+			{prg_bank[1:0], chr_bank[3:0]} <= {prg_din[5:4], prg_din[3:0]};
 		end else if (Mapper101) begin
-			{chr_bank} <= {prg_din[3:0]}; // All 8 bits instead?
+			{chr_bank[3:0]} <= {prg_din[3:0]}; // All 8 bits instead?
 		end else if (Mapper87) begin
-			{chr_bank} <= {2'b00, prg_din[0], prg_din[1]};
+			{chr_bank[3:0]} <= {2'b00, prg_din[0], prg_din[1]};
 		end else if (Mapper86) begin
-			{prg_bank, chr_bank} <= {prg_din[5:4], 1'b0, prg_din[6], prg_din[1:0]};
+			{prg_bank[1:0], chr_bank[3:0]} <= {prg_din[5:4], 1'b0, prg_din[6], prg_din[1:0]};
 		end
 	end else if ((prg_ain[15:8]==8'h41) & prg_write) begin
 		if (Mapper145)
-			{chr_bank} <= {3'b0, prg_din[7]};
+			{chr_bank[3:0]} <= {3'b0, prg_din[7]};
 	end
 end
 
-assign prg_aout = {5'b00_000, prg_bank, prg_ain[14:0]};
+assign prg_aout = {2'b00, prg_bank, prg_ain[14:0]};
 assign prg_allow = prg_ain[15] && !prg_write;
 assign chr_allow = flags[15];
-assign chr_aout = {5'b10_000, chr_bank, chr_ain[12:0]};
+assign chr_aout = {2'b10, chr_bank, chr_ain[12:0]};
 assign vram_ce = chr_ain[13];
 assign vram_a10 = flags[14] ? chr_ain[10] : chr_ain[11];
 wire prg_conflict = prg_ain[15] && (Mapper149);

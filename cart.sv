@@ -619,12 +619,12 @@ Mapper65 map65(
 
 //*****************************************************************************//
 // Name   : GxROM                                                              //
-// Mappers: 11, 38, 66, 86, 87, 101, 140                                       //
+// Mappers: 11, 38, 46, 66, 86, 87, 101, 140                                       //
 // Status : 38/66 - Working, 38/87/101/140 - Needs eval, 86 - No Audio Samples //
 // Notes  :                                                                    //
 // Games  : Doraemon, Dragon Power, Sidewinder (145), Taiwan Mahjong 16 (149)  //
 //*****************************************************************************//
-wire mapper66_en = me[11] | me[38] | me[86] | me[87] | me[101] | me[140] | me[66] | me[145] | me[149];
+wire mapper66_en = me[11] | me[38] | me[46] | me[86] | me[87] | me[101] | me[140] | me[66] | me[145] | me[149];
 Mapper66 map66(
 	.clk        (clk),
 	.ce         (ce),
