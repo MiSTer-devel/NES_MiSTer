@@ -41,6 +41,7 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
+wire mapper171 = (flags[7:0] == 171); //Mapper 171 has hardwired mirroring
 reg [15:0] flags_out = 0;
 
 reg [4:0] shift;
@@ -138,7 +139,7 @@ wire [21:0] prg_aout_tmp = prg_size == 5 ? {3'b000, chrsel[4], prgsel, prg_ain[1
 // The a10 VRAM address line. (Used for mirroring)
 reg vram_a10_t;
 always @* begin
-	casez(control[1:0])
+	casez(mapper171 ? 2'b10 : control[1:0])   //if mapper 171 then set to vertical mirroring, else do normal MMC1 mirroring selection.
 		2'b00: vram_a10_t = 0;             // One screen, lower bank
 		2'b01: vram_a10_t = 1;             // One screen, upper bank
 		2'b10: vram_a10_t = chr_ain[10];   // One screen, vertical

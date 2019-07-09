@@ -95,7 +95,7 @@ MMC0 mmc0(
 
 //*****************************************************************************//
 // Name   : MMC1                                                               //
-// Mappers: 1, 155                                                             //
+// Mappers: 1, 155, 171 (hard wired vertical mirroring)                        //
 // Status : Working                                                            //
 // Notes  :                                                                    //
 // Games  : Simon's Quest                                                      //
@@ -103,7 +103,7 @@ MMC0 mmc0(
 MMC1 mmc1(
 	.clk        (clk),
 	.ce         (ce),
-	.enable     (me[155] | me[1]),
+	.enable     (me[171] | me[155] | me[1]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
