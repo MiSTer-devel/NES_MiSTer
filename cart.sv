@@ -1217,7 +1217,7 @@ VRC3 vrc3(
 
 //*****************************************************************************//
 // Name   : Konami VRC2/4                                                      //
-// Mappers: 21, 22, 23, 25                                                     //
+// Mappers: 21, 22, 23, 25, 27 (pirate of 23)                                  //
 // Status : Needs Evaluation                                                   //
 // Notes  :                                                                    //
 // Games  : Wai Wai World 2, Twinbee 3, Contra (j), Gradius II (j)             //
@@ -1225,7 +1225,7 @@ VRC3 vrc3(
 VRC24 vrc24(
 	.clk        (clk),
 	.ce         (ce),
-	.enable     (me[21] | me[22] | me[23] | me[25]),
+	.enable     (me[21] | me[22] | me[23] | me[25] | me[27]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
