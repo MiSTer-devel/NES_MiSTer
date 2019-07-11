@@ -268,30 +268,30 @@ if (~enable) begin
 end else if (ce) begin
 	if (prg_ain[15] & prg_write) begin
 		if (GXROM)
-			{prg_bank[1:0], chr_bank[3:0]} <= {prg_din[5:4], 2'b0, prg_din[1:0]};
+			{prg_bank, chr_bank} <= {3'b0, prg_din[5:4], 5'b0, prg_din[1:0]};
 		else if (Mapper149)
-			{chr_bank[3:0]} <= {3'b0, prg_din[7]};
+			{chr_bank} <= {6'b0, prg_din[7]};
 		else if (Mapper46)
 			{chr_bank[2:0], prg_bank[0]} <= {prg_din[6:4], prg_din[0]};
 		else // Color Dreams
-			{chr_bank[3:0], prg_bank[1:0]} <= {prg_din[7:4], prg_din[1:0]};
+			{chr_bank, prg_bank} <= {3'b0, prg_din[7:4], 3'b0, prg_din[1:0]};
 	end else if ((prg_ain[15:12]==4'h7) & prg_write & BitCorps) begin
-		{chr_bank[3:0], prg_bank[1:0]} <= {prg_din[3:0]};
-	end else if ((prg_ain >= 'h6000 && prg_ain < 'h8000) & prg_write & Mapper46) begin
-		{chr_bank[6:3], prg_bank[4:1]} <= {prg_din[7:4], prg_din[3:0]};
+		{chr_bank, prg_bank} <= {3'b0, prg_din[3:0]};
 	end else if ((prg_ain[15:12]==4'h6) & prg_write) begin
 		if (Mapper140) begin
-			{prg_bank[1:0], chr_bank[3:0]} <= {prg_din[5:4], prg_din[3:0]};
+			{prg_bank, chr_bank} <= {3'b0, prg_din[5:4], 3'b0, prg_din[3:0]};
+		end else if (Mapper46) begin
+			{chr_bank[6:3], prg_bank[4:1]} <= {prg_din[7:4], prg_din[3:0]};
 		end else if (Mapper101) begin
-			{chr_bank[3:0]} <= {prg_din[3:0]}; // All 8 bits instead?
+			{chr_bank} <= {3'b0, prg_din[3:0]}; // All 8 bits instead?
 		end else if (Mapper87) begin
-			{chr_bank[3:0]} <= {2'b00, prg_din[0], prg_din[1]};
+			{chr_bank} <= {5'b00, prg_din[0], prg_din[1]};
 		end else if (Mapper86) begin
-			{prg_bank[1:0], chr_bank[3:0]} <= {prg_din[5:4], 1'b0, prg_din[6], prg_din[1:0]};
+			{prg_bank, chr_bank} <= {3'b0, prg_din[5:4], 4'b0, prg_din[6], prg_din[1:0]};
 		end
 	end else if ((prg_ain[15:8]==8'h41) & prg_write) begin
 		if (Mapper145)
-			{chr_bank[3:0]} <= {3'b0, prg_din[7]};
+			{chr_bank} <= {6'b0, prg_din[7]};
 	end
 end
 
