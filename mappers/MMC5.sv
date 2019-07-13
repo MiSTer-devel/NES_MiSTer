@@ -189,6 +189,9 @@ always @* begin
 		prg_dout = multiply_result[7:0];
 	end else if (prg_ain == 16'h5206) begin
 		prg_dout = multiply_result[15:8];
+	end else if (prg_ain == 16'h5015) begin
+		prg_dout = {6'h00, apu_dout[1:0]};
+	// TODO: 5010
 	end
 end
 
@@ -388,7 +391,8 @@ always @* begin
 	// Override |chr_aout| if we're in a vertical split.
 	if (ppu_in_frame && insplit) begin
 		//$write("In vertical split!\n");
-		chr_aout = {2'b10, vsplit_bank, chr_ain[11:3], vscroll[2:0]};
+//		chr_aout = {2'b10, vsplit_bank, chr_ain[11:3], vscroll[2:0]}; // SL
+		chr_aout = {2'b10, vsplit_bank, chr_ain[11:3], chr_ain[2:0]}; // CL
 	end else if (ppu_in_frame && extended_ram_mode == 1 && is_bg_fetch && (ppu_cycle[2:1]!=0)) begin
 		//$write("In exram thingy!\n");
 		// Extended attribute mode. Replace the page with the page from exram.
@@ -413,7 +417,7 @@ wire apu_cs = (prg_ain[15:5]==11'b0101_0000_000) && (prg_ain[3]==0);
 wire DmaReq;          // 1 when DMC wants DMA
 wire [15:0] DmaAddr;  // Address DMC wants to read
 reg odd_or_even;
-wire apu_irq;         // IRQ asserted
+wire apu_irq;         // TODO: IRQ asserted
 
 always @(posedge clk) 
 if (~enable)

@@ -432,6 +432,7 @@ module DmcChan(input MMC5,
                output [15:0] DmaAddr,  // Address DMC wants to read
                input [7:0] DmaData,    // Input data to DMC from memory.
                output Irq,
+               input PAL,
                output IsDmcActive);
   reg IrqEnable;
   reg IrqActive;
@@ -464,6 +465,13 @@ module DmcChan(input MMC5,
 		106, 84, 72, 54
   };
 
+  wire [8:0] NewPeriodPAL[16] = '{
+    398, 354, 316, 298,
+    276, 236, 210, 198,
+    176, 148, 132, 118,
+    98,  78,  66,  50
+  };
+
   // Shift register initially loaded with 07
   always @(posedge clk) begin
     if (reset) begin
@@ -473,10 +481,10 @@ module DmcChan(input MMC5,
       Freq <= 0;
       Dac <= 0;
       SampleAddress <= 0;
-      SampleLen <= 0;
+      SampleLen <= 1;
       ShiftReg <= 8'h0; // XXX: should be 0 or 07? Visual 2C02 says 0, as does Mesen.
       Cycles <= 439;
-      Address <= 0;
+      Address <= 15'h4000;
       BytesLeft <= 0;
       BitsUsed <= 0;
       SampleBuffer <= 0;
@@ -521,7 +529,7 @@ module DmcChan(input MMC5,
 
       Cycles <= Cycles - 1'd1;
       if (Cycles == 1) begin
-        Cycles <= NewPeriod[Freq];
+        Cycles <= PAL ? NewPeriodPAL[Freq] : NewPeriod[Freq];
         if (HasShiftReg) begin
           if (ShiftReg[0]) begin
             Dac[6:1] <= (Dac[6:1] != 6'b111111) ? Dac[6:1] + 6'b000001 : Dac[6:1];
@@ -558,6 +566,7 @@ endmodule
 
 module APU(input MMC5,
            input clk, input ce, input reset,
+           input PAL,
            input [4:0] ADDR,  // APU Address Line
            input [7:0] DIN,   // Data to APU
            output [7:0] DOUT, // Data from APU
@@ -613,7 +622,7 @@ SquareChan	 Sq1(MMC5, clk, ce, reset, 1'b0, ADDR[1:0], DIN, ApuMW0, ClkL, ClkE, 
 SquareChan   Sq2(MMC5, clk, ce, reset, 1'b1, ADDR[1:0], DIN, ApuMW1, ClkL, ClkE, odd_or_even, Enabled[1], LenCtr_In, Sq2Sample, Sq2NonZero);
 TriangleChan Tri(clk, ce, reset, ADDR[1:0], DIN, ApuMW2, ClkL, ClkE, Enabled[2], LenCtr_In, TriSample, TriNonZero);
 NoiseChan    Noi(clk, ce, reset, ADDR[1:0], DIN, ApuMW3, ClkL, ClkE, Enabled[3], LenCtr_In, NoiSample, NoiNonZero);
-DmcChan      Dmc(MMC5, clk, ce, reset, odd_or_even, ADDR[2:0], DIN, ApuMW4, DmcSample, DmaReq, DmaAck, DmaAddr, DmaData, DmcIrq, IsDmcActive);
+DmcChan      Dmc(MMC5, clk, ce, reset, odd_or_even, ADDR[2:0], DIN, ApuMW4, DmcSample, DmaReq, DmaAck, DmaAddr, DmaData, DmcIrq, PAL, IsDmcActive);
 
 // Reading this register clears the frame interrupt flag (but not the DMC interrupt flag).
 // If an interrupt flag was set at the same moment of the read, it will read back as 1 but it will not be cleared.
@@ -636,7 +645,12 @@ reg FrameInterrupt, DisableFrameInterrupt;
 reg [7:0] last_4017 = 0;
 reg [2:0] delayed_clear;
 reg delayed_interrupt;
-wire set_irq = ((Cycles == 29828) || (Cycles == 29829) || delayed_interrupt) && ~DisableFrameInterrupt && ~FrameSeqMode;
+wire set_irq_ntsc = (Cycles == cyc_ntsc[3]) || (Cycles == cyc_ntsc[4]);
+wire set_irq_pal = (Cycles == cyc_pal[3]) || (Cycles == cyc_pal[4]);
+wire set_irq = ( (PAL ? set_irq_pal : set_irq_ntsc) || delayed_interrupt) && ~DisableFrameInterrupt && ~FrameSeqMode;
+
+int cyc_pal[7] = '{8312, 16626, 24938, 33251, 33252, 41564, 41565};
+int cyc_ntsc[7]  = '{7456, 14912, 22370, 29828, 29829, 37280, 37281};
 
 always @(posedge clk) if (reset) begin
   delayed_interrupt <= 0;
@@ -674,27 +688,27 @@ end else if (ce) begin
   ClkE <= 0;
   ClkL <= 0;
   delayed_interrupt <= 1'b0;
-  if (Cycles == 7456) begin
+  if (Cycles == (PAL ? cyc_pal[0] : cyc_ntsc[0])) begin
     ClkE <= 1;
-  end else if (Cycles == 14912) begin
+  end else if (Cycles == (PAL ? cyc_pal[1] : cyc_ntsc[1])) begin
     ClkE <= 1;
     ClkL <= 1;
-  end else if (Cycles == 22370) begin
+  end else if (Cycles == (PAL ? cyc_pal[2] : cyc_ntsc[2])) begin
     ClkE <= 1;
-  end else if (Cycles == 29828) begin
+  end else if (Cycles == (PAL ? cyc_pal[3] : cyc_ntsc[3])) begin
     if (!FrameSeqMode) begin
       ClkE <= 1;
       ClkL <= 1;
     end
-  end else if (Cycles == 29829) begin
+  end else if (Cycles == (PAL ? cyc_pal[4] : cyc_ntsc[4])) begin
     if (!FrameSeqMode) begin
       delayed_interrupt <= 1'b1;
       Cycles <= 0;
     end
-  end else if (Cycles == 37280) begin
+  end else if (Cycles == (PAL ? cyc_pal[5] : cyc_ntsc[5])) begin
     ClkE <= 1;
     ClkL <= 1;
-  end else if (Cycles == 37281) begin
+  end else if (Cycles == (PAL ? cyc_pal[6] : cyc_ntsc[6])) begin
     Cycles <= 0;
   end
   

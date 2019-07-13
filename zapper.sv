@@ -12,7 +12,7 @@ module zapper (
 	input  [8:0] cycle,
 	input  [8:0] scanline,
 	input  [5:0] color,
-	output reg  [1:0] reticule,
+	output reg  [1:0] reticle,
 	output       light,
 	output       trigger
 );
@@ -58,7 +58,7 @@ wire [7:0] joy_y_a = joy_y + 8'd128;
 always @(posedge clk) begin
 if (reset) begin
 	{trigger_cnt, pos_x, pos_y, light_cnt} <= 0;
-	reticule <= 0;
+	reticle <= 0;
 end else begin
 	old_scanline <= scanline;
 	old_msg <= mouse_msg;
@@ -117,11 +117,11 @@ end else begin
 	end
 
 	if (hit_x || hit_y)
-		reticule[0] <= 1'b1;
+		reticle[0] <= 1'b1;
 	else
-		reticule[0] <= 1'b0;
+		reticle[0] <= 1'b0;
 	
-	reticule[1] <= is_offscreen;
+	reticle[1] <= is_offscreen;
 	
 	// See if we're "pointed" at light
 	if (light_square && ~is_offscreen) begin

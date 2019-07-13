@@ -200,10 +200,10 @@ begin
                     if am ='1' then
                         if (amphase(amphase'high) = '0') then
                             -- è„ÇËÇÃèÍçá
-                            egtmp := egtmp + ("00000"&(amphase(amphase'high-1 downto amphase'high-4-6)-'1'));
+                            egtmp := egtmp + ("00000"&(amphase(amphase'high-1 downto amphase'high-4-6)-"0001000000"));
                         else
                             -- â∫ÇËÇÃèÍçá
-                            egtmp := egtmp + ("00000"&("1111"-amphase(amphase'high-1 downto amphase'high-4-6)));
+                            egtmp := egtmp + ("00000"&("1111000000"-amphase(amphase'high-1 downto amphase'high-4-6)));
                         end if;
                     end if;
 

@@ -1,11 +1,9 @@
 //
 // sdram.v
+// This version issues refresh only when 8bit channel reads the same 16bit word 2 times
 //
-// sdram controller implementation for the MiST board adaptation
-// of Luddes NES core
-// http://code.google.com/p/mist-board/
-// 
-// Copyright (c) 2013 Till Harbaum <till@harbaum.org> 
+// sdram controller implementation
+// Copyright (c) 2018 Sorgelig
 // 
 // This source file is free software: you can redistribute it and/or modify 
 // it under the terms of the GNU General Public License as published 
@@ -21,92 +19,164 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>. 
 //
 
-module sdram (
+module sdram
+(
 
 	// interface to the MT48LC16M16 chip
-	inout [15:0]  	  sd_data,    // 16 bit bidirectional data bus
-	output [12:0]	  sd_addr,    // 13 bit multiplexed address bus
-	output [1:0] 	  sd_dqm,     // two byte masks
-	output [1:0] 	  sd_ba,      // two banks
-	output 			  sd_cs,      // a single chip select
-	output 			  sd_we,      // write enable
-	output 			  sd_ras,     // row address select
-	output 			  sd_cas,     // columns address select
+	inout  reg [15:0] SDRAM_DQ,   // 16 bit bidirectional data bus
+	output reg [12:0] SDRAM_A,    // 13 bit multiplexed address bus
+	output reg        SDRAM_DQML, // byte mask
+	output reg        SDRAM_DQMH, // byte mask
+	output reg  [1:0] SDRAM_BA,   // two banks
+	output reg        SDRAM_nCS,  // a single chip select
+	output reg        SDRAM_nWE,  // write enable
+	output reg        SDRAM_nRAS, // row address select
+	output reg        SDRAM_nCAS, // columns address select
+	output            SDRAM_CKE,
 
 	// cpu/chipset interface
-	input 		 	  init,			// init signal after FPGA config to initialize RAM
-	input 		 	  clk,			// sdram is accessed at up to 128MHz
-	input				  clkref,		// reference clock to sync to
-	
-	input [24:0]     addr,       // 25 bit byte address
-	input 		 	  we,         // cpu/chipset requests write
-	input [7:0]  	  din,			// data input from chipset/cpu
-	input 		 	  oeA,        // cpu requests data
-	output reg [7:0] doutA,	   // data output to cpu
-	input 		 	  oeB,        // ppu requests data
-	output reg [7:0] doutB, 	   // data output to ppu
-	
-	input	           bk_clk,
-	input	    [15:0] bk_addr,
-	input	     [7:0] bk_din,
-	output     [7:0] bk_dout,
-	input	           bk_we,
-	input	    [15:0] bko_addr,
-	input	     [7:0] bko_din,
-	output     [7:0] bko_dout,
-	input	           bko_we,
-	input	           bk_override
+	input             init,			// init signal after FPGA config to initialize RAM
+	input             clk,			// sdram is accessed at up to 128MHz
+
+	input      [24:0] ch0_addr,
+	input             ch0_rd,
+	input             ch0_wr,
+	input       [7:0] ch0_din,
+	output reg  [7:0] ch0_dout,
+	output reg        ch0_busy,
+
+	input      [24:0] ch1_addr,
+	input             ch1_rd,
+	input             ch1_wr,
+	input       [7:0] ch1_din,
+	output reg  [7:0] ch1_dout,
+	output reg        ch1_busy,
+
+	input      [24:0] ch2_addr,
+	input             ch2_rd,
+	input             ch2_wr,
+	input       [7:0] ch2_din,
+	output reg  [7:0] ch2_dout,
+	output reg        ch2_busy
 );
 
-// no burst configured
-localparam RASCAS_DELAY   = 3'd2;   // tRCD=20ns -> 2 cycles@85MHz
-localparam BURST_LENGTH   = 3'b000; // 000=1, 001=2, 010=4, 011=8
-localparam ACCESS_TYPE    = 1'b0;   // 0=sequential, 1=interleaved
-localparam CAS_LATENCY    = 3'd3;   // 2/3 allowed
-localparam OP_MODE        = 2'b00;  // only 00 (standard operation) allowed
-localparam NO_WRITE_BURST = 1'b1;   // 0= write burst enabled, 1=only single access write
+assign SDRAM_CKE = 1;
+assign {SDRAM_DQMH,SDRAM_DQML} = SDRAM_A[12:11];
+
+localparam RASCAS_DELAY   = 3'd2; // tRCD=20ns -> 2 cycles@85MHz
+localparam BURST_LENGTH   = 3'd0; // 0=1, 1=2, 2=4, 3=8, 7=full page
+localparam ACCESS_TYPE    = 1'd0; // 0=sequential, 1=interleaved
+localparam CAS_LATENCY    = 3'd2; // 2/3 allowed
+localparam OP_MODE        = 2'd0; // only 0 (standard operation) allowed
+localparam NO_WRITE_BURST = 1'd1; // 0=write burst enabled, 1=only single access write
 
 localparam MODE = { 3'b000, NO_WRITE_BURST, OP_MODE, CAS_LATENCY, ACCESS_TYPE, BURST_LENGTH}; 
 
+localparam STATE_IDLE  = 3'd0;             // state to check the requests
+localparam STATE_START = STATE_IDLE+1'd1;  // state in which a new command is started
+localparam STATE_NEXT  = STATE_START+1'd1; // state in which a new command is started
+localparam STATE_CONT  = STATE_START+RASCAS_DELAY;
+localparam STATE_READY = STATE_CONT+CAS_LATENCY+1'd1;
+localparam STATE_LAST  = STATE_READY;      // last state in cycle
 
-// ---------------------------------------------------------------------
-// ------------------------ cycle state machine ------------------------
-// ---------------------------------------------------------------------
+reg  [2:0] state;
+reg [22:0] a;
+reg  [1:0] bank;
+reg [15:0] data;
+reg        we;
+reg        ram_req=0;
 
-localparam STATE_FIRST     = 4'd0;   // first state in cycle
-localparam STATE_CMD_START = 4'd1;   // state in which a new command can be started
-localparam STATE_CMD_CONT  = STATE_CMD_START  + RASCAS_DELAY; // 4 command can be continued
-localparam STATE_CMD_READ  = 4'd7;   // read state
-localparam STATE_LAST      = 4'd15;  // last state in cycle
+wire [2:0] rd,wr;
 
-reg [3:0] q;
+assign rd = {ch2_rd, ch1_rd, ch0_rd};
+assign wr = {ch2_wr, ch1_wr, ch0_wr};
+
+// access manager
 always @(posedge clk) begin
-	// SDRAM (state machine) clock is 85MHz. Synchronize this to systems 21.477 Mhz clock
-   // force counter to pass state LAST->FIRST exactly after the rising edge of clkref
-   if(((q == STATE_LAST) && ( clkref == 1)) ||
-		((q == STATE_FIRST) && ( clkref == 0)) ||
-      ((q != STATE_LAST) && (q != STATE_FIRST)))
-			q <= q + 3'd1;
+	reg old_ref;
+	reg  [2:0] old_rd,old_wr;//,rd,wr;
+	reg [24:1] last_a[3] = '{'1,'1,'1};
+
+	old_rd <= old_rd & rd;
+	old_wr <= old_wr & wr;
+
+	if(state == STATE_IDLE && mode == MODE_NORMAL) begin
+		ram_req <= 0;
+		we <= 0;
+		ch0_busy <= 0;
+		ch1_busy <= 0;
+		ch2_busy <= 0;
+		if((~old_rd[0] & rd[0]) | (~old_wr[0] & wr[0])) begin
+			old_rd[0] <= rd[0];
+			old_wr[0] <= wr[0];
+			we <= wr[0];
+			{bank,a} <= ch0_addr;
+			data <= {ch0_din,ch0_din};
+			ram_req <= wr[0] || (last_a[0] != ch0_addr[24:1]);
+			last_a[0] <= wr[0] ? '1 : ch0_addr[24:1];
+			ch0_busy <= 1;
+			state <= STATE_START;
+		end
+		else if((~old_rd[1] & rd[1]) | (~old_wr[1] & wr[1])) begin
+			old_rd[1] <= rd[1];
+			old_wr[1] <= wr[1];
+			we <= wr[1];
+			{bank,a} <= ch1_addr;
+			data <= {ch1_din,ch1_din};
+			ram_req <= wr[1] || (last_a[1] != ch1_addr[24:1]);
+			last_a[1] <= wr[1] ? '1 : ch1_addr[24:1];
+			ch1_busy <= 1;
+			state <= STATE_START;
+		end
+		else if((~old_rd[2] & rd[2]) | (~old_wr[2] & wr[2])) begin
+			old_rd[2] <= rd[2];
+			old_wr[2] <= wr[2];
+			we <= wr[2];
+			{bank,a} <= ch2_addr;
+			data <= {ch2_din,ch2_din};
+			ram_req <= wr[2] || (last_a[2] != ch2_addr[24:1]);
+			last_a[2] <= wr[2] ? '1 : ch2_addr[24:1];
+			ch2_busy <= 1;
+			state <= STATE_START;
+		end
+	end
+
+	if (state == STATE_READY) begin
+		ch0_busy <= 0;
+		ch1_busy <= 0;
+		ch2_busy <= 0;
+	end
+
+	if(mode != MODE_NORMAL || state != STATE_IDLE || reset) begin
+		state <= state + 1'd1;
+		if(state == STATE_LAST) state <= STATE_IDLE;
+	end
 end
 
-// ---------------------------------------------------------------------
-// --------------------------- startup/reset ---------------------------
-// ---------------------------------------------------------------------
+localparam MODE_NORMAL = 2'b00;
+localparam MODE_RESET  = 2'b01;
+localparam MODE_LDM    = 2'b10;
+localparam MODE_PRE    = 2'b11;
 
-// wait 1ms (85000 cycles) after FPGA config is done before going
-// into normal operation. Initialize the ram in the last 16 reset cycles (cycles 15-0)
-reg [16:0] reset;
+// initialization 
+reg [1:0] mode;
+reg [4:0] reset=5'h1f;
 always @(posedge clk) begin
-	if(init)	reset <= 17'h14c08;
-	else if((q == STATE_LAST) && (reset != 0))
-		reset <= reset - 17'd1;
+	reg init_old=0;
+	init_old <= init;
+
+	if(init_old & ~init) reset <= 5'h1f;
+	else if(state == STATE_LAST) begin
+		if(reset != 0) begin
+			reset <= reset - 5'd1;
+			if(reset == 14)     mode <= MODE_PRE;
+			else if(reset == 3) mode <= MODE_LDM;
+			else                mode <= MODE_RESET;
+		end
+		else mode <= MODE_NORMAL;
+	end
 end
 
-// ---------------------------------------------------------------------
-// ------------------ generate ram control signals ---------------------
-// ---------------------------------------------------------------------
-
-// all possible commands
 localparam CMD_INHIBIT         = 4'b1111;
 localparam CMD_NOP             = 4'b0111;
 localparam CMD_ACTIVE          = 4'b0011;
@@ -117,157 +187,72 @@ localparam CMD_PRECHARGE       = 4'b0010;
 localparam CMD_AUTO_REFRESH    = 4'b0001;
 localparam CMD_LOAD_MODE       = 4'b0000;
 
-wire [3:0] sd_cmd;   // current command sent to sd ram
+wire [1:0] dqm = {we & ~a[0], we & a[0]};
 
-// drive control signals according to current command
-assign sd_cs  = sd_cmd[3];
-assign sd_ras = sd_cmd[2];
-assign sd_cas = sd_cmd[1];
-assign sd_we  = sd_cmd[0];
-
-// drive ram data lines when writing, set them as inputs otherwise
-// the eight bits are sent on both bytes ports. Which one's actually
-// written depends on the state of dqm of which only one is active
-// at a time when writing
-assign sd_data = we?{din, din}:16'bZZZZZZZZZZZZZZZZ;
-
-wire oe = oeA || oeB;
-
-reg addr0;
-always @(posedge clk)
-	if((q == 1) && oe) addr0 <= addr[0];
-
-wire    ovr_ena = (addr[24:16] == 10'b000111100);
-wire [7:0] dout = ovr_ena ? dpram_dout : addr0 ? sd_data[7:0] : sd_data[15:8];
-
+// SDRAM state machines
 always @(posedge clk) begin
-	if(q == STATE_CMD_READ) begin
-		if(oeA) doutA <= dout;
-		if(oeB) doutB <= dout;
+	reg [15:0] last_data[3];
+
+	if(state == STATE_START) SDRAM_BA <= (mode == MODE_NORMAL) ? bank : 2'b00;
+
+	SDRAM_DQ <= 'Z;
+	casex({ram_req,we,mode,state})
+		{2'b1X, MODE_NORMAL, STATE_START}: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_ACTIVE;
+		{2'b11, MODE_NORMAL, STATE_CONT }: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE, SDRAM_DQ} <= {CMD_WRITE, data};
+		{2'b10, MODE_NORMAL, STATE_CONT }: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_READ;
+		{2'b0X, MODE_NORMAL, STATE_START}: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_AUTO_REFRESH;
+
+		// init
+		{2'bXX,    MODE_LDM, STATE_START}: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_LOAD_MODE;
+		{2'bXX,    MODE_PRE, STATE_START}: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_PRECHARGE;
+
+		                          default: {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_INHIBIT;
+	endcase
+
+	casex({ram_req,mode,state})
+		{1'b1,  MODE_NORMAL, STATE_START}: SDRAM_A <= a[13:1];
+		{1'b1,  MODE_NORMAL, STATE_NEXT}:  SDRAM_A <= '1;
+		{1'b1,  MODE_NORMAL, STATE_CONT }: SDRAM_A <= {dqm, 2'b10, a[22:14]};
+
+		// init
+		{1'bX,     MODE_LDM, STATE_START}: SDRAM_A <= MODE;
+		{1'bX,     MODE_PRE, STATE_START}: SDRAM_A <= 13'b0010000000000;
+
+		                          default: SDRAM_A <= 13'b0000000000000;
+	endcase
+
+	if(state == STATE_READY) begin
+		if(ch0_busy) begin
+			if(ram_req) begin
+				if(we) ch0_dout <= data[7:0];
+				else begin
+					ch0_dout <= a[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
+					last_data[0] <= SDRAM_DQ;
+				end
+			end
+			else ch0_dout <= a[0] ? last_data[0][15:8] : last_data[0][7:0];
+		end
+		if(ch1_busy) begin
+			if(ram_req) begin
+				if(we) ch1_dout <= data[7:0];
+				else begin
+					ch1_dout <= a[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
+					last_data[1] <= SDRAM_DQ;
+				end
+			end
+			else ch1_dout <= a[0] ? last_data[1][15:8] : last_data[1][7:0];
+		end
+		if(ch2_busy) begin
+			if(ram_req) begin
+				if(we) ch2_dout <= data[7:0];
+				else begin
+					ch2_dout <= a[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
+					last_data[2] <= SDRAM_DQ;
+				end
+			end
+			else ch2_dout <= a[0] ? last_data[2][15:8] : last_data[2][7:0];
+		end
 	end
 end
-
-wire [3:0] reset_cmd = 
-	((q == STATE_CMD_START) && (reset == 13))?CMD_PRECHARGE:
-	((q == STATE_CMD_START) && (reset ==  2))?CMD_LOAD_MODE:
-	CMD_INHIBIT;
-
-wire [3:0] run_cmd =
-	((we || oe) && (q == STATE_CMD_START))?CMD_ACTIVE:
-	(we && 			(q == STATE_CMD_CONT ))?CMD_WRITE:
-	(!we &&  oe &&	(q == STATE_CMD_CONT ))?CMD_READ:
-	(!we && !oe && (q == STATE_CMD_START))?CMD_AUTO_REFRESH:
-	CMD_INHIBIT;
-	
-assign sd_cmd = (reset != 0)?reset_cmd:run_cmd;
-
-wire [12:0] reset_addr = (reset == 13)?13'b0010000000000:MODE;
-	
-wire [12:0] run_addr = 
-	(q == STATE_CMD_START)?addr[21:9]:{ 4'b0010, addr[24], addr[8:1]};
-
-assign sd_addr = (reset != 0)?reset_addr:run_addr;
-
-assign sd_ba = addr[23:22];
-
-assign sd_dqm = we?{ addr[0], ~addr[0] }:2'b00;
-
-reg dpram_we;
-always @(posedge clk) begin
-	reg old_we;
-	
-	old_we <= we;
-	dpram_we <= ~old_we & we & ovr_ena;
-end
-
-reg [7:0] dpram_dout;
-assign bko_dout = dpram_dout;
-
-ovr_dpram ovr_ram
-(
-	.clock_a(clk),
-	.address_a(bk_override ? bko_addr : addr[15:0]),
-	.data_a(bk_override ? bko_din : din),
-	.wren_a(bk_override ? bko_we : dpram_we),
-	.q_a(dpram_dout),
-
-	.clock_b(bk_clk),
-	.address_b(bk_addr),
-	.data_b(bk_din),
-	.wren_b(bk_we),
-	.q_b(bk_dout)
-);
-
-endmodule
-
-//////////////////////////////////////////////
-
-module ovr_dpram
-(
-	input	[15:0] address_a,
-	input	[15:0] address_b,
-	input	       clock_a,
-	input	       clock_b,
-	input	 [7:0] data_a,
-	input	 [7:0] data_b,
-	input	       wren_a,
-	input	       wren_b,
-	output [7:0] q_a,
-	output [7:0] q_b
-);
-
-altsyncram	altsyncram_component
-(
-	.address_a (address_a),
-	.address_b (address_b),
-	.clock0 (clock_a),
-	.clock1 (clock_b),
-	.data_a (data_a),
-	.data_b (data_b),
-	.wren_a (wren_a),
-	.wren_b (wren_b),
-	.q_a (q_a),
-	.q_b (q_b),
-	.aclr0 (1'b0),
-	.aclr1 (1'b0),
-	.addressstall_a (1'b0),
-	.addressstall_b (1'b0),
-	.byteena_a (1'b1),
-	.byteena_b (1'b1),
-	.clocken0 (1'b1),
-	.clocken1 (1'b1),
-	.clocken2 (1'b1),
-	.clocken3 (1'b1),
-	.eccstatus (),
-	.rden_a (1'b1),
-	.rden_b (1'b1)
-);
-defparam
-	altsyncram_component.address_reg_b = "CLOCK1",
-	altsyncram_component.clock_enable_input_a = "BYPASS",
-	altsyncram_component.clock_enable_input_b = "BYPASS",
-	altsyncram_component.clock_enable_output_a = "BYPASS",
-	altsyncram_component.clock_enable_output_b = "BYPASS",
-	altsyncram_component.indata_reg_b = "CLOCK1",
-	altsyncram_component.intended_device_family = "Cyclone V",
-	altsyncram_component.lpm_type = "altsyncram",
-	altsyncram_component.numwords_a = 65536,
-	altsyncram_component.numwords_b = 65536,
-	altsyncram_component.operation_mode = "BIDIR_DUAL_PORT",
-	altsyncram_component.outdata_aclr_a = "NONE",
-	altsyncram_component.outdata_aclr_b = "NONE",
-	altsyncram_component.outdata_reg_a = "UNREGISTERED",
-	altsyncram_component.outdata_reg_b = "UNREGISTERED",
-	altsyncram_component.power_up_uninitialized = "FALSE",
-	altsyncram_component.read_during_write_mode_port_a = "NEW_DATA_NO_NBE_READ",
-	altsyncram_component.read_during_write_mode_port_b = "NEW_DATA_NO_NBE_READ",
-	altsyncram_component.widthad_a = 16,
-	altsyncram_component.widthad_b = 16,
-	altsyncram_component.width_a = 8,
-	altsyncram_component.width_b = 8,
-	altsyncram_component.width_byteena_a = 1,
-	altsyncram_component.width_byteena_b = 1,
-	altsyncram_component.wrcontrol_wraddress_reg_b = "CLOCK1";
-
 
 endmodule

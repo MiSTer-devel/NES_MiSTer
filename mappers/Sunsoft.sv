@@ -123,7 +123,7 @@ always begin
 end
 
 wire ram_cs = (prg_ain[15] == 0 && ram_select);
-assign prg_aout = {1'b0, ram_cs, 2'b00, prgout[4:0], prg_ain[12:0]};
+assign prg_aout = {ram_cs ? 4'b1111 : 4'b0000, prgout[4:0], prg_ain[12:0]};
 assign prg_allow = ram_cs ? ram_enable : !prg_write;
 assign chr_allow = flags[15];
 assign chr_aout = {4'b10_00, chrout, chr_ain[9:0]};
@@ -347,7 +347,7 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-wire irq;
+reg irq;
 reg [15:0] flags_out = 0;
 
 reg [7:0] prg_bank_0;
@@ -393,17 +393,17 @@ end else if (ce) begin
 				3'b1_10: chr_bank_2 <= prg_din;
 				3'b1_11: chr_bank_3 <= prg_din;
 			endcase
-
-		if (irq_enable) begin
-			irq_counter <= irq_counter - 16'd1;
-			if (irq_counter == 16'h0) begin
-				irq <= 1'b1; // IRQ
-				irq_enable <= 0;
-			end
-		end
-		if (irq_ack)
-			irq <= 1'b0; // IRQ ACK
 	end
+	if (irq_enable) begin
+		irq_counter <= irq_counter - 16'd1;
+		if (irq_counter == 16'h0) begin
+			irq <= 1'b1; // IRQ
+			irq_enable <= 0;
+		end
+	end
+
+	if (irq_ack)
+		irq <= 1'b0; // IRQ ACK
 end
 
 always begin

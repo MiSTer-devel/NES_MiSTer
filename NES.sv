@@ -13,7 +13,7 @@ module emu
 	input         RESET,
 
 	//Must be passed to hps_io module
-	inout  [44:0] HPS_BUS,
+	inout  [45:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
@@ -47,7 +47,9 @@ module emu
 	output [15:0] AUDIO_R,
 	output        AUDIO_S, // 1 - signed audio samples, 0 - unsigned
 	output  [1:0] AUDIO_MIX, // 0 - no mix, 1 - 25%, 2 - 50%, 3 - 100% (mono)
-	input         TAPE_IN,
+
+	//ADC
+	inout   [3:0] ADC_BUS,
 
 	// SD-SPI
 	output        SD_SCK,
@@ -100,7 +102,7 @@ module emu
 	input         OSD_STATUS
 );
 
-//assign USER_OUT = '1;
+assign ADC_BUS  = 'Z;
 
 assign AUDIO_S   = 1'b1;
 assign AUDIO_L   = |mute_cnt ? 16'd0 : sample_signed[15:0];
@@ -111,66 +113,63 @@ assign LED_USER  = downloading | (loader_fail & led_blink) | (bk_state != S_IDLE
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
-assign VIDEO_ARX = status[8] ? 8'd16 : 8'd4;
-assign VIDEO_ARY = status[8] ? 8'd9  : 8'd3;
+assign VIDEO_ARX = status[8] ? 8'd16 : (hide_overscan ? 8'd64 : 8'd128);
+assign VIDEO_ARY = status[8] ? 8'd9  : (hide_overscan ? 8'd49 : 8'd105);
 
 assign CLK_VIDEO = clk;
 
 assign VGA_F1 = 0;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
-//assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
+assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 
 `define DEBUG_AUDIO
 
+// Status Bit Map:
+// 0         1         2         3 
+// 01234567890123456789012345678901
+// 0123456789ABCDEFGHIJKLMNOPQRSTUV
+// XXXXXXXXXXX XXXXXXXXXXXXXXX   XX
+
 `include "build_id.v"
-parameter CONF_STR1 = {
+parameter CONF_STR = {
 	"NES;;",
 	"-;",
-	"FS,NES;",
-	"FS,FDS;",
-};
-
-parameter CONF_STR2 = {
-	",BIN,Load FDS BIOS;",
+	"FS,NESFDS;",
+	"H1F,BIN,Load FDS BIOS;",
+	"-;",
+	"ONO,System Type,NTSC,PAL,Dendy;",
 	"-;",
 	"OG,Disk Swap,Auto,FDS button;",	
-	"O5,Invert mirroring,OFF,ON;",
+	"O5,Invert Mirroring,Off,On;",
 	"-;",
 	"C,Cheats;",
-};
-
-parameter CONF_STR3 = {
-	"K,Cheats enabled,ON,OFF;",
+	"H2OK,Cheats Enabled,On,Off;",
 	"-;",
-};
-
-parameter CONF_STR4 = {
-	"6,Load Backup RAM;"
-};
-
-parameter CONF_STR5 = {
-	"7,Save Backup RAM;",
-	"OH,Autosave,OFF,ON;",
+	"D0R6,Load Backup RAM;",
+	"D0R7,Save Backup RAM;",
+	"D0OH,Autosave,Off,On;",
 	"-;",
-	"O8,Aspect ratio,4:3,16:9;",
+	"O8,Aspect Ratio,4:3,16:9;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	"O4,Hide overscan,OFF,ON;",
+	"O4,Hide Overscan,Off,On;",
+	"OP,Extra Sprites,Off,On;",
 	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Nintendulator;",
 	"-;",
-	"O9,Swap joysticks,NO,YES;",
+	"O9,Swap Joysticks,No,Yes;",
 	"OIJ,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2);",
 	"OL,Zapper Trigger,Mouse,Joystick;",
+	"OM,Crosshairs,On,Off;",
 	"OA,Multitap,Disabled,Enabled;",
-	"OM,Serial Mode,OFF,Raw;",
+	"OQ,Serial Mode,None,SNAC;",
 `ifdef DEBUG_AUDIO
 	"-;",
 	"OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
 `endif
 	"-;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start,FDS,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12,Mic,Trigger;",
+	"J1,A,B,Select,Start,FDS,Trigger,Mic,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
 	"V,v",`BUILD_DATE
 };
 
@@ -181,7 +180,8 @@ wire [31:0] status;
 
 wire arm_reset = status[0];
 wire mirroring_osd = status[5];
-wire hide_overscan = status[4];
+wire pal_video = |status[24:23];
+wire hide_overscan = status[4] && ~pal_video;
 wire [3:0] palette2_osd = status[15:12];
 wire joy_swap = status[9];
 wire fds_swap_invert = status[16];
@@ -224,11 +224,6 @@ always_ff @(posedge clk) begin
 		filter_cnt<= filter_cnt + 1'b1;
 end
 
-
-
-wire forced_scandoubler;
-wire ps2_kbd_clk, ps2_kbd_data;
-
 reg  [31:0] sd_lba;
 reg         sd_rd = 0;
 reg         sd_wr = 0;
@@ -240,18 +235,21 @@ wire        sd_buff_wr;
 wire        img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
-wire [7:0]  filetype;
+
+wire  [7:0] filetype;
+wire        ioctl_download;
 wire [24:0] ioctl_addr;
 reg         ioctl_wait;
+
 wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
-wire        ioctl_download;
+wire        forced_scandoubler;
 
-hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + ($size(CONF_STR5)>>3) + 4)) hps_io
+hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-	.conf_str({CONF_STR1,~bios_loaded ? "F" : "+",CONF_STR2,gg_avail? "O": "+",CONF_STR3,bk_ena ? "R" : "+",CONF_STR4,bk_ena ? "R" : "+",CONF_STR5}),
+	.conf_str(CONF_STR),
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
@@ -264,12 +262,13 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 	.joystick_analog_1(joy_analog1),
 
 	.status(status),
+	.status_menumask({~gg_avail, bios_loaded, ~bk_ena}),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_wr(loader_clk),
 	.ioctl_dout(file_input),
-	.ioctl_wait(ioctl_wait),
+	.ioctl_wait(ioctl_wait | save_wait),
 	.ioctl_index(filetype),
 
 	.sd_lba(sd_lba),
@@ -295,16 +294,71 @@ wire clock_locked;
 wire clk85;
 wire clk;
 
+assign SDRAM_CLK = ~clk85;
+
 pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk85),
-	.outclk_1(SDRAM_CLK),
-	.outclk_2(clk),
+	.outclk_1(clk),
+	.reconfig_to_pll(reconfig_to_pll),
+	.reconfig_from_pll(reconfig_from_pll),
 	.locked(clock_locked)
 );
 
+wire [63:0] reconfig_to_pll;
+wire [63:0] reconfig_from_pll;
+wire        cfg_waitrequest;
+reg         cfg_write;
+reg   [5:0] cfg_address;
+reg  [31:0] cfg_data;
+
+pll_cfg pll_cfg
+(
+	.mgmt_clk(CLK_50M),
+	.mgmt_reset(0),
+	.mgmt_waitrequest(cfg_waitrequest),
+	.mgmt_read(0),
+	.mgmt_readdata(),
+	.mgmt_write(cfg_write),
+	.mgmt_address(cfg_address),
+	.mgmt_writedata(cfg_data),
+	.reconfig_to_pll(reconfig_to_pll),
+	.reconfig_from_pll(reconfig_from_pll)
+);
+
+always @(posedge CLK_50M) begin
+	reg pald = 0, pald2 = 0;
+	reg [2:0] state = 0;
+
+	pald  <= status[23];
+	pald2 <= pald;
+
+	cfg_write <= 0;
+	if(pald2 != pald) state <= 1;
+
+	if(!cfg_waitrequest) begin
+		if(state) state<=state+1'd1;
+		case(state)
+			1: begin
+					cfg_address <= 0;
+					cfg_data <= 0;
+					cfg_write <= 1;
+				end
+			3: begin
+					cfg_address <= 7;
+					cfg_data <= pald2 ? 2201376898 : 2537933971;
+					cfg_write <= 1;
+				end
+			5: begin
+					cfg_address <= 2;
+					cfg_data <= 0;
+					cfg_write <= 1;
+				end
+		endcase
+	end
+end
 
 
 // reset after download
@@ -319,36 +373,38 @@ end
 reg init_reset_n = 0;
 always @(posedge clk) if(downloading) init_reset_n <= 1;
 
-
 wire  [8:0] cycle;
 wire  [8:0] scanline;
 wire [15:0] sample;
 wire  [5:0] color;
 wire        joypad_strobe;
 wire  [1:0] joypad_clock;
-wire [21:0] memory_addr;
-wire        memory_read_cpu, memory_read_ppu;
-wire        memory_write;
-wire  [7:0] memory_din_cpu, memory_din_ppu;
-wire  [7:0] memory_dout;
 reg  [23:0] joypad_bits, joypad_bits2;
 reg   [7:0] powerpad_d3, powerpad_d4;
 reg   [1:0] last_joypad_clock;
 
-wire [11:0] powerpad = joyA[20:9] | joyB[20:9] | joyC[20:9] | joyD[20:9];
+wire [11:0] powerpad = joyA[22:11] | joyB[22:11] | joyC[22:11] | joyD[22:11];
 
 wire [7:0] nes_joy_A = { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], joyA[4] };
 wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], joyB[4] };
 wire [7:0] nes_joy_C = { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], joyC[4] };
 wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], joyD[4] };
 
-wire mic_button = joyA[21] | joyB[21];
+wire mic_button = joyA[10] | joyB[10];
 wire fds_btn = joyA[8] | joyB[8];
-wire fds_swap = (fds_swap_invert ^ fds_btn);
 
-reg [2:0] nes_ce;
+reg [22:0] clkcount;
+always@(posedge clk) begin
+	if (nes_ce == 3) begin
+		clkcount<=clkcount+1'd1;
+	end
+end
 
-wire raw_serial = status[22];
+wire fds_eject = swap_delay[2] | fds_swap_invert ? fds_btn : (clkcount[21] | fds_btn);
+
+reg [1:0] nes_ce;
+
+wire raw_serial = status[26];
 
 // Indexes:
 // 0 = D+
@@ -390,11 +446,11 @@ zapper zap (
 	.trigger_mode(status[21]),
 	.ps2_mouse(ps2_mouse),
 	.analog(~status[18] ? joy_analog0 : joy_analog1),
-	.analog_trigger(~status[18] ? joyA[22] : joyB[22]),
+	.analog_trigger(~status[18] ? joyA[9] : joyB[9]),
 	.cycle(cycle),
 	.scanline(scanline),
 	.color(color),
-	.reticule(reticule),
+	.reticle(reticle),
 	.light(light),
 	.trigger(trigger)
 );
@@ -436,18 +492,36 @@ wire loader_reset = !download_reset || ((old_filetype != filetype) && |filetype 
 wire loader_write;
 wire [31:0] loader_flags;
 reg  [31:0] mapper_flags;
+wire fds = (mapper_flags[7:0] == 8'h14);
 wire loader_busy, loader_done, loader_fail;
 wire bios_download;
 
 GameLoader loader
 (
-	clk, loader_reset, downloading, filetype,
-	loader_input, loader_clk, mirroring_osd,
-	loader_addr, loader_write_data, loader_write, bios_download,
-	loader_flags, loader_busy, loader_done, loader_fail
+	.clk              ( clk               ),
+	.reset            ( loader_reset      ),
+	.downloading      ( downloading       ),
+	.filetype         ( filetype          ),
+	.indata           ( loader_input      ),
+	.indata_clk       ( loader_clk        ),
+	.invert_mirroring ( mirroring_osd     ),
+	.mem_addr         ( loader_addr       ),
+	.mem_data         ( loader_write_data ),
+	.mem_write        ( loader_write      ),
+	.bios_download    ( bios_download     ),
+	.mapper_flags     ( loader_flags      ),
+	.busy             ( loader_busy       ),
+	.done             ( loader_done       ),
+	.error            ( loader_fail       )      
 );
 
+reg [24:0] rom_sz;
 always @(posedge clk) begin
+	reg done = 0;
+	
+	done <= loader_done;
+	if(~done & loader_done) rom_sz <= ioctl_addr - 1'd1;
+	
 	if (loader_done) mapper_flags <= loader_flags;
 	old_filetype <= filetype;
 end
@@ -462,25 +536,38 @@ always @(posedge clk) begin
 	end;
 end
  
-wire reset_nes = ~init_reset_n || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading || bk_loading_req || hold_reset;
+wire reset_nes = 
+	~init_reset_n  ||
+	buttons[1]     ||
+	arm_reset      ||
+	download_reset ||
+	loader_fail    ||
+	bk_loading     ||
+	bk_loading_req ||
+	hold_reset     ||
+	(old_sys_type != status[24:23]);
 
-wire [15:0] bram_addr;
+reg [1:0] old_sys_type;
+always @(posedge clk) old_sys_type <= status[24:23];
+
+wire [17:0] bram_addr;
 wire [7:0] bram_din;
 wire [7:0] bram_dout;
 wire bram_write;
-wire bram_override;
+wire bram_en;
 wire trigger;
 wire light;
 
 wire [1:0] diskside_req;
 reg [1:0] diskside;
-//reg fds_swap;
 
 wire lightgun_en = |status[19:18];
 
 NES nes (
+	.ex_sprites      (status[25]),
 	.clk             (clk),
-	.reset_nes       (reset_nes),
+	.reset           (reset_nes),
+	.sys_type        (status[24:23]),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 32'd0 : mapper_flags),
 	.gg              (status[20]),
@@ -506,26 +593,33 @@ NES nes (
 	.diskside_req    (diskside_req),
 	.diskside        (diskside),
 	.fds_busy        (fds_busy),
-	.fds_swap        (fds_swap),
+	.fds_eject       (fds_eject),
+
 	// Memory transactions
-	.memory_addr     (memory_addr),
-	.memory_read_cpu (memory_read_cpu),
-	.memory_din_cpu  (memory_din_cpu),
-	.memory_read_ppu (memory_read_ppu),
-	.memory_din_ppu  (memory_din_ppu),
-	.memory_write    (memory_write),
-	.memory_dout     (memory_dout),
+	.cpumem_addr     (cpu_addr ),
+	.cpumem_read     (cpu_read ),
+	.cpumem_write    (cpu_write),
+	.cpumem_dout     (cpu_dout ),
+	.cpumem_din      (cpu_din  ),
+	.ppumem_addr     (ppu_addr ),
+	.ppumem_read     (ppu_read ),
+	.ppumem_write    (ppu_write),
+	.ppumem_dout     (ppu_dout ),
+	.ppumem_din      (ppu_din  ),
+
 	.bram_addr       (bram_addr),
 	.bram_din        (bram_din),
 	.bram_dout       (bram_dout),
 	.bram_write      (bram_write),
-	.bram_override   (bram_override),
+	.bram_override   (bram_en),
 	.save_written    (save_written)
 );
 
-wire [2:0] emphasis;
+wire [21:0] cpu_addr, ppu_addr;
+wire        cpu_read, cpu_write, ppu_read, ppu_write;
+wire  [7:0] cpu_dout, cpu_din, ppu_dout, ppu_din;
 
-assign SDRAM_CKE         = 1'b1;
+wire [2:0] emphasis;
 
 wire [7:0] xor_data;
 wire [7:0] bios_data;
@@ -568,12 +662,11 @@ always @(posedge clk) begin
 		ioctl_wait <= 1;
 	end
 
-	if(nes_ce == 3 || fds_wr) begin
+	if(nes_ce == 3) begin
 		loader_write_mem <= loader_write_triggered;
-		if(loader_write_triggered || fds_wr) begin
+		if(loader_write_triggered) begin
 			loader_write_triggered <= 1'b0;
-			if (fds_wr || (~bios_download && loader_addr_mem[18])) ddr_wr <= ~ddr_wr;
-		end else if(ioctl_wait && (ddr_wr == ddr_wrack)) begin
+		end else if(ioctl_wait) begin
 			ioctl_wait <= 0;
 		end
 	end
@@ -581,44 +674,89 @@ end
 
 sdram sdram
 (
-	// interface to the MT48LC16M16 chip
-	.sd_data        ( SDRAM_DQ                 ),
-	.sd_addr        ( SDRAM_A                  ),
-	.sd_dqm         ( {SDRAM_DQMH, SDRAM_DQML} ),
-	.sd_cs          ( SDRAM_nCS                ),
-	.sd_ba          ( SDRAM_BA                 ),
-	.sd_we          ( SDRAM_nWE                ),
-	.sd_ras         ( SDRAM_nRAS               ),
-	.sd_cas         ( SDRAM_nCAS               ),
+	.SDRAM_DQ   ( SDRAM_DQ   ),
+	.SDRAM_A    ( SDRAM_A    ),
+	.SDRAM_DQML ( SDRAM_DQML ),
+	.SDRAM_DQMH ( SDRAM_DQMH ),
+	.SDRAM_BA   ( SDRAM_BA   ),
+	.SDRAM_nCS  ( SDRAM_nCS  ),
+	.SDRAM_nWE  ( SDRAM_nWE  ),
+	.SDRAM_nRAS ( SDRAM_nRAS ),
+	.SDRAM_nCAS ( SDRAM_nCAS ),
+	.SDRAM_CKE  ( SDRAM_CKE  ),
 
 	// system interface
-	.clk            ( clk85                    ),
-	.clkref         ( nes_ce[1]                ),
-	.init           ( !clock_locked            ),
+	.clk        ( clk85           ),
+	.init       ( !clock_locked   ),
 
 	// cpu/chipset interface
-	.addr           ( (downloading || loader_busy) ? {3'b000, loader_addr_mem} : {3'b000, memory_addr} ),
-	
-	.we             ( memory_write || loader_write_mem	),
-	.din            ( (downloading || loader_busy) ? loader_write_data_mem : memory_dout ),
-	
-	.oeA            ( memory_read_cpu ),
-	.doutA          ( memory_din_cpu  ),
-	
-	.oeB            ( memory_read_ppu ),
-	.doutB          ( memory_din_ppu  ),
+	.ch0_addr   (  (downloading | loader_busy) ? loader_addr_mem       : ppu_addr  ),
+	.ch0_wr     (                                loader_write_mem      | ppu_write ),
+	.ch0_din    (  (downloading | loader_busy) ? loader_write_data_mem : ppu_dout  ),
+	.ch0_rd     ( ~(downloading | loader_busy)                         & ppu_read  ),
+	.ch0_dout   ( ppu_din   ),
 
-	.bk_clk         ( clk ),
-	.bk_addr        ( bk_busy ? {fds_addr[15:9],sd_buff_addr} : fds_addr[15:0] ),
-	.bk_dout        ( sd_buff_din ),
-	.bk_din         ( bk_busy ? sd_buff_dout : fds_data ),
-	.bk_we          ( bk_busy ? sd_buff_wr & sd_ack : bram_we ),
-	.bko_addr       ( bram_addr ),
-	.bko_dout       ( bram_din ),
-	.bko_din        ( bram_dout ),
-	.bko_we         ( bram_write ),
-	.bk_override    ( bram_override )
+	.ch1_addr   ( cpu_addr  ),
+	.ch1_wr     ( cpu_write ),
+	.ch1_din    ( cpu_dout  ),
+	.ch1_rd     ( cpu_read  ),
+	.ch1_dout   ( cpu_din   ),
+
+	// reserved for backup ram save/load
+	.ch2_addr   ( {4'b1111, save_addr} ),
+	.ch2_wr     ( save_wr ),
+	.ch2_din    ( sd_buff_dout ),
+	.ch2_rd     ( save_rd ),
+	.ch2_dout   ( save_dout ),
+	.ch2_busy   ( save_busy )
 );
+
+wire  [7:0] save_dout;
+assign sd_buff_din = bram_en ? eeprom_dout : save_dout;
+
+wire [7:0] eeprom_dout;
+dpram #(" ", 11) eeprom
+(
+	.clock_a(clk85),
+	.address_a(bram_addr),
+	.data_a(bram_dout),
+	.wren_a(bram_write),
+	.q_a(bram_din),
+
+	.clock_b(clk),
+	.address_b({sd_lba[1:0],sd_buff_addr}),
+	.data_b(sd_buff_dout),
+	.wren_b(sd_buff_wr & sd_ack),
+	.q_b(eeprom_dout)
+);
+
+wire save_busy;
+reg save_rd, save_wr;
+reg save_wait;
+reg [17:0] save_addr;
+
+always @(posedge clk) begin
+
+	if(~save_busy & ~save_rd & ~save_wr) save_wait <= 0;
+
+	if(~bk_busy) begin
+		save_addr <= '1;
+		save_wait <= 0;
+	end
+	else if(sd_ack & ~save_busy ) begin
+		if(~bk_loading && (save_addr != {sd_lba[8:0], sd_buff_addr})) begin
+			save_rd <= 1;
+			save_addr <= {sd_lba[8:0], sd_buff_addr};
+			save_wait <= 1;
+		end
+		if(bk_loading && sd_buff_wr) begin
+			save_wr <= 1;
+			save_addr <= {sd_lba[8:0], sd_buff_addr};
+			save_wait <= 1;
+		end
+	end
+	if(~bk_busy | save_busy | bram_en) {save_rd, save_wr} <= 0;
+end
 
 reg bk_pending;
 wire save_written;
@@ -633,34 +771,11 @@ wire downloading = ioctl_download && ~type_gg;
 wire type_gg = &filetype;
 ///////////////////////////////////////////////////
 
-wire [21:0] fdsddr_addr;
-wire [7:0] fds_data;
-wire fds_rd, fds_rdy;
-assign DDRAM_CLK = clk85;
-
-ddram ddram
-(
-	.*,
-
-   .wraddr(bk_ena ? {fdsddr_addr[17:0], 1'b0} : {loader_addr_mem[17:0], 1'b0}),
-   .din(bk_ena ? {sd_buff_din, sd_buff_din} : {loader_write_data, loader_write_data}), //({ioctl_data[7:0],ioctl_data[15:8]}),
-   .we_req(ddr_wr),
-   .we_ack(ddr_wrack),
-
-   .rdaddr({fdsddr_addr[17:0], 1'b0}),
-   .dout(fds_data),
-   .rd_req(fds_rd),
-   .rd_rdy(fds_rdy)
-);
-
-reg  ddr_wr;
-wire ddr_wrack;
-
 wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
 assign VGA_SL = sl[1:0];
 
-wire [1:0] reticule;
+wire [1:0] reticle;
 wire hold_reset;
 
 video video
@@ -668,6 +783,7 @@ video video
 	.*,
 	.clk(clk),
 	.reset(reset_nes),
+	.cnt(nes_ce),
 	.hold_reset(hold_reset),
 	.count_v(scanline),
 	.count_h(cycle),
@@ -676,8 +792,8 @@ video video
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
 	.emphasis(emphasis),
-	.reticule(reticule),
-
+	.reticle(~status[22] ? reticle : 2'b00),
+	.pal_video(pal_video),
 	.ce_pix(CE_PIXEL)
 );
 
@@ -708,7 +824,7 @@ always_ff @(posedge clk) begin
 			8:  gg_code[39:32]   <= file_input;  // Compare Bottom Word
 			9:  gg_code[47:40]   <= file_input;  // Compare Bottom Word
 			10: gg_code[55:48]   <= file_input;  // Compare top Word
-			11: gg_code[63:56]   <= file_input;  // Compare top Word
+			11: gg_code[63:56]   <= file_input;  // Compare top Word                                       
 			12: gg_code[7:0]     <= file_input;  // Replace Bottom Word
 			13: gg_code[15:8]    <= file_input;  // Replace Bottom Word
 			14: gg_code[23:16]   <= file_input;  // Replace Top Word
@@ -740,41 +856,23 @@ reg  bk_loading = 0;
 reg  bk_loading_req = 0;
 reg  bk_request = 0;
 wire bk_busy = (bk_state == S_COPY);
-reg  full_loading = 0;
-reg  full_loading_req = 0;
-reg  bram_init = 0;
-reg  bram_we = 0;
-reg  fds_wr;
-reg  bk_first;
 reg  fds_busy;
 reg  old_fds_btn;
+reg [2:0] swap_delay;
 reg [1:0] diskside_btn;
-wire fds = (mapper_flags[7:0] == 8'h14);
-reg [17:0] fds_addr;
-// 65500 size; 512 sector size; After first size, beginning of side is in previous sector
-assign fdsddr_addr = {4'h0, (diskside==2'd0) ? fds_addr : fds_addr - 16'h0200};
-assign sd_lba = {23'h0, (diskside==2'd0) ? fds_addr[17:9] : fds_addr[17:9] - 9'h1};
-wire [17:0] img_last = (|img_size) ? img_size - 18'd1 : 0;
+wire [8:0] save_sz = fds ? rom_sz[17:9] : bram_en ? 9'd3 : 9'd63;
 wire [1:0] diskside_req_use = fds_swap_invert ? diskside_btn : diskside_req;
-wire [1:0] next_diskside = (last_diskside == diskside) ? 2'd0 : diskside + 2'd1;
 wire [1:0] next_btn_diskside = (last_diskside == diskside_btn) ? 2'd0 : diskside_btn + 2'd1;
 
-// This state machine needs to handle the following:
-// - For non FDS games, S_COPY reads the save file into BRAM on ROM load and when requested by OSD.
-// - S_COPY also writes the contents of BRAM to the save when requested by OSD (or autosave).
-// - For FDS games, after the FDS has been loaded to DDR, one diskside is copied to BRAM (S_COPYDDR)
-// - After this, if a save exists, it is loaded one diskside at a time into BRAM (S_COPY).
-// - Each diskside in BRAM then overwrites DDR (S_DDRCOPY).  This is done for each diskside.
-// - When requested by OSD (including autosave), the current BRAM contents are saved to disk (S_COPY).
-// - Whenever the diskside changes, first the current BRAM is copied to disk (S_COPY).
-// - Then the current BRAM is copied to DDR (S_DDRCOPY).
-// - Then the next diskside is loaded into BRAM from DDR (S_COPYDDR).
-typedef enum bit [1:0] { S_IDLE, S_COPY, S_DDRCOPY, S_COPYDDR } mystate;
+typedef enum bit [1:0] { S_IDLE, S_COPY } mystate;
 mystate bk_state = S_IDLE;
 
 always @(posedge clk) begin
 	reg old_load = 0, old_save = 0, old_ack;
+	reg old_downloading = 0;
 	
+	old_downloading <= downloading;
+
 	old_load <= bk_load & bk_ena;
 	old_save <= bk_save & bk_ena;
 	old_ack  <= sd_ack;
@@ -782,106 +880,44 @@ always @(posedge clk) begin
 	old_fds_btn <= fds_btn;
 	
 	if(~old_ack & sd_ack) {sd_rd, sd_wr} <= 0;
-	if(~old_fds_btn & fds_btn) diskside_btn <= next_btn_diskside;
+	if (swap_delay == {1'b1, clkcount[22:21]}) begin
+		swap_delay[2] <= 0;
+	end
+	if(~old_fds_btn & fds_btn & ~fds_busy & ~swap_delay[2]) diskside_btn <= next_btn_diskside;
+
 	if (downloading) begin
 		diskside <= 2'd0;
-		bram_init <= ~fds;
 		bk_state <= S_IDLE;
 		bk_request <= 0;
-		full_loading <= 0;
-		full_loading_req <= 0;
-		bk_loading_req <= 0;
 		diskside_btn <= 2'd0;
-	end else begin
+	end else if(bk_state == S_IDLE) begin
 		if((~old_load & bk_load) | (~old_save & bk_save)) begin
-			bk_loading_req <= bk_load;
+			bk_loading <= bk_load;
 			bk_request <= 1;
-			full_loading_req <= 0;
+		end else if((diskside_req_use != diskside) && ~downloading && ~bk_request && fds) begin		
+			diskside <= diskside_req_use;
+			swap_delay <= {1'b1, ~clkcount[22:21]};
 		end
 		if(old_downloading & ~downloading & |img_size & bk_ena) begin
-			bk_loading_req <= 1;
+			bk_loading <= 1;
 			bk_request <= 1;
-			full_loading_req <= 1;
 		end
-		if(bk_state == S_IDLE) begin
-			if(!bram_init && ~loader_busy && ~downloading) begin
-				bk_loading <= 1;
-				full_loading <= 0;
-				bk_state <= S_COPYDDR;
-				fds_addr <= {2'd0, 16'h0};
-				diskside <= 2'd0;
-				bk_first <= 1;
-			end else if(bram_init && (diskside_req_use != diskside) && ~downloading && ~bk_request && fds) begin
-				bk_loading_req <= 0;
-				bk_request <= 1;
-				full_loading_req <= 0;
-				fds_addr <= {diskside, 16'h0};
-			end
-			if (bram_init && bk_request && ~downloading && !loader_busy) begin
-				bk_state <= S_COPY;
-				fds_addr <= full_loading_req ? 18'h0 : {diskside, 16'h0};
-				diskside <= full_loading_req ? 2'd0 : diskside;
-				full_loading <= full_loading_req;
-				full_loading_req <= 0;
-				bk_loading <= full_loading_req || bk_loading_req;
-				bk_loading_req <= 0;
-				bk_first <= 1;
-			end
-		end else if(bk_state == S_COPY) begin
-			if (bk_first) begin
-				bk_request <= 0;  //one cycle pause
-				sd_rd <=  bk_loading;
-				sd_wr <= ~bk_loading;
-				bk_first <= 0;
-			end else if(old_ack & ~sd_ack) begin
-				if((&fds_addr[14:9] && (fds_addr[15] == fds)) || (bk_loading && (fds_addr[17:9] == img_last[17:9]))) begin
-					fds_addr <= {diskside, 16'h0};
-					bk_state <= fds ? S_DDRCOPY : S_IDLE;
-					bk_loading <= fds ? bk_loading : 1'd0;
-					bram_init <= 1;
-					bk_first <= 1;
-				end else begin
-					fds_addr[17:9] <= fds_addr[17:9] + 1'd1;
-					sd_rd  <=  bk_loading;
-					sd_wr  <= ~bk_loading;
-				end
-			end
-		end else if(bk_state == S_DDRCOPY) begin
-			fds_wr <= 0;
-			if (bk_first) begin
-				bk_first <= 0;
-				fds_wr <= 1;
-			end else if (~fds_wr && (ddr_wr == ddr_wrack)) begin
-				if(&fds_addr[15:0]) begin
-					full_loading <= full_loading && (img_last[17:16] != diskside);
-					bk_loading <= bk_loading && ~(full_loading && (img_last[17:16] == diskside));
-					bk_state <= full_loading ? (img_last[17:16] != diskside) ? S_COPY : S_IDLE : S_COPYDDR;
-					diskside <= (full_loading && (img_last[17:16] == diskside)) ? diskside : next_diskside;
-					fds_addr <= {next_diskside, 16'h0};
-					bk_first <= 1;
-				end else begin
-					fds_addr <= fds_addr + 1'd1;
-					fds_wr <= 1;
-				end
-			end
-		end else begin // if(bk_state == S_COPYDDR) begin
-			bram_we <= 0;
-			if (bk_first) begin
-				bk_first <= 0;
-				fds_rd <= 1;
-			end else if (fds_rdy && ~fds_rd) begin
-				if(&fds_addr[15:0]) begin
-					bk_loading <= 0;
-					bk_state <= S_IDLE;
-					fds_addr <= {diskside, 16'h0};
-					bram_init <= 1;
-				end else begin
-					fds_addr <= fds_addr + 1'd1;
-					fds_rd <= 1;
-				end
+		if (bk_request && !loader_busy) begin
+			bk_request <= 0;
+			bk_state <= S_COPY;
+			sd_lba <= 0;
+			sd_rd <=  bk_loading;
+			sd_wr <= ~bk_loading;
+		end
+	end else begin
+		if(old_ack & ~sd_ack) begin
+			if(sd_lba[8:0] == save_sz) begin
+				bk_loading <= 0;
+				bk_state <= S_IDLE;
 			end else begin
-				fds_rd <= 0;
-				bram_we <= 1;
+				sd_lba <= sd_lba + 1'd1;
+				sd_rd  <=  bk_loading;
+				sd_wr  <= ~bk_loading;
 			end
 		end
 	end
@@ -957,13 +993,15 @@ wire is_dirty = !is_nes20 && ((ines[9][7:1] != 0)
 // Read the mapper number
 wire [7:0] mapper = {is_dirty ? 4'b0000 : ines[7][7:4], ines[6][7:4]};
 wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
+wire [3:0] prgram = {is_nes20 ? ines[10][3:0] : 4'h00};
 
 wire has_saves = ines[6][1];
 
 // ines[6][0] is mirroring
 // ines[6][3] is 4 screen mode
 // ines[8][7:4] is NES 2.0 submapper
-assign mapper_flags = {6'b0, has_saves, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
+// ines[10][3:0] is NES 2.0 PRG RAM shift size (64 << size)
+assign mapper_flags = {2'b0, prgram, has_saves, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
 
 reg [3:0] clearclk; //Wait for SDRAM
 reg copybios;
@@ -971,9 +1009,9 @@ reg copybios;
 typedef enum bit [2:0] { S_LOADHEADER, S_LOADPRG, S_LOADCHR, S_LOADFDS, S_ERROR, S_CLEARRAM, S_COPYBIOS, S_DONE } mystate;
 mystate state;
 
-wire type_bios = (filetype == 0 || filetype == 3); //*.BIOS or boot.rom or boot0.rom
+wire type_bios = (filetype == 0 || filetype == 2); //*.BIOS or boot.rom or boot0.rom
 //wire type_nes = (filetype == 1 || filetype==8'h40); //*.NES or boot1.rom  //default
-wire type_fds = (filetype == 2 || filetype==8'h80); //*.FDS or boot2.rom
+wire type_fds = (filetype == 8'b01000001 || filetype==8'h80); //*.FDS or boot2.rom
 
 always @(posedge clk) begin
 	if (reset) begin
@@ -981,7 +1019,7 @@ always @(posedge clk) begin
 		busy <= 0;
 		done <= 0;
 		ctr <= 0;
-		mem_addr <= type_fds ? 22'b00_0100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
+		mem_addr <= type_fds ? 22'b11_1100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
 		bios_download <= 0;
 		copybios <= 0;
 	end else begin
@@ -1002,7 +1040,7 @@ always @(posedge clk) begin
 					state <= S_LOADPRG;
 				 //FDS
 				 end else if ((ines[0] == 8'h46) && (ines[1] == 8'h44) && (ines[2] == 8'h53) && (ines[3] == 8'h1A)) begin
-					mem_addr <= 22'b00_0100_0000_0000_0001_0000;  // Address for FDS skip Header
+					mem_addr <= 22'b11_1100_0000_0000_0001_0000;  // Address for FDS skip Header
 					state <= S_LOADFDS;
 					bytes_left <= 21'b1;
 				 end else if (type_bios) begin // Bios
@@ -1012,7 +1050,7 @@ always @(posedge clk) begin
 					bios_download <= 1;
 				 end else if(type_fds) begin // FDS
 					state <= S_LOADFDS;
-					mem_addr <= 22'b00_0100_0000_0000_0010_0000;  // Address for FDS no Header
+					mem_addr <= 22'b11_1100_0000_0000_0010_0000;  // Address for FDS no Header
 					bytes_left <= 21'b1;
 				 end else begin
 					state <= S_ERROR;
