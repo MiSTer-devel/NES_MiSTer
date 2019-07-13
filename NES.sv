@@ -103,7 +103,6 @@ module emu
 );
 
 assign ADC_BUS  = 'Z;
-assign USER_OUT = '1;
 
 assign AUDIO_S   = 1'b1;
 assign AUDIO_L   = |mute_cnt ? 16'd0 : sample_signed[15:0];
@@ -131,7 +130,7 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXXXXXXXXXX    XX
+// XXXXXXXXXXX XXXXXXXXXXXXXXX   XX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -163,6 +162,7 @@ parameter CONF_STR = {
 	"OL,Zapper Trigger,Mouse,Joystick;",
 	"OM,Crosshairs,On,Off;",
 	"OA,Multitap,Disabled,Enabled;",
+	"OQ,Serial Mode,None,SNAC;",
 `ifdef DEBUG_AUDIO
 	"-;",
 	"OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
@@ -360,6 +360,7 @@ always @(posedge CLK_50M) begin
 	end
 end
 
+
 // reset after download
 reg [7:0] download_reset_cnt;
 wire download_reset = download_reset_cnt != 0;
@@ -403,6 +404,35 @@ wire fds_eject = swap_delay[2] | fds_swap_invert ? fds_btn : (clkcount[21] | fds
 
 reg [1:0] nes_ce;
 
+wire raw_serial = status[26];
+
+// Indexes:
+// 0 = D+
+// 1 = D-
+// 2 = TX-
+// 3 = GND_d
+// 4 = RX+
+// 5 = RX-
+
+assign USER_OUT[2] = 1'b1;
+assign USER_OUT[3] = 1'b1;
+assign USER_OUT[4] = 1'b1;
+assign USER_OUT[5] = 1'b1;
+
+always_comb begin
+	if (raw_serial) begin
+		USER_OUT[0] = joypad_strobe;
+		USER_OUT[1] = joy_swap ? ~joypad_clock[1] : ~joypad_clock[0];
+		joy_data = {~USER_IN[4], ~USER_IN[2], joy_swap ? ~USER_IN[5] : joypad_bits2[0], joy_swap ? joypad_bits[0] : ~USER_IN[5]};
+	end else begin
+		USER_OUT[0] = 1'b1;
+		USER_OUT[1] = 1'b1;
+		joy_data = {lightgun_en ? trigger : powerpad_d4[0],lightgun_en ? light : powerpad_d3[0],joypad_bits2[0],joypad_bits[0]};
+	end
+end
+
+wire [3:0] joy_data;
+
 reg [7:0] mic_cnt;
 
 wire mic = (mic_cnt < 8'd215) && mic_button;
@@ -434,8 +464,8 @@ always @(posedge clk) begin
 		last_joypad_clock <= 0;
 	end else begin
 		if (joypad_strobe) begin
-			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, joy_swap ? nes_joy_B : nes_joy_A};
-			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, joy_swap ? nes_joy_A : nes_joy_B};
+			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, (joy_swap ^ raw_serial) ? nes_joy_B : nes_joy_A};
+			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, (joy_swap ^ raw_serial) ? nes_joy_A : nes_joy_B};
 			powerpad_d4 <= {4'b0000, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
 			powerpad_d3 <= {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
 		end
@@ -558,7 +588,7 @@ NES nes (
 	// User Input
 	.joypad_strobe   (joypad_strobe),
 	.joypad_clock    (joypad_clock),
-	.joypad_data     ({lightgun_en ? trigger : powerpad_d4[0],lightgun_en ? light : powerpad_d3[0],joypad_bits2[0],joypad_bits[0]}),
+	.joypad_data     (joy_data),
 	.mic             (mic),
 	.diskside_req    (diskside_req),
 	.diskside        (diskside),
