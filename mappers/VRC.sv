@@ -254,7 +254,7 @@ reg [8:0] chr_tmp;
 reg prg_invert;
 wire mapper21 = (flags[7:0] == 21);
 wire mapper22 = (flags[7:0] == 22);
-wire mapper23 = (flags[7:0] == 23);
+wire mapper23 = (flags[7:0] == 23 | flags[7:0] == 27);
 //wire mapper25 = (flags[7:0] == 25); //default
 wire mapperVRC4 = (flags[7:0] != 22) && (flags[24:21] != 3);
 wire [1:0] registers = {mapper21 ?  {(prg_ain[7]|prg_ain[2]),(prg_ain[6]|prg_ain[1])} :

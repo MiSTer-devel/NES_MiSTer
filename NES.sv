@@ -103,7 +103,6 @@ module emu
 );
 
 assign ADC_BUS  = 'Z;
-assign USER_OUT = '1;
 
 assign AUDIO_S   = 1'b1;
 assign AUDIO_L   = |mute_cnt ? 16'd0 : sample_signed[15:0];
@@ -131,7 +130,7 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXXXXXXXXXX    XX
+// XXXXXXXXXXX XXXXXXXXXXXXXXX   XX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -146,7 +145,7 @@ parameter CONF_STR = {
 	"O5,Invert Mirroring,Off,On;",
 	"-;",
 	"C,Cheats;",
-	"H20K,Cheats Enabled,On,Off;",
+	"H2OK,Cheats Enabled,On,Off;",
 	"-;",
 	"D0R6,Load Backup RAM;",
 	"D0R7,Save Backup RAM;",
@@ -163,6 +162,7 @@ parameter CONF_STR = {
 	"OL,Zapper Trigger,Mouse,Joystick;",
 	"OM,Crosshairs,On,Off;",
 	"OA,Multitap,Disabled,Enabled;",
+	"OQ,Serial Mode,None,SNAC;",
 `ifdef DEBUG_AUDIO
 	"-;",
 	"OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
@@ -360,6 +360,7 @@ always @(posedge CLK_50M) begin
 	end
 end
 
+
 // reset after download
 reg [7:0] download_reset_cnt;
 wire download_reset = download_reset_cnt != 0;
@@ -401,7 +402,36 @@ end
 
 wire fds_eject = swap_delay[2] | fds_swap_invert ? fds_btn : (clkcount[21] | fds_btn);
 
-reg [2:0] nes_ce;
+reg [1:0] nes_ce;
+
+wire raw_serial = status[26];
+
+// Indexes:
+// 0 = D+
+// 1 = D-
+// 2 = TX-
+// 3 = GND_d
+// 4 = RX+
+// 5 = RX-
+
+assign USER_OUT[2] = 1'b1;
+assign USER_OUT[3] = 1'b1;
+assign USER_OUT[4] = 1'b1;
+assign USER_OUT[5] = 1'b1;
+
+always_comb begin
+	if (raw_serial) begin
+		USER_OUT[0] = joypad_strobe;
+		USER_OUT[1] = joy_swap ? ~joypad_clock[1] : ~joypad_clock[0];
+		joy_data = {~USER_IN[4], ~USER_IN[2], joy_swap ? ~USER_IN[5] : joypad_bits2[0], joy_swap ? joypad_bits[0] : ~USER_IN[5]};
+	end else begin
+		USER_OUT[0] = 1'b1;
+		USER_OUT[1] = 1'b1;
+		joy_data = {lightgun_en ? trigger : powerpad_d4[0],lightgun_en ? light : powerpad_d3[0],joypad_bits2[0],joypad_bits[0]};
+	end
+end
+
+wire [3:0] joy_data;
 
 reg [7:0] mic_cnt;
 
@@ -434,8 +464,8 @@ always @(posedge clk) begin
 		last_joypad_clock <= 0;
 	end else begin
 		if (joypad_strobe) begin
-			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, joy_swap ? nes_joy_B : nes_joy_A};
-			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, joy_swap ? nes_joy_A : nes_joy_B};
+			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, (joy_swap ^ raw_serial) ? nes_joy_B : nes_joy_A};
+			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, (joy_swap ^ raw_serial) ? nes_joy_A : nes_joy_B};
 			powerpad_d4 <= {4'b0000, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
 			powerpad_d3 <= {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
 		end
@@ -506,7 +536,19 @@ always @(posedge clk) begin
 	end;
 end
  
-wire reset_nes = ~init_reset_n || buttons[1] || arm_reset || download_reset || loader_fail || bk_loading || bk_loading_req || hold_reset;
+wire reset_nes = 
+	~init_reset_n  ||
+	buttons[1]     ||
+	arm_reset      ||
+	download_reset ||
+	loader_fail    ||
+	bk_loading     ||
+	bk_loading_req ||
+	hold_reset     ||
+	(old_sys_type != status[24:23]);
+
+reg [1:0] old_sys_type;
+always @(posedge clk) old_sys_type <= status[24:23];
 
 wire [17:0] bram_addr;
 wire [7:0] bram_din;
@@ -524,7 +566,7 @@ wire lightgun_en = |status[19:18];
 NES nes (
 	.ex_sprites      (status[25]),
 	.clk             (clk),
-	.reset_nes       (reset_nes),
+	.reset           (reset_nes),
 	.sys_type        (status[24:23]),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 32'd0 : mapper_flags),
@@ -546,7 +588,7 @@ NES nes (
 	// User Input
 	.joypad_strobe   (joypad_strobe),
 	.joypad_clock    (joypad_clock),
-	.joypad_data     ({lightgun_en ? trigger : powerpad_d4[0],lightgun_en ? light : powerpad_d3[0],joypad_bits2[0],joypad_bits[0]}),
+	.joypad_data     (joy_data),
 	.mic             (mic),
 	.diskside_req    (diskside_req),
 	.diskside        (diskside),
@@ -741,6 +783,7 @@ video video
 	.*,
 	.clk(clk),
 	.reset(reset_nes),
+	.cnt(nes_ce),
 	.hold_reset(hold_reset),
 	.count_v(scanline),
 	.count_h(cycle),
@@ -966,7 +1009,7 @@ reg copybios;
 typedef enum bit [2:0] { S_LOADHEADER, S_LOADPRG, S_LOADCHR, S_LOADFDS, S_ERROR, S_CLEARRAM, S_COPYBIOS, S_DONE } mystate;
 mystate state;
 
-wire type_bios = (filetype == 0 || filetype == 3); //*.BIOS or boot.rom or boot0.rom
+wire type_bios = (filetype == 0 || filetype == 2); //*.BIOS or boot.rom or boot0.rom
 //wire type_nes = (filetype == 1 || filetype==8'h40); //*.NES or boot1.rom  //default
 wire type_fds = (filetype == 8'b01000001 || filetype==8'h80); //*.FDS or boot2.rom
 

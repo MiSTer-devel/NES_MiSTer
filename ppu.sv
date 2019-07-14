@@ -183,7 +183,7 @@ assign at_last_cycle_group = (cycle[8:3] == 42);
 // In Visual 2C02, the counter starts at zero and flips at scanline 256.
 assign short_frame = end_of_line & skip_pixel;
 
-wire skip_pixel = is_pre_render && ~even_frame_toggle && is_rendering;
+wire skip_pixel = is_pre_render && ~even_frame_toggle && is_rendering && skip_en;
 assign end_of_line = at_last_cycle_group && (cycle[3:0] == (skip_pixel ? 3 : 4));
 
 // Confimed with Visual 2C02
@@ -217,7 +217,7 @@ end else if (ce && end_of_line) begin
 	is_pre_render <= (scanline == vblank_end_sl);
 
 	if (scanline == 255)
-		even_frame_toggle <= skip_en ? ~even_frame_toggle : 1'b1;
+		even_frame_toggle <= ~even_frame_toggle;
 end
 
 endmodule // ClockGen
@@ -343,7 +343,8 @@ module OAMEval(
 	output reg spr_overflow,   // Set to true if we had more than 8 objects on a scan line. Reset when exiting vblank.
 	output reg sprite0,        // True if sprite#0 is included on the scan line currently being painted.
 	input is_vbe,              // Last line before pre-render
-	input PAL
+	input PAL,
+	output masked_sprites      // If the game is trying to mask extra sprites
 );
 
 // https://wiki.nesdev.com/w/index.php/PPU_sprite_evaluation
@@ -382,11 +383,15 @@ reg [5:0] oam_temp_addr;
 reg [6:0] feed_cnt;
 
 reg sprite0_curr;
+reg [2:0] repeat_count;
+
+assign masked_sprites = &repeat_count;
 
 always @(posedge clk) begin :oam_eval
 reg n_ovr, ex_ovr;
 reg [1:0] eval_counter;
 reg old_rendering;
+reg [8:0] last_y, last_tile, last_attr;
 
 // This should happen on the third cycle of rendering
 if (cycle == 340 && ce) begin
@@ -400,10 +405,10 @@ if (reset) begin
 	oam_temp_addr <= 0;
 	oam_temp_slot <= 0;
 	oam_temp_wren <= 1;
-	oam <= '{256{8'h00}}; // Clearing ram fixes corruption in Huge Insect
 	oam_temp_slot_ex <= 0;
 	n_ovr <= 0;
 	spr_counter <= 0;
+	repeat_count <= 0;
 	sprite0 <= 0;
 	sprite0_curr <= 0;
 	feed_cnt <= 0;
@@ -450,6 +455,7 @@ end else if (ce) begin
 			n_ovr <= 0;
 			ex_ovr <= 0;
 			spr_counter <= 0;
+			repeat_count <= 0;
 			feed_cnt <= 0;
 			eval_counter <= 0;
 			oam_bus_ex <= 32'hFFFFFFFF;
@@ -515,8 +521,19 @@ end else if (ce) begin
 						end else begin
 							eval_counter <= eval_counter + 2'd1;
 							{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd1;
+							
 							if (&eval_counter) begin // end of copy
 								if (oam_temp_wren) begin
+									last_y <= oam[{oam_addr[7:2], 2'b00}];
+									last_tile <= oam[{oam_addr[7:2], 2'b01}];
+									last_attr <= oam[{oam_addr[7:2], 2'b10}];
+									// Check for repeats to see if the game is trying to mask sprites
+									if (|oam_temp_slot &&
+										last_y == oam[{oam_addr[7:2], 2'b00}] &&
+										last_tile == oam[{oam_addr[7:2], 2'b01}] &&
+										last_attr == oam[{oam_addr[7:2], 2'b10}]) begin
+										repeat_count <= repeat_count + 3'd1;
+									end
 									oam_temp_slot <= oam_temp_slot+ 1'b1;
 								end else begin
 									n_ovr <= 1;
@@ -531,9 +548,16 @@ end else if (ce) begin
 						oam_data <= oam_temp[{1'b0, oam_temp_slot, 2'b00}];
 					end
 				end
+				// Check if the 9th sprite is a repeat
+				if (last_y    == oam_temp[6'd32] &&
+					last_tile == oam_temp[6'd33] &&
+					last_attr == oam_temp[6'd34] &&
+					cycle == 9'h0FD && repeat_count < 7)
+					repeat_count <= repeat_count + 3'd1;
 			end
 		end else if (oam_state == STATE_FETCH) begin
 			feed_cnt <= feed_cnt + 1'd1;
+
 			case (feed_cnt[2:0])
 				0: begin // Y Coord
 					oam_data <= oam_temp[{feed_cnt[6:3], 2'b00}];
@@ -670,7 +694,8 @@ module SpriteAddressGenEx(
 	output [12:0] vram_addr,// Low bits of address in VRAM that we'd like to read.
 	output [3:0] load,      // Which subset of load_in that is now valid, will be loaded into SpritesGen.
 	output [26:0] load_in,  // Bits to load into SpritesGen.
-	output use_ex           // If extra sprite address should be used
+	output use_ex,          // If extra sprite address should be used
+	input masked_sprites
 );
 
 // We keep an odd structure here to maintain compatibility with the existing sprite modules
@@ -693,11 +718,11 @@ wire flip_y = attr[7];
 wire dummy_sprite = attr[4];
 
 // XXX: Disabled for discovering mapper problems
-assign use_ex = /*~dummy_sprite &&*/ ~cycle[2];
+assign use_ex = /*~dummy_sprite &&*/ ~cycle[2] && ~masked_sprites;
 
 // Flip incoming vram data based on flipx. Zero out the sprite if it's invalid. The bits are already flipped once.
 wire [7:0] vram_f =
-	dummy_sprite ? 8'd0 :
+	dummy_sprite || masked_sprites ? 8'd0 :
 	!flip_x ? {vram_data[0], vram_data[1], vram_data[2], vram_data[3], vram_data[4], vram_data[5], vram_data[6], vram_data[7]} :
 	vram_data;
 
@@ -993,6 +1018,7 @@ wire show_bg_on_pixel = (playfield_clip || (cycle[7:3] != 0)) && enable_playfiel
 wire [3:0] bg_pixel = {bg_pixel_noblank[3:2], show_bg_on_pixel ? bg_pixel_noblank[1:0] : 2'b00};
 
 wire [31:0] oam_bus_ex;
+wire masked_sprites;
 
 OAMEval spriteeval (
 	.clk               (clk),
@@ -1010,7 +1036,8 @@ OAMEval spriteeval (
 	.spr_overflow      (sprite_overflow),
 	.sprite0           (obj0_on_line),
 	.is_vbe            (is_vbe_sl),
-	.PAL               (sys_type[0])
+	.PAL               (sys_type[0]),
+	.masked_sprites    (masked_sprites)
 );
 
 
@@ -1047,19 +1074,20 @@ wire [26:0] spriteset_load_in_ex;
 wire use_ex;
 
 SpriteAddressGenEx address_gen_ex(
-	.clk       (clk),
-	.ce        (ce),
-	.enabled   (cycle[8] && !cycle[6]),  // Load sprites between 256..319
-	.obj_size  (obj_size),
-	.scanline  (scanline[7:0]),
-	.obj_patt  (obj_patt),               // Object size and pattern table
-	.cycle     (cycle[2:0]),             // Cycle counter
-	.temp      (is_pre_render_line ? 32'hFFFFFFFF : oam_bus_ex),                // Info from temp buffer.
-	.vram_addr (sprite_vram_addr_ex),    // [out] VRAM Address that we want data from
-	.vram_data (vram_din),               // [in] Data at the specified address
-	.load      (spriteset_load_ex),
-	.load_in   (spriteset_load_in_ex),    // Which parts of SpriteGen to load
-	.use_ex    (use_ex)
+	.clk            (clk),
+	.ce             (ce),
+	.enabled        (cycle[8] && !cycle[6]),  // Load sprites between 256..319
+	.obj_size       (obj_size),
+	.scanline       (scanline[7:0]),
+	.obj_patt       (obj_patt),               // Object size and pattern table
+	.cycle          (cycle[2:0]),             // Cycle counter
+	.temp           (is_pre_render_line ? 32'hFFFFFFFF : oam_bus_ex),                // Info from temp buffer.
+	.vram_addr      (sprite_vram_addr_ex),    // [out] VRAM Address that we want data from
+	.vram_data      (vram_din),               // [in] Data at the specified address
+	.load           (spriteset_load_ex),
+	.load_in        (spriteset_load_in_ex),    // Which parts of SpriteGen to load
+	.use_ex         (use_ex),
+	.masked_sprites (masked_sprites)
 );
 
 // Between 0..255 (256 cycles), draws pixels.

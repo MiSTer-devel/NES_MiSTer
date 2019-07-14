@@ -71,7 +71,7 @@ endmodule
 
 module NES(
 	input         clk,
-	input         reset_nes,
+	input         reset,
 	input   [1:0] sys_type,
 	output  [1:0] nes_div,
 	input  [31:0] mapper_flags,
@@ -154,8 +154,6 @@ module NES(
 
 assign nes_div = div_sys;
 assign apu_ce = cpu_ce;
-
-wire reset = reset_nes | (last_sys_type != sys_type);
 
 wire [7:0] from_data_bus;
 wire [7:0] cpu_dout;
@@ -364,7 +362,15 @@ wire [15:0] audio_mappers = (audio_en == 2'd1) ? 16'd0 : sample_inverted;
 // Joypads are mapped into the APU's range.
 wire joypad1_cs = (addr == 'h4016);
 wire joypad2_cs = (addr == 'h4017);
-assign joypad_strobe = (joypad1_cs && mw_int && cpu_dout[0]);
+
+reg joy_strobe;
+
+always @(posedge clk) begin
+	if (joypad1_cs && mw_int)
+		joy_strobe <= cpu_dout[0];
+end
+
+assign joypad_strobe = joy_strobe;
 assign joypad_clock = {joypad2_cs && mr_int, joypad1_cs && mr_int};
 
 

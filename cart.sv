@@ -95,7 +95,7 @@ MMC0 mmc0(
 
 //*****************************************************************************//
 // Name   : MMC1                                                               //
-// Mappers: 1, 155                                                             //
+// Mappers: 1, 155, 171 (hard wired vertical mirroring)                        //
 // Status : Working                                                            //
 // Notes  :                                                                    //
 // Games  : Simon's Quest                                                      //
@@ -103,7 +103,7 @@ MMC0 mmc0(
 MMC1 mmc1(
 	.clk        (clk),
 	.ce         (ce),
-	.enable     (me[155] | me[1]),
+	.enable     (me[171] | me[155] | me[1]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
@@ -619,12 +619,12 @@ Mapper65 map65(
 
 //*****************************************************************************//
 // Name   : GxROM                                                              //
-// Mappers: 11, 38, 66, 86, 87, 101, 140                                       //
+// Mappers: 11, 38, 46, 66, 86, 87, 101, 140                                       //
 // Status : 38/66 - Working, 38/87/101/140 - Needs eval, 86 - No Audio Samples //
 // Notes  :                                                                    //
 // Games  : Doraemon, Dragon Power, Sidewinder (145), Taiwan Mahjong 16 (149)  //
 //*****************************************************************************//
-wire mapper66_en = me[11] | me[38] | me[86] | me[87] | me[101] | me[140] | me[66] | me[145] | me[149];
+wire mapper66_en = me[11] | me[38] | me[46] | me[86] | me[87] | me[101] | me[140] | me[66] | me[145] | me[149];
 Mapper66 map66(
 	.clk        (clk),
 	.ce         (ce),
@@ -1217,7 +1217,7 @@ VRC3 vrc3(
 
 //*****************************************************************************//
 // Name   : Konami VRC2/4                                                      //
-// Mappers: 21, 22, 23, 25                                                     //
+// Mappers: 21, 22, 23, 25, 27 (pirate of 23)                                  //
 // Status : Needs Evaluation                                                   //
 // Notes  :                                                                    //
 // Games  : Wai Wai World 2, Twinbee 3, Contra (j), Gradius II (j)             //
@@ -1225,7 +1225,7 @@ VRC3 vrc3(
 VRC24 vrc24(
 	.clk        (clk),
 	.ce         (ce),
-	.enable     (me[21] | me[22] | me[23] | me[25]),
+	.enable     (me[21] | me[22] | me[23] | me[25] | me[27]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
