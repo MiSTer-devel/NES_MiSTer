@@ -7,7 +7,7 @@ This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://git
  * Supports NTSC, PAL, and Dendy system types
  * FDS Support with expansion audio
  * Multiple Palette options
- * Zapper, Powerpad, and Microphone support
+ * Zapper, Powerpad, Microphone, and Miracle Piano support
  * Supports four players
  * Setting for increasing sprite per line by 8
  * Supports up to 32 cheat codes
@@ -32,6 +32,9 @@ The battery backed RAM (Save RAM) for the NES does not write to disk automatical
 
 ## Zapper Support
 The "Zapper" (aka Light Gun) can be used via two methods. You can select Peripheral: Zapper(Mouse) to use your mouse to aim and shoot with the left button. This mode uses relative mouse motion, so devices that rely on absolute coordinates will not work via this method. Alternatively, you can choose Zapper(Joy) to use the Analog stick to aim, and the defined Trigger button to fire. Guns such as Aimtrak have joystick modes which may be compatible with this method.
+
+## Miracle Piano Support
+The Miracle Piano is a MIDI keyboard compatible with the Miracle Piano Education System cart.  To use it with SNAC, no further settings are needed.  To use it with midilink, in the System Settings, set the UART connection to use MIDI.  The piano will then be connected on controller port 1 as expected.  The primary controller will automatically be assigned to port 2 as the cart expects.  The header for the ROM file should be set to NES 2.0 with controller type (0xF) set to the Miracle Piano (0x19).
 
 ## Supported Mappers
 
