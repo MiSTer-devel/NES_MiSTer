@@ -119,7 +119,7 @@ assign VIDEO_ARY = status[8] ? 8'd9  : (hide_overscan ? 8'd49 : 8'd105);
 assign CLK_VIDEO = clk;
 
 assign VGA_F1 = 0;
-assign {UART_RTS, UART_TXD, UART_DTR} = 0;
+//assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
@@ -141,7 +141,10 @@ parameter CONF_STR = {
 	"-;",
 	"ONO,System Type,NTSC,PAL,Dendy;",
 	"-;",
-	"OG,Disk Swap,Auto,FDS button;",	
+	"OG,Disk Swap ("
+	};
+parameter CONF_STR2 = {
+	"),Auto,FDS button;",	
 	"O5,Invert Mirroring,Off,On;",
 	"-;",
 	"C,Cheats;",
@@ -183,7 +186,7 @@ wire mirroring_osd = status[5];
 wire pal_video = |status[24:23];
 wire hide_overscan = status[4] && ~pal_video;
 wire [3:0] palette2_osd = status[15:12];
-wire joy_swap = status[9];
+wire joy_swap = status[9] ^ (raw_serial || piano); // Controller on port 2 for Miracle Piano/SNAC
 wire fds_swap_invert = status[16];
 `ifdef DEBUG_AUDIO
 wire ext_audio = ~status[30];
@@ -245,11 +248,11 @@ wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
 wire        forced_scandoubler;
 
-hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
+hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 1)) hps_io
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-	.conf_str(CONF_STR),
+	.conf_str({CONF_STR, diskside==3?"3":diskside==2?"2":diskside==1?"1":"0", CONF_STR2}),
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
@@ -286,7 +289,9 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 	.ps2_kbd_led_use(0),
 	.ps2_kbd_led_status(0),
 
-	.ps2_mouse(ps2_mouse)
+	.ps2_mouse(ps2_mouse),
+	
+	.uart_mode(16'b000_11111_000_11111)
 );
 
 
@@ -439,6 +444,20 @@ wire mic = (mic_cnt < 8'd215) && mic_button;
 always @(posedge clk)
 	mic_cnt <= (mic_cnt == 8'd250) ? 8'd0 : mic_cnt + 1'b1;
 
+assign {UART_RTS, UART_DTR} = 1;
+wire [15:0] uart_data;
+miraclepiano miracle(
+	.clk(clk),
+	.clk_cpu(apu_ce),
+	.reset(reset_nes || !piano),
+	.strobe(joypad_strobe),
+	.joypad_o(),
+	.joypad_clock(joypad_clock[0]),
+	.data_o(uart_data),
+	.txd(UART_TXD),
+	.rxd(UART_RXD)
+);
+
 zapper zap (
 	.clk(clk),
 	.reset(reset_nes | ~lightgun_en),
@@ -464,8 +483,9 @@ always @(posedge clk) begin
 		last_joypad_clock <= 0;
 	end else begin
 		if (joypad_strobe) begin
-			joypad_bits  <= {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, (joy_swap ^ raw_serial) ? nes_joy_B : nes_joy_A};
-			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, (joy_swap ^ raw_serial) ? nes_joy_A : nes_joy_B};
+			joypad_bits  <= piano ? {15'h0000, uart_data[8:0]}
+			               : {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, joy_swap ? nes_joy_B : nes_joy_A};
+			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, joy_swap ? nes_joy_A : nes_joy_B};
 			powerpad_d4 <= {4'b0000, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
 			powerpad_d3 <= {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
 		end
@@ -493,6 +513,7 @@ wire loader_write;
 wire [31:0] loader_flags;
 reg  [31:0] mapper_flags;
 wire fds = (mapper_flags[7:0] == 8'h14);
+wire piano = (mapper_flags[30]);
 wire loader_busy, loader_done, loader_fail;
 wire bios_download;
 
@@ -771,6 +792,30 @@ wire downloading = ioctl_download && ~type_gg;
 wire type_gg = &filetype;
 ///////////////////////////////////////////////////
 
+wire hit_x = (9'h027 >= cycle && 9'h020 <= cycle);
+wire hit_y = (9'h0D7 >= scanline && 9'hD0 <= scanline);
+reg displayp;
+reg [1:0] disksidepixel;
+
+always @(posedge clk) begin
+if (reset_nes) begin
+	disksidepixel <= 0;
+	displayp <= 0;
+end else begin
+	if (swap_delay == {1'b0, ~clkcount[22:21]})
+		displayp = 1'b0;
+	if (swap_delay[2] || (fds_eject && fds_swap_invert))
+		displayp = 1'b1;
+	if (hit_x && hit_y && displayp)
+		disksidepixel[0] <= 1'b1;
+	else
+		disksidepixel[0] <= 1'b0;
+	
+	disksidepixel[1] <= ((cycle[0] == 1'b1) && (cycle[2:1] <= diskside));
+end
+end
+
+///////////////////////////////////////////////////
 wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
 assign VGA_SL = sl[1:0];
@@ -792,7 +837,7 @@ video video
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
 	.emphasis(emphasis),
-	.reticle(~status[22] ? reticle : 2'b00),
+	.reticle(displayp ? disksidepixel : ~status[22] ? reticle : 2'b00),
 	.pal_video(pal_video),
 	.ce_pix(CE_PIXEL)
 );
@@ -994,14 +1039,14 @@ wire is_dirty = !is_nes20 && ((ines[9][7:1] != 0)
 wire [7:0] mapper = {is_dirty ? 4'b0000 : ines[7][7:4], ines[6][7:4]};
 wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
 wire [3:0] prgram = {is_nes20 ? ines[10][3:0] : 4'h00};
-
+wire       piano = is_nes20 && (ines[15][5:0] == 6'h19);
 wire has_saves = ines[6][1];
 
 // ines[6][0] is mirroring
 // ines[6][3] is 4 screen mode
 // ines[8][7:4] is NES 2.0 submapper
 // ines[10][3:0] is NES 2.0 PRG RAM shift size (64 << size)
-assign mapper_flags = {2'b0, prgram, has_saves, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
+assign mapper_flags = {1'b0, piano, prgram, has_saves, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
 
 reg [3:0] clearclk; //Wait for SDRAM
 reg copybios;
