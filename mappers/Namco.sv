@@ -33,7 +33,7 @@ assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
 assign irq_b        = enable ? irq : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
-assign audio_b      = enable ? audio_mix[16:1] : 16'hZ;
+assign audio_b      = enable ? audio[15:0] : 16'hZ;
 
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
@@ -43,7 +43,7 @@ wire vram_ce;
 wire irq;
 reg [15:0] flags_out = 0;
 wire [7:0] prg_dout;
-wire [15:0] audio;
+wire [15:0] audio = audio_in;
 
 wire nesprg_oe;
 wire [7:0] neschrdout;
@@ -68,9 +68,7 @@ MAPN106 n106(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], ramprgaout, irq, vram_ce, exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-	ce, (flags[7:0]==210), flags[24:21], audio[15:5]);
-
-wire [16:0] audio_mix = audio_in + audio;
+	ce, (flags[7:0]==210), flags[24:21]);
 
 assign chr_aout[21:19] = 3'b100;
 assign chr_aout[9:0] = chr_ain[9:0];
@@ -81,7 +79,6 @@ wire prg_is_ram = prg_ain >= 'h6000 && prg_ain < 'h8000;
 assign prg_aout[21:13] = prg_is_ram ? prg_ram : prg_aout_tmp;
 assign prg_aout[12:0] = prg_ain[12:0];
 assign prg_allow = (prg_ain[15] && !prg_write) || prg_is_ram;
-assign audio[4:0] = 4'b0;
 
 endmodule
 
@@ -128,8 +125,8 @@ module MAPN106(     //signal descriptions in powerpak.v
 
 	input ce,// add
 	input mapper210,
-	input [3:0] submapper,
-	output [15:0] snd_level
+	input [3:0] submapper//,
+	//output [15:0] snd_level
 );
 
 assign exp6 = 0;
@@ -273,20 +270,46 @@ assign nesprg_oe=wram_oe | prgram_oe | counter_oe | config_rd;
 assign neschr_oe=0;
 assign neschrdout=0;
 
+endmodule
+
+module namco106_mixed (
+	input         clk,
+	input         ce,
+	input         enable,
+	input         wren,
+	input  [15:0] addr_in,
+	input   [7:0] data_in,
+	input  [15:0] audio_in,
+	output [15:0] audio_out
+);
+
+reg disabled;
+
+always@(posedge clk) begin
+if (!enable)
+	disabled <= 1'b0;
+else if (ce) begin
+	if(wren & addr_in[15:11]==5'b11100)           //E000..E7FF
+		disabled<=data_in[6];
+	end
+end
+
 //sound
 wire [10:0] n106_out;
-wire [9:0] saturated=n106_out[9:0] | {10{n106_out[10]}};    //this is still too quiet for the suggested 47k resistor, but more clipping will make some games sound bad
 
-namco106_sound n106(ce, clk20, reset, nesprg_we, prgain, nesprgdin, n106_out);
+namco106_sound n106(clk, ce, !enable, wren, addr_in, data_in, n106_out);
 
 //pdm #(10) pdm_mod(clk20, saturated, exp6);
-assign snd_level = (mapper210 | mirror[0]) ? 16'b0 : {6'b0, saturated};
+wire [9:0] saturated=n106_out[9:0] | {10{n106_out[10]}};    //this is still too quiet for the suggested 47k resistor, but more clipping will make some games sound bad
+wire [15:0] audio = {1'b0, saturated, 5'b0};
+wire [16:0] audio_mix = (!enable | disabled) ? {audio_in, 1'b0} : audio_in + audio;
+assign audio_out = audio_mix[16:1];
 
 endmodule
 
 module namco106_sound(
-	input m2,
 	input clk20,
+	input m2,
 	input reset,
 	input wr,
 	input [15:0] ain,

@@ -129,13 +129,29 @@ assign chr_allow = flags[15];
 assign chr_aout = {4'b10_00, chrout, chr_ain[9:0]};
 assign vram_ce = chr_ain[13];
 
+assign audio = audio_in;
+
+endmodule
+
+
+module SS5b_mixed (
+	input         clk,
+	input         ce,    // Negedge M2 (aka CPU ce)
+	input         enable,
+	input         wren,
+	input  [15:0] addr_in,
+	input   [7:0] data_in,
+	input  [15:0] audio_in,    // Inverted audio from APU
+	output [15:0] audio_out
+);
+
 SS5b_audio snd_5b (
 	.clk(clk),
 	.ce(ce),
 	.enable(enable),
-	.wren(prg_write),
-	.addr_in(prg_ain),
-	.data_in(prg_din),
+	.wren(wren),
+	.addr_in(addr_in),
+	.data_in(data_in),
 	.audio_out(exp_out)
 );
 
@@ -148,7 +164,7 @@ wire [15:0] exp_out;
 wire [15:0] exp_adj = (|exp_out[15:14] ? 16'hFFFF : {exp_out[13:0], exp_out[1:0]});
 wire [16:0] audio_mix = audio_in + (exp_adj + exp_adj[15:1]);
 
-assign audio = 16'hFFFF - audio_mix[16:1];
+assign audio_out = 16'hFFFF - audio_mix[16:1];
 
 endmodule
 
