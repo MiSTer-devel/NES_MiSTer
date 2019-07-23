@@ -23,6 +23,7 @@ module MapperFDS(
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
 	// Special ports
+	input [7:0] audio_dout,
 	inout [1:0] diskside_auto_b,
 	input [1:0] diskside,
 	input       fds_busy,
@@ -38,7 +39,7 @@ assign vram_a10_b      = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b       = enable ? vram_ce : 1'hZ;
 assign irq_b           = enable ? irq : 1'hZ;
 assign flags_out_b     = enable ? flags_out : 16'hZ;
-assign audio_b         = enable ? 16'hFFFF - audio[16:1] : 16'hZ;
+assign audio_b         = enable ? audio[15:0] : 16'hZ;
 assign diskside_auto_b = enable ? diskside_auto : 2'hZ;
 
 wire [21:0] prg_aout, chr_aout;
@@ -50,6 +51,7 @@ wire [7:0] prg_dout;
 reg [15:0] flags_out = 0;
 wire irq;
 wire [1:0] diskside_auto;
+wire [15:0] audio = audio_in;
 
 wire nesprg_oe;
 wire [7:0] neschrdout;
@@ -73,27 +75,13 @@ MAPFDS fds(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-	ce, prg_allow, audio_exp, diskside_auto, diskside, fds_busy, fds_eject);
+	ce, prg_allow, audio_dout, diskside_auto, diskside, fds_busy, fds_eject);
 
 assign chr_aout[21:19] = 3'b100;
 assign chr_aout[9:0] = chr_ain[9:0];
 assign vram_a10 = chr_aout[10];
 assign prg_aout[21:19] = prg_aout[18] ? 3'b111 : 3'b000;  //Switch to Cart Ram for Disk access
 //assign prg_aout[12:0] = prg_ain[12:0];
-
-wire [11:0] audio_exp;
-
-// XXX: This needs to be replaced with a proper ~2000hz LPF
-lpf_aud fds_lpf
-(
-	.CLK(clk),
-	.CE(ce),
-	.IDATA(16'hFFFF - {1'b0, audio_exp[11:0], audio_exp[11:9]}),
-	.ODATA(audio_exp_f)
-);
-
-wire [15:0] audio_exp_f;
-wire [16:0] audio = audio_in + audio_exp_f;
 
 endmodule
 
@@ -141,7 +129,8 @@ module MAPFDS(              //signal descriptions in powerpak.v
 
 	input ce,// add
 	output prg_allow,
-	output [11:0] snd_level,
+	input [7:0] audio_dout,
+	//output [11:0] snd_level,
 	output reg [1:0] diskside_auto,
 	input [1:0] diskside,
 	input fds_busy,
@@ -158,7 +147,6 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	reg timer_irq;
 	reg [1:0] Wstate;
 	reg [1:0] Rstate;
-	wire [7:0] audio_dout;
 
 	assign chrram_we=!chrain[13] & neschr_wr;
 	assign chrram_oe=!chrain[13] & neschr_rd;
@@ -403,18 +391,47 @@ assign ramchraout[18:11]={6'd0,chrain[12:11]};
 assign ramchraout[10]=!chrain[13]? chrain[10]: ((vertical & chrain[10]) | (!vertical & chrain[11]));
 assign ciram_ce=chrain[13];
 
+endmodule
+
+module fds_mixed (
+	input         clk,
+	input         ce,    // Negedge M2 (aka CPU ce)
+	input         enable,
+	input         wren,
+	input  [15:0] addr_in,
+	input   [7:0] data_in,
+	output  [7:0] data_out,
+	input  [15:0] audio_in,    // Inverted audio from APU
+	output [15:0] audio_out
+);
+
 //expansion audio
 fds_audio fds_audio
 (
-	.clk(clk20),
+	.clk(clk),
 	.m2(ce),
-	.reset(reset),
-	.wr(nesprg_we),
-	.addr_in(prgain),
-	.data_in(nesprgdin),
-	.data_out(audio_dout),
-	.audio_out(snd_level)
+	.reset(!enable),
+	.wr(wren),
+	.addr_in(addr_in),
+	.data_in(data_in),
+	.data_out(data_out),
+	.audio_out(audio_exp)
 );
+
+wire [11:0] audio_exp;
+
+// XXX: This needs to be replaced with a proper ~2000hz LPF
+lpf_aud fds_lpf
+(
+	.CLK(clk),
+	.CE(ce),
+	.IDATA(16'hFFFF - {1'b0, audio_exp[11:0], audio_exp[11:9]}),
+	.ODATA(audio_exp_f)
+);
+
+wire [15:0] audio_exp_f;
+wire [16:0] audio = audio_in + audio_exp_f;
+assign audio_out = 16'hFFFF - audio[16:1];
 
 endmodule
 

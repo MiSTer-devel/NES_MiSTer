@@ -1581,3 +1581,135 @@ assign vram_ce = chr_ain[13];
 assign vram_a10 = mirroring ? chr_ain[11] : chr_ain[10];
 
 endmodule
+
+
+// #31 -  NSF Player
+module NSF(
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	output [5:0] exp_audioe,  // Expansion Enabled (0x0=None, 0x1=VRC6, 0x2=VRC7, 0x4=FDS, 0x8=MMC5, 0x10=N163, 0x20=SS5B
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	input  [7:0] fds_din      // fds data in
+);
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? prg_dout : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? {audio_in[15:0]} : 16'hZ;
+assign exp_audioe   = enable ? nsf_reg[3][5:0] : 6'h00;
+
+wire [21:0] prg_aout, chr_aout;
+wire [7:0] prg_dout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+reg [15:0] flags_out = 0;
+
+wire [3:0] submapper = flags[24:21];
+reg [7:0] nsf_reg [15:0];
+reg [15:0] counter;
+reg [5:0] clk1MHz;
+
+// Resuse MMC5 multiplier instead?
+reg [7:0] multiplier_1;
+reg [7:0] multiplier_2;
+wire [15:0] multiply_result = multiplier_1 * multiplier_2;
+
+always @(posedge clk) begin
+	// 21.477272MHz/1MHz
+	// Using 21.5; Replace with actual pll?
+	clk1MHz <= clk1MHz + 1'b1;
+	if (clk1MHz == 6'd42)
+		clk1MHz <= 6'd0;
+	if (clk1MHz == 6'd21 || clk1MHz == 6'd42) begin
+		counter <= counter - 1'b1;
+		if (counter == 16'h0000)
+		begin
+			counter <= {nsf_reg[1], nsf_reg[0]};
+			nsf_reg[2] <= 8'h80;
+		end
+	end
+
+
+	if (~enable) begin
+		nsf_reg[4'h3] <= 8'h00;
+		nsf_reg[4'h6] <= 8'h06;
+		nsf_reg[4'h7] <= 8'h07;
+		nsf_reg[4'h8] <= 8'h00;
+		nsf_reg[4'h9] <= 8'h01;
+		nsf_reg[4'hA] <= 8'h02;
+		nsf_reg[4'hB] <= 8'h03;
+		nsf_reg[4'hC] <= 8'h04;
+		nsf_reg[4'hD] <= 8'h05;
+		nsf_reg[4'hE] <= 8'h06;
+		nsf_reg[4'hF] <= 8'hFF;
+	end else if (ce) begin
+		if ((prg_ain[15:4]==12'h5FF) && prg_write)
+			nsf_reg[prg_ain[3:0]] <= prg_din;
+		if ((prg_ain==16'h5FF2) && prg_write)
+			nsf_reg[2] <= 8'h00;
+		if ((prg_ain==16'h5205) && prg_write)
+			multiplier_1 <= prg_din;
+		if ((prg_ain==16'h5206) && prg_write)
+			multiplier_2 <= prg_din;
+	end
+end
+
+wire [9:0] prg_bank;
+always begin
+	casez({prg_ain[15:12], exp_audioe[2]})
+		5'b00???: prg_bank = 10'h0;//{10'b11_1110_0000};
+		5'b0100?: prg_bank = 10'h0;//{10'b11_1110_0000};
+		5'b0101?: prg_bank = {10'b11_1110_0000};
+		5'b011?0: prg_bank = {9'b11_1100_000, prg_ain[12]};
+		5'b011?1: prg_bank = {2'b01, nsf_reg[{3'b011, prg_ain[12]}]};
+		5'b1????: prg_bank = {2'b01, nsf_reg[{1'b1, prg_ain[14:12]}]};
+	endcase
+end
+
+always begin
+	if (prg_ain == 16'h5205) begin
+		prg_dout = multiply_result[7:0];
+	end else if (prg_ain == 16'h5206) begin
+		prg_dout = multiply_result[15:8];
+	end else if (prg_ain[15:8] == 8'h40) begin
+		prg_dout = fds_din;
+	end else begin
+		prg_dout = nsf_reg[prg_ain[3:0]];
+	end
+end
+
+assign prg_aout = ((submapper == 4'hF) && ({prg_ain[15:1],1'b0} == 16'hFFFC)) ? {10'h0, prg_ain[11:0]} : {prg_bank, prg_ain[11:0]};
+assign prg_allow = (((prg_ain[15] || ((prg_ain>=16'h4080) && (prg_ain<16'h4FFF))) && !prg_write) || (prg_ain[15:13]==3'b011)
+                   || (prg_ain[15:10]==6'b010111 && prg_ain[9:4]!=6'b111111) || ((prg_ain>=16'h8000) && (prg_ain<16'hDFFF) && exp_audioe[2]));
+assign chr_allow = flags[15]; // CHR RAM always...
+assign chr_aout = {9'b10_0000_000, chr_ain[12:0]};
+assign vram_ce = chr_ain[13];
+assign vram_a10 = flags[14] ? chr_ain[10] : chr_ain[11];
+
+endmodule

@@ -5,8 +5,7 @@
 // Period is set by localparam (21.477MHz/31250Hz)
 
 module miraclepiano (
-  input  wire           clk,
-  input  wire           clk_cpu,  //1.79MHz (Use 21.477 MHz clk for most things)
+  input  wire           clk,     //(Use 21.477 MHz clk for most things)
   input  wire           reset,
   input  wire           strobe,
   input  wire           joypad_clock,
@@ -53,7 +52,7 @@ reg last_txint;
 reg last_rxint;
 reg last_strobe;
 reg last_joypad_clock;
-reg [7:0] strobe_count;
+reg [11:0] strobe_count;
 reg [2:0] clock_count;
 reg [1:0] mode;
 
@@ -96,21 +95,26 @@ always @ (posedge clk) begin
 			strobe_count <= 8'h00;
 			mode <= J_MODE;
 		end
-		if (clk_cpu && last_strobe && strobe) begin
+		if (last_strobe && strobe) begin
 			strobe_count <= strobe_count + 1'b1;
 		end
-		if (((~strobe && last_strobe)  || (strobe_count >= 8'd66)) && (mode == J_MODE)) begin
-			if (strobe_count >= 8'd32) begin  // Should be either 66 or 12
+		if (((~strobe && last_strobe) || (strobe_count >= 12'd792)) && (mode == J_MODE)) begin
+			// Assuming 21.477 MHz clk
+			// Strobe Count 66 NES cycles = Write = 792
+			// Strobe Count 12 NES cycles = Read  = 144
+			// Strobe Count   SNES cycles = Write = 528
+			// Strobe Count   SNES cycles = Read  = 102
+			if (strobe_count >= 12'd256) begin  // Should be either 792 or 144 for NES
 				clock_count <= 3'h0;
 				mode <= J_WRITE;
-			end else begin //if (strobe_count == 8'd12) begin
+			end else begin
 				if (!rdata_empty)
 					raddrr <= raddrr + 1'b1;
 				mode <= J_READ;
 			end
 		end
-		if (clk_cpu && joypad_clock && (mode == J_WRITE)) begin
-			if (clock_count < 3'h7) begin  // Should be either 66 or 12
+		if (joypad_clock && !last_joypad_clock && (mode == J_WRITE)) begin
+			if (clock_count < 3'h7) begin
 				clock_count <= clock_count + 1'b1;
 				tdataw <= {tdataw[6:0], strobe};
 			end else begin //if (clock_count == 7) begin

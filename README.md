@@ -11,6 +11,7 @@ This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://git
  * Supports four players
  * Setting for increasing sprite per line by 8
  * Supports up to 32 cheat codes
+ * Supports NSF Player
  * Supports expansion audio from mappers including VRC6 & 7, MMC5, Namco 163 and Sunsoft 5b
  * Supports many popular mappers including VRC1-7, MMC0-5, and many more (see below)
  * Supports large games such as Legend of Link and Rockman Minus Infinity
@@ -20,6 +21,7 @@ Copy the NES_\*.rbf file to the root of the SD card. Create a **NES** folder on 
 - boot0.rom = FDS BIOS file.  Will be used for any FDS images loaded
 - boot1.rom = NES Cart file.  Can be used with boot0.rom (BIOS) in place
 - boot2.rom = FDS image file.  Requires boot0.rom (BIOS).  Use a blank FDS (header only) to boot the FDS BIOS without a disk image.
+- boot3.rom = NFS image file.  Can be used with boot0.rom (BIOS) in place
 
 ## Famicom Disk System Usage
 Before loading \*.FDS files, you must first load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom and placed in the same folder as the ROMs (NES).  Alternatively, it can be loaded from the OSD if boot0.rom doesn't exist. After loading the core and the bios you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the FDS button on the player 1 controller. The "Disk Swap" OSD option manually controls the disk side.  Each button press increments the disk side.  Press and hold the fds button to eject and increment the disk side in this mode.  Some games only work correctly in manual disk swap mode, and require holding the FDS button for up to a few seconds (Doki Doki Panic, Bio Miracle Bokutte Upa, Gall Force,...).
@@ -41,7 +43,7 @@ The Miracle Piano is a MIDI keyboard compatible with the Miracle Piano Education
 |#||||||||||||||||
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 |**0**|**1**|**2**|**3**|**4**|**5**||**7**||**9**|**10**|**11**|~~12~~|**13**||**15**|
-|**16**||**18**|**19**|**FDS**|**21**|**22**|**23**|**24**|**25**|**26**|**27**|**28**||**30**||
+|**16**||**18**|**19**|**FDS**|**21**|**22**|**23**|**24**|**25**|**26**|**27**|**28**||**30**|**31**|
 |**32**|**33**|**34**|**35**|**36**|**37**|**38**||~~40~~|**41**|**42**|~~43~~|~~44~~|~~45~~|**46**|**47**|
 |**48**|~~49~~|~~50~~|~~51~~|~~52~~|~~53~~|~~54~~|~~55~~|~~56~~|~~57~~|~~58~~|~~59~~|~~60~~|~~61~~|~~62~~|~~63~~|
 |**64**|**65**|**66**|**67**|**68**|**69**|**70**|**71**|**72**|**73**|**74**|**75**|**76**|**77**|**78**|**79**|

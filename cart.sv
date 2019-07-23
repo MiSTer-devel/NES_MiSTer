@@ -350,9 +350,10 @@ MMC5 mmc5(
 	.vram_ce_b  (vram_ce_b),
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
-	.audio_in   (audio_in),
+	.audio_in   (mmc5_audio),
 	.audio_b    (audio_out_b),
 	// Special ports
+	.audio_dout	(mmc5_data),
 	.chr_din    (chr_din),
 	.chr_write  (chr_write),
 	.chr_dout_b (chr_dout_b),
@@ -738,7 +739,7 @@ Mapper69 map69(
 	.vram_ce_b  (vram_ce_b),
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
-	.audio_in   (audio_in),
+	.audio_in   (ss5b_audio),
 	.audio_b    (audio_out_b)
 );
 
@@ -1273,7 +1274,7 @@ VRC6 vrc6(
 	.vram_ce_b  (vram_ce_b),
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
-	.audio_in   (audio_in),
+	.audio_in   (vrc6_audio),
 	.audio_b    (audio_out_b)
 );
 
@@ -1304,7 +1305,7 @@ VRC7 vrc7(
 	.vram_ce_b  (vram_ce_b),
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
-	.audio_in   (audio_in),
+	.audio_in   (vrc7_audio),
 	.audio_b    (audio_out_b)
 );
 
@@ -1335,7 +1336,7 @@ N106 n106(
 	.vram_ce_b  (vram_ce_b),
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
-	.audio_in   (audio_in),
+	.audio_in   (n106_audio),
 	.audio_b    (audio_out_b)
 );
 
@@ -1625,14 +1626,134 @@ MapperFDS mapfds(
 	.vram_ce_b  (vram_ce_b),
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
-	.audio_in   (audio_in),
+	.audio_in   (fds_audio),
 	.audio_b    (audio_out_b),
 	// Special ports
+	.audio_dout	(fds_data),
 	.diskside_auto_b (fds_diskside_auto),
 	.diskside   (diskside),
 	.fds_busy   (fds_busy),
 	.fds_eject  (fds_eject)
 );
+
+//*****************************************************************************//
+// Name   : Mapper 31                                                          //
+// Mappers: 31 and NSF Player                                                  //
+// Status : Testing                                                            //
+// Notes  : Uses Mapper 31.15 (submapper) for NSF Player; NSF 1.0 only         //
+// Games  : Famicompo Pico 2014, NSF 1.0                                       //
+//*****************************************************************************//
+wire [5:0] exp_audioe;
+NSF nsfplayer(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[31]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (exp_audioe[5] ? ss5b_audio :
+	             exp_audioe[4] ? n106_audio :
+	             exp_audioe[3] ? mmc5_audio :
+	             exp_audioe[2] ? fds_audio  :
+	             exp_audioe[1] ? vrc7_audio :
+	             exp_audioe[0] ? vrc6_audio :
+					 audio_in),
+	.exp_audioe (exp_audioe),  // Expansion Enabled (0x0=None, 0x1=VRC6, 0x2=VRC7, 0x4=FDS, 0x8=MMC5, 0x10=N163, 0x20=SS5B
+	.audio_b    (audio_out_b),
+	.fds_din    (fds_data)
+);
+
+wire [15:0] ss5b_audio;
+SS5b_mixed snd_5bm (
+	.clk(clk),
+	.ce(ce),
+	.enable(me[69] | (me[31] && exp_audioe[5])),
+	.wren(prg_write),
+	.addr_in(prg_ain),
+	.data_in(prg_din),
+	.audio_in(audio_in),
+	.audio_out(ss5b_audio)
+);
+
+wire [15:0] n106_audio;
+namco106_mixed snd_n106 (
+	.clk(clk),
+	.ce(ce),
+	.enable(me[19] | (me[31] && exp_audioe[4])),
+	.wren(prg_write),
+	.addr_in(prg_ain),
+	.data_in(prg_din),
+	.audio_in(audio_in),
+	.audio_out(n106_audio)
+);
+
+wire [15:0] mmc5_audio;
+wire [7:0] mmc5_data;
+mmc5_mixed snd_mmc5 (
+	.clk(clk),
+	.ce(ce),
+	.enable(me[5] | (me[31] && exp_audioe[3])),
+	.wren(prg_write),
+	.rden(prg_read),
+	.addr_in(prg_ain),
+	.data_in(prg_din),
+	.data_out(mmc5_data),
+	.audio_in(audio_in),
+	.audio_out(mmc5_audio)
+);
+
+wire [15:0] fds_audio;
+wire [7:0] fds_data;
+fds_mixed snd_fds (
+	.clk(clk),
+	.ce(ce),
+	.enable(me[20] | (me[31] && exp_audioe[2])),
+	.wren(prg_write),
+	.addr_in(prg_ain),
+	.data_in(prg_din),
+	.data_out(fds_data),
+	.audio_in(audio_in),
+	.audio_out(fds_audio)
+);
+
+wire [15:0] vrc7_audio;
+vrc7_mixed snd_vrc7 (
+	.clk(clk),
+	.ce(ce),
+	.enable(me[85] | (me[31] && exp_audioe[1])),
+	.wren(prg_write),
+	.addr_in(prg_ain),
+	.data_in(prg_din),
+	.audio_in(audio_in),
+	.audio_out(vrc7_audio)
+);
+
+wire [15:0] vrc6_audio;
+vrc6_mixed snd_vrc6 (
+	.clk(clk),
+	.ce(ce),
+	.enable(me[24] | me[26] | (me[31] && exp_audioe[0])),
+	.wren(prg_write),
+	.addr_invert(me[26]),
+	.addr_in(prg_ain),
+	.data_in(prg_din),
+	.audio_in(audio_in),
+	.audio_out(vrc6_audio)
+);
+
 
 wire [6:0] prg_mask;
 wire [6:0] chr_mask;

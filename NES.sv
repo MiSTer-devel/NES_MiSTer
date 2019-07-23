@@ -136,7 +136,7 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 parameter CONF_STR = {
 	"NES;;",
 	"-;",
-	"FS,NESFDS;",
+	"FS,NESFDSNSF;",
 	"H1F,BIN,Load FDS BIOS;",
 	"-;",
 	"ONO,System Type,NTSC,PAL,Dendy;",
@@ -448,7 +448,6 @@ assign {UART_RTS, UART_DTR} = 1;
 wire [15:0] uart_data;
 miraclepiano miracle(
 	.clk(clk),
-	.clk_cpu(apu_ce),
 	.reset(reset_nes || !piano),
 	.strobe(joypad_strobe),
 	.joypad_o(),
@@ -503,7 +502,7 @@ end
 
 // Loader
 wire [7:0] file_input;
-wire [7:0] loader_input = (loader_busy && !downloading) ? bios_data : file_input;
+wire [7:0] loader_input = (loader_busy && !downloading) ? !nsf ? bios_data : nsf_data : file_input;
 wire       loader_clk;
 wire [21:0] loader_addr;
 wire [7:0] loader_write_data;
@@ -513,6 +512,7 @@ wire loader_write;
 wire [31:0] loader_flags;
 reg  [31:0] mapper_flags;
 wire fds = (mapper_flags[7:0] == 8'h14);
+wire nsf = (loader_flags[7:0] == 8'h1F);
 wire piano = (mapper_flags[30]);
 wire loader_busy, loader_done, loader_fail;
 wire bios_download;
@@ -666,6 +666,14 @@ dpram #("fdspatch.mif", 13) biospatch
 	.clock_b(clk),
 	.address_b(loader_addr[12:0]),
 	.q_b(bios_data)
+);
+
+wire [7:0] nsf_data;
+spram #(12, 8, "loopy_NSF.mif") nsfplayrom
+(
+	.clock(clk),
+	.address(loader_addr[11:0]),
+	.q(nsf_data)
 );
 
 // loader_write -> clock when data available
@@ -1005,8 +1013,8 @@ wire [7:0] chrrom = ines[5];	// Number of 8192 byte character ROM pages (0 indic
 wire has_chr_ram = (chrrom == 0);
 assign mem_data = (state == S_CLEARRAM || (~copybios && state == S_COPYBIOS)) ? 8'h00 : indata;
 assign mem_write = (((bytes_left != 0) && (state == S_LOADPRG || state == S_LOADCHR)
-                    || (downloading && (state == S_LOADHEADER || state == S_LOADFDS))) && indata_clk)
-						 || ((bytes_left != 0) && ((state == S_CLEARRAM) || (state == S_COPYBIOS)) && clearclk == 4'h2);
+                    || (downloading && (state == S_LOADHEADER || state == S_LOADFDS || state == S_LOADNSFH || state == S_LOADNSFD))) && indata_clk)
+						 || ((bytes_left != 0) && ((state == S_CLEARRAM) || (state == S_COPYBIOS) || (state == S_COPYPLAY)) && clearclk == 4'h2);
   
 wire [2:0] prg_size = prgrom <= 1  ? 3'd0 :		// 16KB
                       prgrom <= 2  ? 3'd1 : 		// 32KB
@@ -1051,12 +1059,13 @@ assign mapper_flags = {1'b0, piano, prgram, has_saves, ines2mapper, ines[6][3], 
 reg [3:0] clearclk; //Wait for SDRAM
 reg copybios;
 
-typedef enum bit [2:0] { S_LOADHEADER, S_LOADPRG, S_LOADCHR, S_LOADFDS, S_ERROR, S_CLEARRAM, S_COPYBIOS, S_DONE } mystate;
+typedef enum bit [3:0] { S_LOADHEADER, S_LOADPRG, S_LOADCHR, S_LOADFDS, S_ERROR, S_CLEARRAM, S_COPYBIOS, S_LOADNSFH, S_LOADNSFD, S_COPYPLAY, S_DONE } mystate;
 mystate state;
 
 wire type_bios = (filetype == 0 || filetype == 2); //*.BIOS or boot.rom or boot0.rom
 //wire type_nes = (filetype == 1 || filetype==8'h40); //*.NES or boot1.rom  //default
 wire type_fds = (filetype == 8'b01000001 || filetype==8'h80); //*.FDS or boot2.rom
+wire type_nsf = (filetype == 8'b10000001 || filetype==8'hC0); //*.NFS or boot3.rom
 
 always @(posedge clk) begin
 	if (reset) begin
@@ -1064,7 +1073,9 @@ always @(posedge clk) begin
 		busy <= 0;
 		done <= 0;
 		ctr <= 0;
-		mem_addr <= type_fds ? 22'b11_1100_0000_0000_0001_0000 : 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
+		mem_addr <= type_fds ? 22'b11_1100_0000_0000_0001_0000 :
+		            type_nsf ? 22'b00_0000_0000_0001_0000_0000   // Address for NSF Header (0x80 bytes)
+									: 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
 		bios_download <= 0;
 		copybios <= 0;
 	end else begin
@@ -1097,6 +1108,10 @@ always @(posedge clk) begin
 					state <= S_LOADFDS;
 					mem_addr <= 22'b11_1100_0000_0000_0010_0000;  // Address for FDS no Header
 					bytes_left <= 21'b1;
+				 end else if(type_nsf) begin // NFS
+					state <= S_LOADNSFH;
+					//mem_addr <= 22'b00_0000_0000_0001_0001_0000;  // Just keep copying
+					bytes_left <= 21'h70; // Rest of header
 				 end else begin
 					state <= S_ERROR;
 				 end
@@ -1164,6 +1179,54 @@ always @(posedge clk) begin
 			 end
 			end
 		S_COPYBIOS: begin // Read the next |bytes_left| bytes into |mem_addr|
+			 clearclk <= clearclk + 4'h1;
+			 if (bytes_left != 21'h0) begin
+				if (clearclk == 4'hF) begin
+					bytes_left <= bytes_left - 1'd1;
+					mem_addr <= mem_addr + 1'd1;
+				end
+			 end else begin
+				state <= S_DONE;
+			 end
+			end
+		S_LOADNSFH: begin // Read the next |bytes_left| bytes into |mem_addr|
+			 if (bytes_left != 0) begin
+				if (indata_clk) begin
+				  bytes_left <= bytes_left - 1'd1;
+				  mem_addr <= mem_addr + 1'd1;
+				end
+			 end else begin
+				state <= S_LOADNSFD;
+				//mem_addr <= {22'b01_0000_0000_0000_0000_0000; // Address for NSF Data
+				mem_addr <= {10'b01_0000_0000,ines[9][3:0],ines[8]};//_0000_0000_0000; // Address for NSF Data
+				bytes_left <= 21'b1;
+			 end
+			end
+		S_LOADNSFD: begin // Read the next |bytes_left| bytes into |mem_addr|
+			 if (downloading) begin
+				if (indata_clk) begin
+				  mem_addr <= mem_addr + 1'd1;
+				end
+			 end else begin
+				mem_addr <= 22'b00_0000_0000_0001_1000_0000; // Address for NSF Player (0x180)
+				bytes_left <= 21'h0E80;
+				ines[4] <= 8'hFF;//no masking
+				ines[5] <= 8'h00;//0x2000
+				ines[6] <= 8'hF0;//Use Mapper 31
+				ines[7] <= 8'h18;//Use NES 2.0
+				ines[8] <= 8'hF0;//Use Submapper 15
+				ines[9] <= 8'h00;
+				ines[10] <= 8'h00;
+				ines[11] <= 8'h00;
+				ines[12] <= 8'h00;
+				ines[13] <= 8'h00;
+				ines[14] <= 8'h00;
+				ines[15] <= 8'h00;
+				state <= S_COPYPLAY;
+				clearclk <= 4'h0;
+			 end
+			end
+		S_COPYPLAY: begin // Read the next |bytes_left| bytes into |mem_addr|
 			 clearclk <= clearclk + 4'h1;
 			 if (bytes_left != 21'h0) begin
 				if (clearclk == 4'hF) begin
