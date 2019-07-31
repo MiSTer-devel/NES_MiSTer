@@ -962,6 +962,37 @@ Mapper107 map107(
 );
 
 //*****************************************************************************//
+// Name   : GTROM                                                              //
+// Mappers: 111                                                                //
+// Status : Passes all tests except reflash test                               //
+// Notes  : No LED or self-reflash support                                     //
+// Games  : Super Homebrew War, Candelabra: Estoscerro, more homebrew          //
+//*****************************************************************************//
+Mapper111 map111(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[111]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b)
+);
+
+//*****************************************************************************//
 // Name   : Mapper 165                                                         //
 // Mappers: 165                                                                //
 // Status : Corrupt Graphics                                                   //
