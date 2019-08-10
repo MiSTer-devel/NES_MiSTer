@@ -102,7 +102,7 @@ assign vram_a10 = mirroring ? chr_ain[11] : chr_ain[10];
 endmodule
 
 
-// Mapper 16, 159 Bandai
+// Mapper 16, 153, 159 Bandai
 module Mapper16(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk
@@ -153,7 +153,8 @@ reg irq;
 reg [15:0] flags_out = 0;
 wire [7:0] prg_dout;
 
-reg [3:0] prg_bank;
+reg outer_prg_bank;
+reg [3:0] inner_prg_bank;
 reg [7:0] chr_bank_0, chr_bank_1, chr_bank_2, chr_bank_3,
 			chr_bank_4, chr_bank_5, chr_bank_6, chr_bank_7;
 reg [3:0] prg_sel;
@@ -164,12 +165,14 @@ reg [15:0] irq_counter;
 reg [15:0] irq_latch;
 reg eeprom_scl, eeprom_sda;
 wire submapper5 = (flags[24:21] == 5);
+wire mapper153 = (flags[7:0] == 153);
 wire mapper159 = (flags[7:0] == 159);
-wire mapperalt = submapper5 | mapper159;
+wire mapperalt = submapper5 | mapper159 | mapper153;
 
 always @(posedge clk) begin
 	if (~enable) begin
-		prg_bank <= 4'hF;
+		outer_prg_bank <= 0;
+		inner_prg_bank <= 0;
 		chr_bank_0 <= 0;
 		chr_bank_1 <= 0;
 		chr_bank_2 <= 0;
@@ -189,15 +192,15 @@ always @(posedge clk) begin
 		if (prg_write)
 			if(((prg_ain[14:13] == 2'b11) && (!mapperalt)) || (prg_ain[15])) // Cover all from $6000 to $FFFF to maximize compatibility
 				case(prg_ain & 'hf) // Registers are mapped every 16 bytes
-					'h0: chr_bank_0 <= prg_din[7:0];
-					'h1: chr_bank_1 <= prg_din[7:0];
-					'h2: chr_bank_2 <= prg_din[7:0];
-					'h3: chr_bank_3 <= prg_din[7:0];
-					'h4: chr_bank_4 <= prg_din[7:0];
-					'h5: chr_bank_5 <= prg_din[7:0];
-					'h6: chr_bank_6 <= prg_din[7:0];
-					'h7: chr_bank_7 <= prg_din[7:0];
-					'h8: prg_bank <= prg_din[3:0];
+					'h0: if (!mapper153) chr_bank_0 <= prg_din[7:0]; else outer_prg_bank <= prg_din[0];
+					'h1: if (!mapper153) chr_bank_1 <= prg_din[7:0]; else outer_prg_bank <= prg_din[0];
+					'h2: if (!mapper153) chr_bank_2 <= prg_din[7:0]; else outer_prg_bank <= prg_din[0];
+					'h3: if (!mapper153) chr_bank_3 <= prg_din[7:0]; else outer_prg_bank <= prg_din[0];
+					'h4: if (!mapper153) chr_bank_4 <= prg_din[7:0]; else outer_prg_bank <= prg_din[0];
+					'h5: if (!mapper153) chr_bank_5 <= prg_din[7:0]; else outer_prg_bank <= prg_din[0];
+					'h6: if (!mapper153) chr_bank_6 <= prg_din[7:0]; else outer_prg_bank <= prg_din[0];
+					'h7: if (!mapper153) chr_bank_7 <= prg_din[7:0]; else outer_prg_bank <= prg_din[0];
+					'h8: inner_prg_bank <= prg_din[3:0];
 					'h9: mirroring <= prg_din[1:0];
 					'ha: {irq_up, irq_enable} <= {1'b1, prg_din[0]};
 					'hb: begin
@@ -240,11 +243,11 @@ always begin
 	endcase
 end
 
-reg [3:0] prgsel;
+reg [4:0] prgsel;
 always begin
 	case(prg_ain[15:14])
-		2'b10: 	prgsel = prg_bank;    // $8000 is swapable
-		2'b11: 	prgsel = 4'hF;        // $C000 is hardwired to last bank
+		2'b10: 	 prgsel = {outer_prg_bank, inner_prg_bank};  // $8000 is swapable
+		2'b11: 	 prgsel = {outer_prg_bank, 4'hF};            // $C000 is hardwired to last inner bank
 		default: prgsel = 0;
 	endcase
 end
@@ -263,16 +266,16 @@ always begin
 	endcase
 end
 
-assign chr_aout = {4'b10_00, chrsel, chr_ain[9:0]};            // 1kB banks
-wire [21:0] prg_aout_tmp = {4'b00_00, prgsel, prg_ain[13:0]};  // 16kB banks
+assign chr_aout = mapper153 ? {9'b10_0000_000, chr_ain[12:0]} : {4'b10_00, chrsel, chr_ain[9:0]}; // 1kB banks or 8kb unbanked
+wire [21:0] prg_aout_tmp = {3'b00_0, prgsel, prg_ain[13:0]};  // 16kB banks
 
 wire prg_is_ram = (prg_ain >= 'h6000) && (prg_ain < 'h8000);
 wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]};
 assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
 // EEPROM - not used - Could use write to EEPROM cycle for both reads and write accesses, but this is easier
-assign prg_dout = prg_is_ram ? prg_write ? mapper_data_out : {3'b111, sda_out, 4'b1111} : 8'hFF;
+assign prg_dout = (!mapper153 && prg_is_ram) ? prg_write ? mapper_data_out : {3'b111, sda_out, 4'b1111} : 8'hFF;
 
-assign prg_allow = (prg_ain[15] && !prg_write);
+assign prg_allow = (prg_ain[15] && !prg_write) || (prg_is_ram && eeprom_scl && mapper153);
 assign chr_allow = flags[15];
 assign vram_ce = chr_ain[13];
 
