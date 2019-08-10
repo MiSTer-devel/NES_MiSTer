@@ -425,10 +425,10 @@ Mapper15 map15(
 
 //*****************************************************************************//
 // Name   : Bandai 16                                                          //
-// Mappers: 159, 16                                                            //
+// Mappers: 159, 153, 16                                                       //
 // Status : Working/EEPROM needs testing                                       //
 // Notes  :                                                                    //
-// Games  : SD Gundam Gaiden, Dragon Ball 3                                    //
+// Games  : SD Gundam Gaiden, Dragon Ball 3, Famicom Jump II                   //
 //*****************************************************************************//
 wire map16_prg_write, map16_ovr;
 wire [7:0] map16_data_out;
@@ -436,7 +436,7 @@ wire [17:0] map16_mapper_addr;
 Mapper16 map16(
 	.clk        (clk),
 	.ce         (ce),
-	.enable     (me[159] | me[16]),
+	.enable     (me[159] | me[153] | me[16]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
