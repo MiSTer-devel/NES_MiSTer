@@ -130,7 +130,7 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXXXXXXXXXXX   XX
+// XXXXXXXXXXX XXXXXXXXXXXXXXXXX XX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -157,6 +157,7 @@ parameter CONF_STR2 = {
 	"O8,Aspect Ratio,4:3,16:9;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O4,Hide Overscan,Off,On;",
+	"ORS,Mask Edges,Off,Left,Both,Auto;",
 	"OP,Extra Sprites,Off,On;",
 	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Nintendulator;",
 	"-;",
@@ -585,7 +586,6 @@ reg [1:0] diskside;
 wire lightgun_en = |status[19:18];
 
 NES nes (
-	.ex_sprites      (status[25]),
 	.clk             (clk),
 	.reset           (reset_nes),
 	.sys_type        (status[24:23]),
@@ -602,10 +602,12 @@ NES nes (
 	.ext_audio       (ext_audio),
 	.apu_ce          (apu_ce),
 	// Video
+	.ex_sprites      (status[25]),
 	.color           (color),
 	.emphasis        (emphasis),
 	.cycle           (cycle),
 	.scanline        (scanline),
+	.mask            (status[28:27]),
 	// User Input
 	.joypad_strobe   (joypad_strobe),
 	.joypad_clock    (joypad_clock),

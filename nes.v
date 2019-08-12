@@ -87,6 +87,7 @@ module NES(
 	input   [1:0] diskside,
 	input   [4:0] audio_channels, // Enabled audio channels
 	input         ex_sprites,
+	input   [1:0] mask,
 
 	// Access signals for the SDRAM.
 	output [21:0] cpumem_addr,
@@ -421,7 +422,8 @@ PPU ppu(
 	.mapper_ppu_flags (mapper_ppu_flags),
 	.emphasis         (emphasis),
 	.short_frame      (skip_pixel),
-	.extra_sprites    (ex_sprites)
+	.extra_sprites    (ex_sprites),
+	.mask             (mask)
 );
 
 
