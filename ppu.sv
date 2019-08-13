@@ -912,7 +912,8 @@ module PPU(
 	output [19:0] mapper_ppu_flags,
 	output reg [2:0] emphasis,
 	output       short_frame,
-	input         extra_sprites
+	input        extra_sprites,
+	input  [1:0] mask
 );
 
 // These are stored in control register 0
@@ -1190,9 +1191,13 @@ PaletteRam palette_ram(
 	.write (write && (ain == 7) && is_pal_address) // Condition for writing
 );
 
-// PAL/Dendy masks scanline 0 and 2 pixels on each side with black.
 wire pal_mask = ~|scanline || cycle < 2 || cycle > 253;
-assign color = (|sys_type && pal_mask) ? 6'h0E : (grayscale ? {color2[5:4], 4'b0} : color2);
+wire auto_mask = (mask == 2'b11) && ~object_clip && ~playfield_clip;
+wire mask_left = (cycle < 8) && ((|mask && ~&mask) || auto_mask);
+wire mask_right = cycle > 247 && mask == 2'b10;
+// PAL/Dendy masks scanline 0 and 2 pixels on each side with black.
+wire mask_pal = (|sys_type && pal_mask);
+assign color = (mask_right | mask_left | mask_pal) ? 6'h0E : (grayscale ? {color2[5:4], 4'b0} : color2);
 
 reg enable_playfield, enable_objects;
 
