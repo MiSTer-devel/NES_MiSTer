@@ -22,7 +22,7 @@ module Mapper15(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -124,7 +124,7 @@ module Mapper16(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 	// Special ports
 	output [17:0] mapper_addr,
 	input   [7:0] mapper_data_in,
@@ -150,7 +150,7 @@ wire chr_allow;
 reg vram_a10;
 wire vram_ce;
 reg irq;
-reg [15:0] flags_out = 0;
+wire [15:0] flags_out = {14'd0, prg_bus_write, 1'b0};
 wire [7:0] prg_dout;
 
 reg outer_prg_bank;
@@ -274,6 +274,7 @@ wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]};
 assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
 // EEPROM - not used - Could use write to EEPROM cycle for both reads and write accesses, but this is easier
 assign prg_dout = (!mapper153 && prg_is_ram) ? prg_write ? mapper_data_out : {3'b111, sda_out, 4'b1111} : 8'hFF;
+wire prg_bus_write = (!mapper153 && prg_is_ram);
 
 assign prg_allow = (prg_ain[15] && !prg_write) || (prg_is_ram && eeprom_scl && mapper153);
 assign chr_allow = flags[15];
@@ -328,7 +329,7 @@ module Mapper18(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -517,7 +518,7 @@ module Mapper32(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -636,7 +637,7 @@ module Mapper42(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -742,7 +743,7 @@ module Mapper65(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -882,7 +883,7 @@ module Mapper41(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -954,7 +955,7 @@ module Mapper218(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -1006,7 +1007,7 @@ module Mapper228(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -1077,7 +1078,7 @@ module Mapper234(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -1156,7 +1157,7 @@ module Mapper72(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -1234,7 +1235,7 @@ module Mapper162(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -1316,7 +1317,7 @@ module Mapper164(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -1386,7 +1387,7 @@ module Nanjing(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 	input [19:0] ppuflags,
 	input        ppu_ce
 );
@@ -1408,7 +1409,8 @@ wire chr_allow;
 wire vram_a10;
 wire vram_ce;
 reg [7:0] prg_dout;
-reg [15:0] flags_out = 0;
+wire [15:0] flags_out = {14'd0, prg_bus_write, 1'b0};
+reg prg_bus_write;
 
 reg [7:0] prg_bank;
 reg chr_bank;
@@ -1430,6 +1432,7 @@ always @(posedge clk) begin
 		trig_comp <= 1; // Initial value 1
 	end else if (ce) begin
 		prg_dout <= prg_din;
+		prg_bus_write <= 0;
 		if (prg_write) begin
 			if (prg_ain == 16'h5101) begin
 				if (trig_comp && ~|prg_din)
@@ -1459,10 +1462,14 @@ always @(posedge clk) begin
 				endcase
 			end
 		end else if (prg_read) begin // Security stuff as Mesen does it
+			prg_bus_write <= 1'b1;
 			case (prg_ain & 16'h7700)
 				'h5100: prg_dout <= security[0] | security[1] | security[3] | (security[2] ^ 8'hFF);
 				'h5500: prg_dout <= trigger ? (security[3] | security[0]) : 8'h0;
-				default: prg_dout <= 8'hFF;
+				default: begin
+					prg_dout <= 8'hFF;
+					prg_bus_write <= 0;
+				end
 			endcase
 		end
 	end
@@ -1520,7 +1527,7 @@ module Mapper225(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -1540,9 +1547,9 @@ wire chr_allow;
 wire vram_a10;
 wire vram_ce;
 wire [7:0] prg_dout;
-wire prg_open_bus = mapper255 && prg_ram || (!prg_ram && !prg_ain[15]);
+wire prg_bus_write = (~mapper255 & prg_ram);
 wire prg_ram = (prg_ain[15:11] == 5'b01011);
-wire [15:0] flags_out = {14'h0, prg_open_bus, 1'b0};
+wire [15:0] flags_out = {14'h0, prg_bus_write, 1'b0};
 
 wire [7:0] mapper = flags[7:0];
 wire mapper255 = (mapper == 8'd255);
@@ -1609,7 +1616,7 @@ module NSF(
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
 	output [5:0] exp_audioe,  // Expansion Enabled (0x0=None, 0x1=VRC6, 0x2=VRC7, 0x4=FDS, 0x8=MMC5, 0x10=N163, 0x20=SS5B
-	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 	input  [7:0] fds_din      // fds data in
 );
 
@@ -1631,7 +1638,8 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-reg [15:0] flags_out = 0;
+wire [15:0] flags_out = {14'd0, prg_bus_write, 1'b0};
+reg prg_bus_write;
 
 wire [3:0] submapper = flags[24:21];
 reg [7:0] nsf_reg [15:0];
@@ -1643,6 +1651,27 @@ reg [7:0] multiplier_1;
 reg [7:0] multiplier_2;
 wire [15:0] multiply_result = multiplier_1 * multiplier_2;
 
+/*
+;----------------------------------
+; NSF player for PowerPak
+;
+; Player rom is at $4100-4FFF (NSF header at $4100)
+;
+; PowerPak registers:
+;
+;  5FF0: timer latch LSB
+;  5FF1: timer latch MSB
+;  5FF2: timer status (Read: bit7=timer wrapped,  Write: clear status)
+;  5FF3: Expansion audio control (copy header[0x7B] here)
+;  5FF6-5FFF: banking registers (as described in NSF spec)
+;
+;  Timer details:
+;      PowerPak NSF mapper has a 16bit 1MHz counter that counts down from [5FF1:5FF0] to 0.
+;      After the counter reaches 0, it's automatically reloaded and timer status bit is set.
+;      Clear the status bit by writing to $5FF2.
+;
+;-----------------------------------
+*/
 always @(posedge clk) begin
 	// 21.477272MHz/1MHz
 	// Using 21.5; Replace with actual pll?
@@ -1696,14 +1725,18 @@ always begin
 end
 
 always begin
+	prg_bus_write = 1'b1;
 	if (prg_ain == 16'h5205) begin
 		prg_dout = multiply_result[7:0];
 	end else if (prg_ain == 16'h5206) begin
 		prg_dout = multiply_result[15:8];
 	end else if (prg_ain[15:8] == 8'h40) begin
 		prg_dout = fds_din;
+	end else if (prg_ain == 16'h5FF2) begin
+		prg_dout = nsf_reg[4'h2];
 	end else begin
-		prg_dout = nsf_reg[prg_ain[3:0]];
+		prg_dout = prg_din;
+		prg_bus_write = 0;
 	end
 end
 
@@ -1740,7 +1773,7 @@ module Mapper111(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;

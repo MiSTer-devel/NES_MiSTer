@@ -20,7 +20,7 @@ module Mapper69(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -122,9 +122,9 @@ always begin
 	chrout = chr_bank[chr_ain[12:10]];
 end
 
-wire ram_cs = (prg_ain[15] == 0 && ram_select);
+wire ram_cs = (prg_ain[15:13] == 3'b011 && ram_select);
 assign prg_aout = {ram_cs ? 4'b1111 : 4'b0000, prgout[4:0], prg_ain[12:0]};
-assign prg_allow = ram_cs ? ram_enable : !prg_write;
+assign prg_allow = (prg_ain >= 16'h6000) && (ram_cs ? ram_enable : !prg_write);
 assign chr_allow = flags[15];
 assign chr_aout = {4'b10_00, chrout, chr_ain[9:0]};
 assign vram_ce = chr_ain[13];
@@ -344,7 +344,7 @@ module Mapper67 (
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -485,7 +485,7 @@ module Mapper68(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
