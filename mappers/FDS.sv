@@ -21,7 +21,7 @@ module MapperFDS(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 	// Special ports
 	input [7:0] audio_dout,
 	inout [1:0] diskside_auto_b,
@@ -48,7 +48,8 @@ wire chr_allow;
 wire vram_a10;
 wire vram_ce;
 wire [7:0] prg_dout;
-reg [15:0] flags_out = 0;
+wire [15:0] flags_out = {14'd0, prg_bus_write, 1'b0};
+wire prg_bus_write;
 wire irq;
 wire [1:0] diskside_auto;
 wire [15:0] audio = audio_in;
@@ -71,7 +72,7 @@ always @(posedge clk) begin
 end
 
 MAPFDS fds(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
-	1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
+	1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout, prg_bus_write,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], prg_aout[18:0], irq, vram_ce, exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
@@ -104,6 +105,7 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	input [7:0] nesprgdin,
 	input [7:0] ramprgdin,
 	output reg [7:0] nesprgdout,
+	output prg_bus_write,
 
 	output [7:0] neschrdout,
 	output neschr_oe,
@@ -164,6 +166,10 @@ module MAPFDS(              //signal descriptions in powerpak.v
 	reg [15:0] diskpos;
 	reg [17:0] sideoffset;
 	wire [17:0] romoffset;
+
+	assign prg_bus_write = (fds_prg_bus_write | fds_audio_prg_bus_write);
+	reg fds_prg_bus_write;
+	wire fds_audio_prg_bus_write = (prgain >= 16'h4040 && prgain < 16'h4080) | (prgain >= 16'h4090 && prgain <= 16'h4097);
 
 // Loopy's patched bios use a trick to catch requested diskside for games
 // using standard bios load process.
@@ -233,7 +239,8 @@ wire match7=(prgain==16'hE233) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
 wire match8=(prgain==16'hE234) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
 wire match9=(prgain==16'hE235) & infinite_loop_on_E233 & (ramprgaout[18]==1'b0);
 wire match10=prgain==16'h4029;      //MiSTer Busy
-always@*
+always @* begin
+	fds_prg_bus_write = 1'b1;
 	case(1)
 		match0: nesprgdout={7'd0, timer_irq};
 		match1: nesprgdout={5'd0, disk_eject, diskend, disk_eject};
@@ -246,8 +253,13 @@ always@*
 		match8: nesprgdout=8'h33;
 		match9: nesprgdout=8'hE2;
 		match10:nesprgdout={7'd0,~fds_busy};//MiSTer busy (zero = busy)
-		default: nesprgdout=ramprgdin;
+		default: begin
+			nesprgdout=ramprgdin;
+			fds_prg_bus_write = 0;
+		end
 	endcase
+end
+
 assign prg_allow = (nesprg_we & (Wstate==2 | (prgain[15]^(&prgain[14:13]))))
 				| (~nesprg_we & ((prgain[15] & !match3 & !match4 & !match7 & !match8 & !match9) | prgain[15:13]==3));
 

@@ -21,7 +21,7 @@ module N106(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -41,7 +41,8 @@ wire chr_allow;
 wire vram_a10;
 wire vram_ce;
 wire irq;
-reg [15:0] flags_out = 0;
+wire [15:0] flags_out = {14'h0, prg_bus_write, 1'b0};
+wire prg_bus_write = nesprg_oe;
 wire [7:0] prg_dout;
 wire [15:0] audio = audio_in;
 

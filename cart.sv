@@ -30,7 +30,7 @@ module cart_top (
 	output reg  [7:0] prg_dout,       // CPU Data Out
 	input       [7:0] prg_from_ram,   // PRG Data from RAM
 	output reg        prg_allow,      // PRG Allow write access
-	output reg        prg_open_bus,   // PRG Data Not Driven
+	output reg        prg_bus_write,  // PRG Data Driven
 	output reg        prg_conflict,   // PRG Data is ROM & prg_din
 	input             chr_ex,         // chr_addr is from an extra sprite read if high
 	input             chr_read,       // Read from CHR
@@ -1827,7 +1827,7 @@ always @* begin
 	{diskside_auto} = {fds_diskside_auto};
 
 	// Behavior helper flags
-	{prg_conflict, prg_open_bus, has_chr_dout} = {flags_out_b[2], flags_out_b[1], flags_out_b[0]};
+	{prg_conflict, prg_bus_write, has_chr_dout} = {flags_out_b[2], flags_out_b[1], flags_out_b[0]};
 
 	// Address translation for SDRAM
 	if (prg_aout[21] == 1'b0)

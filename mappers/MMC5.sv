@@ -21,7 +21,7 @@ module MMC5(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_open_bus, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
 	// Special ports
 	input  [7:0] audio_dout,
 	input  [7:0] chr_din,     // CHR Data in
@@ -50,9 +50,9 @@ wire chr_allow;
 wire vram_a10;
 reg [7:0] chr_dout, prg_dout;
 wire vram_ce;
-wire [15:0] flags_out = {15'h0, has_chr_dout};
+wire [15:0] flags_out = {14'h0, prg_bus_write, has_chr_dout};
 wire irq;
-wire prg_open_bus, prg_conflict, has_chr_dout;
+wire prg_bus_write, has_chr_dout;
 wire [15:0] audio = audio_in;
 
 reg [1:0] prg_mode, chr_mode;
@@ -178,7 +178,7 @@ end
 
 // Read from MMC5
 always @* begin
-	prg_dout = 8'hFF; // By default open bus.
+	prg_bus_write = 1'b1;
 	if (prg_ain[15:10] == 6'b010111 && extended_ram_mode[1]) begin
 		prg_dout = last_read_ram;
 	end else if (prg_ain == 16'h5204) begin
@@ -190,6 +190,9 @@ always @* begin
 	end else if (prg_ain == 16'h5015) begin
 		prg_dout = {6'h00, audio_dout[1:0]};
 	// TODO: 5010
+	end else begin
+		prg_dout = 8'hFF; // By default open bus.
+		prg_bus_write = 0;
 	end
 end
 
