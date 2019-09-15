@@ -504,14 +504,13 @@ reg [5:0] prgbank8;
 reg [5:0] prgbankA;
 reg [5:0] prgbankC;
 wire prg_ain43 = prg_ain[4] ^ prg_ain[3];
-reg ramw, soff;
+reg ramw;
 
 always@(posedge clk) begin
 	if (~enable) begin
-		soff <= 1'b0;
 		{chrbank0, chrbank1, chrbank2, chrbank3, chrbank4, chrbank5, chrbank6, chrbank7} <= 0;
 		{prgbank8, prgbankA, prgbankC} <= 0;
-		{ramw, soff} <= 0;
+		ramw <= 0;
 	end else if(ce && prg_write) begin
 		casex({prg_ain[15:12],prg_ain43})
 			5'b10000:prgbank8<=prg_din[5:0]; //8000
@@ -525,7 +524,7 @@ always@(posedge clk) begin
 			5'b11001:chrbank5<=prg_din;      //C008/10
 			5'b11010:chrbank6<=prg_din;      //D000
 			5'b11011:chrbank7<=prg_din;      //D008/10
-			5'b11100:{ramw,soff,mirror}<={prg_din[7:6],prg_din[1:0]};   //E000
+			5'b11100:{ramw,mirror}<={prg_din[7],prg_din[1:0]};   //E000
 			//5'b11101:irqlatch<=nesprgdin;      //E008/10
 			//5'b11110:{irqM,irqA}<={nesprgdin[2],nesprgdin[0]}; //F000
 		endcase
