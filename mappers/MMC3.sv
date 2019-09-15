@@ -249,12 +249,13 @@ reg ram6_enabled, ram6_enable, ram6_protect; //extra bits for mmc6
 reg [7:0] chr_bank_0, chr_bank_1;  // Selected CHR banks
 reg [7:0] chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5;
 reg [5:0] prg_bank_0, prg_bank_1, prg_bank_2;  // Selected PRG banks
+reg last_a12;
 wire prg_is_ram;
 reg [4:0] irq_reg;
 assign irq = mapper48 ? irq_reg[4] : irq_reg[0];
 
 // The alternative behavior has slightly different IRQ counter semantics.
-wire mmc3_alt_behavior = 0;
+wire mmc3_alt_behavior = acclaim;
 
 wire TQROM =     (flags[7:0] == 119); 	// TQROM maps 8kB CHR RAM
 wire TxSROM =    (flags[7:0] == 118); 	// Connects CHR A17 to CIRAM A10
@@ -277,6 +278,7 @@ wire mapper192 = (flags[7:0] == 192);   // Has 4KB CHR RAM
 wire mapper194 = (flags[7:0] == 194);   // Has 2KB CHR RAM
 wire mapper195 = (flags[7:0] == 195);   // Has 4KB CHR RAM
 wire MMC6 = ((flags[7:0] == 4) && (flags[24:21] == 1)); // mapper 4, submapper 1 = MMC6
+wire acclaim = ((flags[7:0] == 4) && (flags[24:21] == 3)); // Acclaim mapper
 
 wire four_screen_mirroring = flags[16];// | DxROM; // not all DxROM are 4-screen
 reg mapper47_multicart;
@@ -306,6 +308,7 @@ if (~enable) begin
 	{prg_bank_0, prg_bank_1} <= 0;
 	prg_bank_2 <= 6'b111110;
 	a12_ctr <= 0;
+	last_a12 <= 0;
 	mapper37_multicart <= 3'b000;
 end else if (ce) begin
 	irq_reg[4:1] <= irq_reg[3:0]; // 4 cycle delay
@@ -418,17 +421,26 @@ end else if (ce) begin
 	// All MMC3C's and Sharp MMC3B's will generate an IRQ on each scanline while $C000 is $00.
 	// This is because this version of the MMC3 generates IRQs when the scanline counter is equal to 0.
 	// In the community, this is known as the "normal" or "new" behavior.
-	if (chr_ain_o[12] && a12_ctr == 0) begin
+
+	last_a12 <= chr_ain_o[12];
+	if ((acclaim && (!last_a12 && chr_ain_o[12]) && (a12_ctr == 6)) ||
+		(~acclaim && chr_ain_o[12] && (a12_ctr == 0))) begin
 		counter <= new_counter;
 
 		// MMC Scanline
-		if ( (!mmc3_alt_behavior  || counter != 0 || irq_reload) && new_counter == 0 && irq_enable && irq_support) begin
+		if ( (!mmc3_alt_behavior || counter != 0 || irq_reload) && new_counter == 0 && irq_enable && irq_support) begin
 			irq_reg[0] <= 1;
 		end
 		irq_reload <= 0;
 	end
 
-	a12_ctr <= chr_ain_o[12] ? 4'b1111 : (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
+	if (acclaim) begin
+		if (!last_a12 && chr_ain_o[12]) // acclaim mapper counts down 8 pulses, or 16 edges total
+			a12_ctr <= (a12_ctr != 0) ? a12_ctr - 4'b0001 : 4'b0111;
+		if (prg_ain == 16'hC001 && prg_write) a12_ctr <= 4'b0111;
+	end else begin // nintendo mapper 'cools down' for 16 low cycles
+		a12_ctr <= chr_ain_o[12] ? 4'b1111 : (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
+	end
 end
 
 // The PRG bank to load. Each increment here is 8kb. So valid values are 0..63.

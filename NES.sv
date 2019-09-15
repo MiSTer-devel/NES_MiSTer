@@ -428,8 +428,8 @@ assign USER_OUT[5] = 1'b1;
 always_comb begin
 	if (raw_serial) begin
 		USER_OUT[0] = joypad_strobe;
-		USER_OUT[1] = joy_swap ? ~joypad_clock[1] : ~joypad_clock[0];
-		joy_data = {~USER_IN[4], ~USER_IN[2], joy_swap ? ~USER_IN[5] : joypad_bits2[0], joy_swap ? joypad_bits[0] : ~USER_IN[5]};
+		USER_OUT[1] = ~joy_swap ? ~joypad_clock[1] : ~joypad_clock[0];
+		joy_data = {~USER_IN[4], ~USER_IN[2], ~joy_swap ? ~USER_IN[5] : joypad_bits2[0], ~joy_swap ? joypad_bits[0] : ~USER_IN[5]};
 	end else begin
 		USER_OUT[0] = 1'b1;
 		USER_OUT[1] = 1'b1;
@@ -587,7 +587,7 @@ wire lightgun_en = |status[19:18];
 
 NES nes (
 	.clk             (clk),
-	.reset           (reset_nes),
+	.reset_nes       (reset_nes),
 	.sys_type        (status[24:23]),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 32'd0 : mapper_flags),

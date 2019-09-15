@@ -1,5 +1,5 @@
 // These are misc small one-off mappers. Some may end up being merged with Generic mappers.
-
+// altera message_off 10027
 // #15 -  100-in-1 Contra Function 16
 module Mapper15(
 	input        clk,         // System clock

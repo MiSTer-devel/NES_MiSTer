@@ -71,7 +71,7 @@ endmodule
 
 module NES(
 	input         clk,
-	input         reset,
+	input         reset_nes,
 	input   [1:0] sys_type,
 	output  [1:0] nes_div,
 	input  [31:0] mapper_flags,
@@ -177,10 +177,10 @@ wire cpu_ce  = (div_cpu == div_cpu_n);
 wire ppu_ce  = (div_ppu == div_ppu_n);
 wire cart_ce = (cart_pre & ppu_ce); // First PPU cycle where cpu data is visible.
 
-// Prefetch
+// Signals
 wire cart_pre  = (ppu_tick == (cpu_tick_count[2] ? 1 : 0));
-wire ppu_fetch = (ppu_tick == (cpu_tick_count[2] ? 2 : 1));
-wire ppu_io    = (ppu_tick == (cpu_tick_count[2] ? 2 : 1));
+wire ppu_read  = (ppu_tick == (cpu_tick_count[2] ? 2 : 1));
+wire ppu_write = (ppu_tick == (cpu_tick_count[2] ? 1 : 0));
 
 // The infamous NES jitter is important for accuracy, but wreks havok on modern devices and scalers,
 // so what I do here is pause the whole system for one PPU clock and insert a "fake" ppu clock to
@@ -199,7 +199,12 @@ reg [2:0] cpu_tick_count;
 
 wire skip_ppu_cycle = (cpu_tick_count == 4) && (ppu_tick == 0);
 
+reg hold_reset = 0;
+wire reset = reset_nes | hold_reset;
+
 always @(posedge clk) begin
+	if (reset_nes) hold_reset <= 1;
+	if (cpu_ce) hold_reset <= 0;
 	if (~freeze_clocks | ~(div_ppu == (div_ppu_n - 1'b1))) begin
 		if (~skip_ppu_cycle)
 			div_cpu <= cpu_ce || (ppu_ce && div_cpu > div_cpu_n) ? 5'd1 : div_cpu + 5'd1;
@@ -383,9 +388,8 @@ assign joypad_clock = {joypad2_cs && mr_int, joypad1_cs && mr_int};
 // and the M2 pin from the CPU. This will only be low for 1 and 7/8th PPU cycles, or
 // 7 and 1/2 master cycles on NTSC. Therefore, the PPU should read or write once per cpu cycle, and
 // with our alignment, this should occur at PPU cycle 2 (the *third* cycle).
-
-wire mr_ppu     = mr_int && ppu_io; // Read *from* the PPU.
-wire mw_ppu     = mw_int && ppu_io; // Write *to* the PPU.
+wire mr_ppu     = mr_int && ppu_read; // Read *from* the PPU.
+wire mw_ppu     = mw_int && ppu_write; // Write *to* the PPU.
 wire ppu_cs = addr >= 'h2000 && addr < 'h4000;
 wire [7:0] ppu_dout;            // Data from PPU to CPU
 wire chr_read, chr_write, chr_read_ex;       // If PPU reads/writes from VRAM
@@ -408,8 +412,6 @@ PPU ppu(
 	.read             (ppu_cs && mr_ppu),
 	.write            (ppu_cs && mw_ppu),
 	.nmi              (nmi),
-	.pre_read         (ppu_fetch & mr_int & ppu_cs),
-	.pre_write        (ppu_fetch & mw_int & ppu_cs),
 	.vram_r           (chr_read),
 	.vram_r_ex        (chr_read_ex),
 	.vram_w           (chr_write),
