@@ -337,7 +337,7 @@ end else if (ce) begin
 			endcase
 		end else if (!mapper112) begin
 			casez({prg_ain[14:13], prg_ain[1:0], mapper48})
-				5'b00_00_0: begin prg_bank_0 <= prg_din[5:0]; mirroring <= prg_din[6]; end // Select 8 KB PRG ROM bank at $8000-$9FFF
+				5'b00_00_0: {mirroring, prg_bank_0} <= prg_din[6:0] ^ 7'h40; // Select 8 KB PRG ROM bank at $8000-$9FFF
 				5'b00_00_1: prg_bank_0 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF
 				5'b00_01_?: prg_bank_1 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
 				5'b00_10_?: chr_bank_0 <= prg_din;  // Select 2 KB CHR bank at PPU $0000-$07FF
@@ -350,7 +350,7 @@ end else if (ce) begin
 				5'b10_00_1: irq_latch <= prg_din ^ 8'hFF;              // IRQ latch ($C000-$DFFC)
 				5'b10_01_1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFD)
 				5'b10_10_1: irq_enable <= 1;                           // IRQ enable ($C002-$DFFE)
-				5'b10_11_1: begin irq_enable <= 0; irq_reg[0] <= 0; end// IRQ disable ($C003-$DFFF)
+				5'b10_11_1: {irq_enable, irq_reg[0]} <= 2'b00;         // IRQ disable ($C003-$DFFF)
 
 				5'b11_00_1: mirroring <= !prg_din[6];  // Mirroring
 			endcase

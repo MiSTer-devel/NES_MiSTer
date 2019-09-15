@@ -563,7 +563,7 @@ end else if (ce) begin
 		casez ({prg_ain[13:12], submapper1, prg_ain[2:0]})
 			6'b00_?_???:  prgreg0            <= prg_din[4:0];
 			6'b01_0_???:  {prgmode, mirror}  <= prg_din[1:0];
-			6'b10_0_???:  prgreg1            <= prg_din[4:0];
+			6'b10_?_???:  prgreg1            <= prg_din[4:0];
 			6'b11_?_000:  chrreg0            <= prg_din;
 			6'b11_?_001:  chrreg1            <= prg_din;
 			6'b11_?_010:  chrreg2            <= prg_din;
