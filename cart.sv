@@ -30,7 +30,7 @@ module cart_top (
 	output reg  [7:0] prg_dout,       // CPU Data Out
 	input       [7:0] prg_from_ram,   // PRG Data from RAM
 	output reg        prg_allow,      // PRG Allow write access
-	output reg        prg_open_bus,   // PRG Data Not Driven
+	output reg        prg_bus_write,  // PRG Data Driven
 	output reg        prg_conflict,   // PRG Data is ROM & prg_din
 	input             chr_ex,         // chr_addr is from an extra sprite read if high
 	input             chr_read,       // Read from CHR
@@ -425,10 +425,10 @@ Mapper15 map15(
 
 //*****************************************************************************//
 // Name   : Bandai 16                                                          //
-// Mappers: 159, 16                                                            //
+// Mappers: 159, 153, 16                                                       //
 // Status : Working/EEPROM needs testing                                       //
 // Notes  :                                                                    //
-// Games  : SD Gundam Gaiden, Dragon Ball 3                                    //
+// Games  : SD Gundam Gaiden, Dragon Ball 3, Famicom Jump II                   //
 //*****************************************************************************//
 wire map16_prg_write, map16_ovr;
 wire [7:0] map16_data_out;
@@ -436,7 +436,7 @@ wire [17:0] map16_mapper_addr;
 Mapper16 map16(
 	.clk        (clk),
 	.ce         (ce),
-	.enable     (me[159] | me[16]),
+	.enable     (me[159] | me[153] | me[16]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
@@ -941,6 +941,37 @@ Mapper107 map107(
 	.clk        (clk),
 	.ce         (ce),
 	.enable     (me[107]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b)
+);
+
+//*****************************************************************************//
+// Name   : GTROM                                                              //
+// Mappers: 111                                                                //
+// Status : Passes all tests except reflash test                               //
+// Notes  : No LED or self-reflash support                                     //
+// Games  : Super Homebrew War, Candelabra: Estoscerro, more homebrew          //
+//*****************************************************************************//
+Mapper111 map111(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[111]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
 	.prg_aout_b (prg_addr_b),
@@ -1796,7 +1827,7 @@ always @* begin
 	{diskside_auto} = {fds_diskside_auto};
 
 	// Behavior helper flags
-	{prg_conflict, prg_open_bus, has_chr_dout} = {flags_out_b[2], flags_out_b[1], flags_out_b[0]};
+	{prg_conflict, prg_bus_write, has_chr_dout} = {flags_out_b[2], flags_out_b[1], flags_out_b[0]};
 
 	// Address translation for SDRAM
 	if (prg_aout[21] == 1'b0)

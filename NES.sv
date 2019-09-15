@@ -43,6 +43,11 @@ module emu
 	output  [1:0] LED_POWER,
 	output  [1:0] LED_DISK,
 
+	// I/O board button press simulation (active high)
+	// b[1]: user button
+	// b[0]: osd button
+	output  [1:0] BUTTONS,
+
 	output [15:0] AUDIO_L,
 	output [15:0] AUDIO_R,
 	output        AUDIO_S, // 1 - signed audio samples, 0 - unsigned
@@ -51,7 +56,7 @@ module emu
 	//ADC
 	inout   [3:0] ADC_BUS,
 
-	// SD-SPI
+	//SD-SPI
 	output        SD_SCK,
 	output        SD_MOSI,
 	input         SD_MISO,
@@ -94,10 +99,10 @@ module emu
 	// Open-drain User port.
 	// 0 - D+/RX
 	// 1 - D-/TX
-	// 2..5 - USR1..USR4
+	// 2..6 - USR2..USR6
 	// Set USER_OUT to 1 to read from USER_IN.
-	input   [5:0] USER_IN,
-	output  [5:0] USER_OUT,
+	input   [6:0] USER_IN,
+	output  [6:0] USER_OUT,
 
 	input         OSD_STATUS
 );
@@ -112,11 +117,10 @@ assign AUDIO_MIX = 0;
 assign LED_USER  = downloading | (loader_fail & led_blink) | (bk_state != S_IDLE) | (bk_pending & status[17]);
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
+assign BUTTONS   = 0;
 
 assign VIDEO_ARX = status[8] ? 8'd16 : (hide_overscan ? 8'd64 : 8'd128);
 assign VIDEO_ARY = status[8] ? 8'd9  : (hide_overscan ? 8'd49 : 8'd105);
-
-assign CLK_VIDEO = clk;
 
 assign VGA_F1 = 0;
 //assign {UART_RTS, UART_TXD, UART_DTR} = 0;
@@ -130,7 +134,7 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXXXXXXXXXXX   XX
+// XXXXXXXXXXX XXXXXXXXXXXXXXXXX XX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -157,6 +161,7 @@ parameter CONF_STR2 = {
 	"O8,Aspect Ratio,4:3,16:9;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O4,Hide Overscan,Off,On;",
+	"ORS,Mask Edges,Off,Left,Both,Auto;",
 	"OP,Extra Sprites,Off,On;",
 	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Nintendulator;",
 	"-;",
@@ -306,7 +311,8 @@ pll pll
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk85),
-	.outclk_1(clk),
+	.outclk_1(CLK_VIDEO),
+	.outclk_2(clk),
 	.reconfig_to_pll(reconfig_to_pll),
 	.reconfig_from_pll(reconfig_from_pll),
 	.locked(clock_locked)
@@ -423,12 +429,13 @@ assign USER_OUT[2] = 1'b1;
 assign USER_OUT[3] = 1'b1;
 assign USER_OUT[4] = 1'b1;
 assign USER_OUT[5] = 1'b1;
+assign USER_OUT[6] = 1'b1;
 
 always_comb begin
 	if (raw_serial) begin
 		USER_OUT[0] = joypad_strobe;
-		USER_OUT[1] = joy_swap ? ~joypad_clock[1] : ~joypad_clock[0];
-		joy_data = {~USER_IN[4], ~USER_IN[2], joy_swap ? ~USER_IN[5] : joypad_bits2[0], joy_swap ? joypad_bits[0] : ~USER_IN[5]};
+		USER_OUT[1] = ~joy_swap ? ~joypad_clock[1] : ~joypad_clock[0];
+		joy_data = {~USER_IN[4], ~USER_IN[2], ~joy_swap ? ~USER_IN[5] : joypad_bits2[0], ~joy_swap ? joypad_bits[0] : ~USER_IN[5]};
 	end else begin
 		USER_OUT[0] = 1'b1;
 		USER_OUT[1] = 1'b1;
@@ -585,9 +592,8 @@ reg [1:0] diskside;
 wire lightgun_en = |status[19:18];
 
 NES nes (
-	.ex_sprites      (status[25]),
 	.clk             (clk),
-	.reset           (reset_nes),
+	.reset_nes       (reset_nes),
 	.sys_type        (status[24:23]),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 32'd0 : mapper_flags),
@@ -602,10 +608,12 @@ NES nes (
 	.ext_audio       (ext_audio),
 	.apu_ce          (apu_ce),
 	// Video
+	.ex_sprites      (status[25]),
 	.color           (color),
 	.emphasis        (emphasis),
 	.cycle           (cycle),
 	.scanline        (scanline),
+	.mask            (status[28:27]),
 	// User Input
 	.joypad_strobe   (joypad_strobe),
 	.joypad_clock    (joypad_clock),
@@ -830,6 +838,7 @@ assign VGA_SL = sl[1:0];
 
 wire [1:0] reticle;
 wire hold_reset;
+wire ce_pix;
 
 video video
 (
@@ -847,8 +856,19 @@ video video
 	.emphasis(emphasis),
 	.reticle(displayp ? disksidepixel : ~status[22] ? reticle : 2'b00),
 	.pal_video(pal_video),
-	.ce_pix(CE_PIXEL)
+	.ce_pix(ce_pix)
 );
+
+reg ce_out;
+always @(posedge CLK_VIDEO) begin
+	reg old_clk;
+	
+	old_clk <= clk;
+	ce_out <= 0;
+	if(old_clk & ~clk) ce_out <= ce_pix;
+end
+
+assign CE_PIXEL = ce_out;
 
 ////////////////////////////  CODES  ///////////////////////////////////
 
