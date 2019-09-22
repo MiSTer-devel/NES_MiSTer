@@ -1347,7 +1347,7 @@ VRC7 vrc7(
 // Notes  : This mapper requires submappers for correct operation              //
 // Games  : Digital Devil Story, Battle Fleet, Famista                         //
 //*****************************************************************************//
-N106 n106(
+N163 n163(
 	.clk        (clk),
 	.ce         (ce),
 	.enable     (me[210] | me[19]),
@@ -1367,8 +1367,10 @@ N106 n106(
 	.vram_ce_b  (vram_ce_b),
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
-	.audio_in   (n106_audio),
-	.audio_b    (audio_out_b)
+	.audio_in   (n163_audio),
+	.audio_b    (audio_out_b),
+	// Special ports
+	.audio_dout	(n163_data)
 );
 
 //*****************************************************************************//
@@ -1696,7 +1698,7 @@ NSF nsfplayer(
 	.irq_b      (irq_b),
 	.flags_out_b(flags_out_b),
 	.audio_in   (exp_audioe[5] ? ss5b_audio :
-	             exp_audioe[4] ? n106_audio :
+	             exp_audioe[4] ? n163_audio :
 	             exp_audioe[3] ? mmc5_audio :
 	             exp_audioe[2] ? fds_audio  :
 	             exp_audioe[1] ? vrc7_audio :
@@ -1719,16 +1721,19 @@ SS5b_mixed snd_5bm (
 	.audio_out(ss5b_audio)
 );
 
-wire [15:0] n106_audio;
-namco106_mixed snd_n106 (
+wire [15:0] n163_audio;
+wire [7:0] n163_data;
+namco163_mixed snd_n163 (
 	.clk(clk),
 	.ce(ce),
+	.submapper(flags[24:21]),
 	.enable(me[19] | (me[31] && exp_audioe[4])),
 	.wren(prg_write),
 	.addr_in(prg_ain),
 	.data_in(prg_din),
+	.data_out(n163_data),
 	.audio_in(audio_in),
-	.audio_out(n106_audio)
+	.audio_out(n163_audio)
 );
 
 wire [15:0] mmc5_audio;
