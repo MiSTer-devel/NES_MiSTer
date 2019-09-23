@@ -1,6 +1,6 @@
 // Namco mappers
 
-module N106(
+module N163(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk
 	input        enable,      // Mapper enabled
@@ -21,7 +21,9 @@ module N106(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	// Special ports
+	input [7:0] audio_dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -58,20 +60,22 @@ wire [18:13] ramprgaout;
 wire exp6;
 reg [7:0] m2;
 wire m2_n = 1;//~ce;  //m2_n not used as clk.  Invert m2 (ce).
+wire [18:10] chr_aoutm;
 
 always @(posedge clk) begin
 	m2[7:1] <= m2[6:0];
 	m2[0] <= ce;
 end
 
-MAPN106 n106(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
+MAPN163 n163(m2[7], m2_n, clk, ~enable, prg_write, nesprg_oe, 0,
 	1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
-	prgram_oe, chr_aout[18:10], ramprgaout, irq, vram_ce, exp6,
+	prgram_oe, chr_aoutm, ramprgaout, irq, vram_ce, exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-	ce, (flags[7:0]==210), flags[24:21]);
+	ce, (flags[7:0]==210), flags[24:21], audio_dout);
 
-assign chr_aout[21:19] = 3'b100;
+assign chr_aout[21:18] = {4'b1000};
+assign chr_aout[17:10] = chr_aoutm[17:10];
 assign chr_aout[9:0] = chr_ain[9:0];
 assign vram_a10 = chr_aout[10];
 wire [21:13] prg_aout_tmp = {3'b00_0, ramprgaout};
@@ -86,7 +90,7 @@ endmodule
 
 //Taken from Loopy's Power Pak mapper source mapN106.v
 //fixme- sound ram is supposed to be readable (does this affect any games?)
-module MAPN106(     //signal descriptions in powerpak.v
+module MAPN163(     //signal descriptions in powerpak.v
 	input m2,
 	input m2_n,
 	input clk20,
@@ -126,8 +130,9 @@ module MAPN106(     //signal descriptions in powerpak.v
 
 	input ce,// add
 	input mapper210,
-	input [3:0] submapper//,
-	//output [15:0] snd_level
+	input [3:0] submapper,
+	//output [15:0] snd_level,
+	input [7:0] audio_dout
 );
 
 assign exp6 = 0;
@@ -222,17 +227,17 @@ always@* begin
 	chrram=(~(chrain[12]?chr_en[1]:chr_en[0]))&(&chrbank[17:15]);   //ram/rom select
 
 	if(!chrain[13]) begin
-		ciram_ce=0;
+		ciram_ce=chrram && ~mapper210;
 		chrram_oe=neschr_rd;
 		chrram_we=neschr_wr & chrram;
 		ramchraout[10]=chrbank[10];
 	end else begin
-		ciram_ce=(&chrbank[17:15] | mirror[0]) | mapper210;
+		ciram_ce=(&chrbank[17:15]) | mapper210;
 		chrram_oe=~ciram_ce & neschr_rd;
 		chrram_we=~ciram_ce & neschr_wr & chrram;
 		casez({mapper210,submapper1,mirror,cfg_vertical})
-			5'b0?_?0_?: ramchraout[10] = chrbank[10];
-			5'b0?_?1_?: ramchraout[10] = chrain[10];
+			5'b0?_??_?: ramchraout[10] = chrbank[10];
+			//5'b0?_?1_?: ramchraout[10] = chrain[10];
 			5'b10_00_?: ramchraout[10] = 1'b0;
 			5'b10_01_?: ramchraout[10] = chrain[10];
 			5'b10_10_?: ramchraout[10] = chrain[11];
@@ -243,7 +248,7 @@ always@* begin
 	end
 	ramchraout[11]=chrbank[11];
 	ramchraout[17:12]=chrbank[17:12] & cfg_chrmask[17:12];
-	ramchraout[18]=chrram;
+	ramchraout[18]=ciram_ce;
 end
 
 assign wram_oe=m2_n & ~nesprg_we & prgain[15:13]==3'b011;
@@ -257,29 +262,32 @@ wire config_rd = 0;
 //gamegenie gg(m2, reset, nesprg_we, prgain, nesprgdin, ramprgdin, gg_out, config_rd);
 
 //PRG data out
-wire counter_oe = m2_n & ~nesprg_we & prgain[15:12]=='b0101;
+wire mapper_oe = m2_n & ~nesprg_we & ((prgain[15:12]=='b0101) || (prgain[15:11]=='b01001));
 always @* begin
 	case(prgain[15:11])
+		5'b01001: nesprgdout=audio_dout;
 		5'b01010: nesprgdout=count[7:0];
 		5'b01011: nesprgdout=count[15:8];
 		default: nesprgdout=nesprgdin;
 	endcase
 end
 
-assign nesprg_oe=wram_oe | prgram_oe | counter_oe | config_rd;
+assign nesprg_oe=wram_oe | prgram_oe | mapper_oe | config_rd;
 
 assign neschr_oe=0;
 assign neschrdout=0;
 
 endmodule
 
-module namco106_mixed (
+module namco163_mixed (
 	input         clk,
 	input         ce,
+	input   [3:0] submapper,
 	input         enable,
 	input         wren,
 	input  [15:0] addr_in,
 	input   [7:0] data_in,
+	output  [7:0] data_out,
 	input  [15:0] audio_in,
 	output [15:0] audio_out
 );
@@ -296,25 +304,26 @@ else if (ce) begin
 end
 
 //sound
-wire [10:0] n106_out;
+wire [10:0] n163_out;
 
-namco106_sound n106(clk, ce, !enable, wren, addr_in, data_in, n106_out);
+namco163_sound n163(clk, ce, !enable, wren, addr_in, data_in, data_out, n163_out);
 
 //pdm #(10) pdm_mod(clk20, saturated, exp6);
-wire [9:0] saturated=n106_out[9:0] | {10{n106_out[10]}};    //this is still too quiet for the suggested 47k resistor, but more clipping will make some games sound bad
+wire [9:0] saturated=n163_out[9:0] | {10{n163_out[10]}};    //this is still too quiet for the suggested 47k resistor, but more clipping will make some games sound bad
 wire [15:0] audio = {1'b0, saturated, 5'b0};
-wire [16:0] audio_mix = (!enable | disabled) ? {audio_in, 1'b0} : audio_in + audio;
+wire [16:0] audio_mix = (!enable | disabled) ? {audio_in, 1'b0} : (submapper==5) ? (audio_in>>>2) + audio : (submapper==4) ? (audio_in>>>1) + audio : audio_in + audio;
 assign audio_out = audio_mix[16:1];
 
 endmodule
 
-module namco106_sound(
+module namco163_sound(
 	input clk20,
 	input m2,
 	input reset,
 	input wr,
 	input [15:0] ain,
 	input [7:0] din,
+	output [7:0] dout,
 	output reg [10:0] out       //range is 0..0x708
 );
 
@@ -336,14 +345,18 @@ reg [10:0] out_acc;
 wire [10:0] sum=out_acc+chan_out;
 reg addr_lsb;
 wire [7:0] sample_addr=ram_dout+sample_pos[ch];
+reg do_inc;
 
 //ram in
 always@(posedge clk20) begin
 if (m2) begin
+	do_inc<= 0;
+	if (do_inc)
+		ram_ain<=ram_ain+1'd1;
 	if(wr & ain[15:11]==5'b11111)           //F800..FFFF
 		{autoinc,ram_ain}<=din;
 	else if(ain[15:11]==5'b01001 & autoinc) //4800..4FFF
-		ram_ain<=ram_ain+1'd1;
+		do_inc<=1;
 	end
 end
 
@@ -399,6 +412,7 @@ dpram #(.widthad_a(7)) modtable
 	.wren_a    (wr & ain[15:11]==5'b01001),
 	.byteena_a (1),
 	.data_a    (din),
+	.q_a       (dout),
 
 	.clock_b   (clk20),
 	.address_b (ram_aout),
