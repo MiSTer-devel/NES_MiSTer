@@ -240,7 +240,7 @@ reg  [9:0] h, v;
 reg  [1:0] free_sync = 0;
 wire [9:0] hc = (&free_sync | reset) ? h : count_h;
 wire [9:0] vc = (&free_sync | reset) ? v : count_v;
-wire [9:0] vsync_start = (pal_video ? 10'd270 : 10'd244);
+wire [9:0] vsync_start = (pal_video ? 10'd270 : 10'd243);
 
 always @(posedge clk) begin
 	reg [8:0] old_count_v;
@@ -293,7 +293,7 @@ always @(posedge clk) begin
 			VSync <= ((vc >= vsync_start) && (vc < vsync_start+3));
 		end
 
-		if(hc == 304) HSync <= 0;
+		if(hc == 303) HSync <= 0;
 	end
 end
 
