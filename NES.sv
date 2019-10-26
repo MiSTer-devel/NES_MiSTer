@@ -178,6 +178,8 @@ parameter CONF_STR2 = {
 	"-;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start,FDS,Trigger,Mic,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
+	"jn,A,B,Select,Start,L,R,Y,X;", // name-based layout, also add 3 extra buttons for FDS, Trigger, and PP1
+	"jp,B,Y,Select,Start,L,R,X,A;", // positional layout using Nintendo's layout for NES remakes (e.g. Mario All Starts in SNES)
 	"V,v",`BUILD_DATE
 };
 
