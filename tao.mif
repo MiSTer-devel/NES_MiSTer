@@ -1,0 +1,84 @@
+-- Copyright (C) 2017  Intel Corporation. All rights reserved.
+-- Your use of Intel Corporation's design tools, logic functions 
+-- and other software and tools, and its AMPP partner logic 
+-- functions, and any output files from any of the foregoing 
+-- (including device programming or simulation files), and any 
+-- associated documentation or information are expressly subject 
+-- to the terms and conditions of the Intel Program License 
+-- Subscription Agreement, the Intel Quartus Prime License Agreement,
+-- the Intel MegaCore Function License Agreement, or other 
+-- applicable license agreement, including, without limitation, 
+-- that your use is for the sole purpose of programming logic 
+-- devices manufactured by Intel and sold by Intel or its 
+-- authorized distributors.  Please refer to the applicable 
+-- agreement for further details.
+
+-- Quartus Prime generated Memory Initialization File (.mif)
+
+WIDTH=15;
+DEPTH=64;
+
+ADDRESS_RADIX=HEX;
+DATA_RADIX=BIN;
+
+CONTENT BEGIN
+	00  :   010110101101011;
+	01  :   100100001100000;
+	02  :   101110000000001;
+	03  :   101000000001000;
+	04  :   011100000001111;
+	05  :   001000000010001;
+	06  :   000000000010001;
+	07  :   000000010001110;
+	08  :   000000011101000;
+	09  :   000000100000000;
+	0A  :   000010100100000;
+	0B  :   001010100000000;
+	0C  :   011000100000000;
+	[0D..0F]  :   000000000000000;
+	10  :   101011010110101;
+	11  :   111100101000000;
+	12  :   111110011100011;
+	13  :   111100001101100;
+	14  :   110010000010101;
+	15  :   010100000011010;
+	16  :   000000001011011;
+	17  :   000000100010111;
+	18  :   000000110010000;
+	19  :   000001000000010;
+	1A  :   000101001000000;
+	1B  :   010101000000000;
+	1C  :   101000111100000;
+	1D  :   000100001000010;
+	[1E..1F]  :   000000000000000;
+	20  :   111011110111101;
+	21  :   111111001100100;
+	22  :   111111000001000;
+	23  :   111110110110000;
+	24  :   111110101111000;
+	25  :   100110101011111;
+	26  :   010010110111111;
+	27  :   000001000011111;
+	28  :   000001010011001;
+	29  :   000001100001101;
+	2A  :   001011100100011;
+	2B  :   100101100100010;
+	2C  :   111001011100000;
+	2D  :   010000100001000;
+	[2E..2F]  :   000000000000000;
+	30  :   111011110111101;
+	31  :   111111100110101;
+	32  :   111111011010110;
+	33  :   111111010111000;
+	34  :   111111010011100;
+	35  :   111001011011110;
+	36  :   110011100011111;
+	37  :   100101100111111;
+	38  :   100101110011110;
+	39  :   100011111011010;
+	3A  :   100101111110101;
+	3B  :   110011111010011;
+	3C  :   111101110010000;
+	3D  :   100011000110001;
+	[3E..3F]  :   000000000000000;
+END;

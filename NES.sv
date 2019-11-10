@@ -117,7 +117,7 @@ assign AUDIO_MIX = 0;
 assign LED_USER  = downloading | (loader_fail & led_blink) | (bk_state != S_IDLE) | (bk_pending & status[17]);
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
-assign BUTTONS   = 0;
+assign BUTTONS [1] = 0;
 
 assign VIDEO_ARX = status[8] ? 8'd16 : (hide_overscan ? 8'd64 : 8'd128);
 assign VIDEO_ARY = status[8] ? 8'd9  : (hide_overscan ? 8'd49 : 8'd105);
@@ -141,7 +141,7 @@ parameter CONF_STR = {
 	"NES;;",
 	"-;",
 	"FS,NESFDSNSF;",
-	"H1F,BIN,Load FDS BIOS;",
+	"H1F2,BIN,Load FDS BIOS;",
 	"-;",
 	"ONO,System Type,NTSC,PAL,Dendy;",
 	"-;",
@@ -163,7 +163,8 @@ parameter CONF_STR2 = {
 	"O4,Hide Overscan,Off,On;",
 	"ORS,Mask Edges,Off,Left,Both,Auto;",
 	"OP,Extra Sprites,Off,On;",
-	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Nintendulator;",
+	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Ninten.,Custom;",
+	"H3F3,PAL,Custom Palette;",
 	"-;",
 	"O9,Swap Joysticks,No,Yes;",
 	"OIJ,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2);",
@@ -177,7 +178,9 @@ parameter CONF_STR2 = {
 `endif
 	"-;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start,FDS,Trigger,Mic,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
+	"J1,A,B,Select,Start,FDS,Mic,Trigger,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
+	"jn,A,B,Select,Start,L,R;",
+	"jp,B,Y,Select,Start,L,R;",
 	"V,v",`BUILD_DATE
 };
 
@@ -200,6 +203,56 @@ wire int_audio = ~status[31];
 wire ext_audio = 1;
 wire int_audio = 1;
 `endif
+
+// Figure out file types
+reg type_bios, type_fds, type_gg, type_nsf, type_nes, type_palette, is_bios, downloading;
+
+always_ff @(posedge clk) begin
+	loader_reset <= !download_reset || ((old_filetype != filetype) && |filetype && ~type_gg && ~type_palette); //loader_conf[0];
+	ioctl_download <= ioctl_downloading;
+	{type_bios, type_fds, type_gg, type_nsf, type_nes, type_palette, is_bios, downloading} <= 0;
+	if (~|filetype[5:0])
+		case(filetype[7:6])
+			2'b00: begin type_bios <= 1; is_bios <= 1; downloading <= ioctl_downloading; end
+			2'b01: begin type_nes <= 1; downloading <= ioctl_downloading; end
+			2'b10: begin type_fds <= 1; downloading <= ioctl_downloading; end
+			2'b11: begin type_nsf <= 1; downloading <= ioctl_downloading; end
+		endcase
+	else if(&filetype)
+		type_gg <= 1;
+	else if (filetype[1:0] == 2'b01)
+		case (filetype[7:6])
+			2'b00: begin type_nes <= 1; downloading <= ioctl_downloading; end
+			2'b01: begin type_fds <= 1; downloading <= ioctl_downloading; end
+			2'b10: begin type_nsf <= 1; downloading <= ioctl_downloading; end
+		endcase
+	else if (filetype[1:0] == 2'b10) begin
+		type_bios <= 1;
+		downloading <= ioctl_downloading;
+	end else if (filetype[1:0] == 2'b11)
+		type_palette <= 1;
+
+end
+
+assign BUTTONS[0] = osd_btn;
+
+// Pop OSD menu if no rom has been loaded automatically
+wire rom_loaded;
+
+reg osd_btn = 0;
+always @(posedge clk) begin : osd_block
+	integer timeout = 0;
+	
+	if(!RESET) begin
+		osd_btn <= 0;
+		if(timeout < 61000000) begin
+			timeout <= timeout + 1;
+			if (timeout > 50000000)
+				osd_btn <= ~rom_loaded;
+		end
+	end
+end
+
 
 // Remove DC offset and convert to signed
 // At this CE rate, it also slightly lowers the bass to
@@ -245,7 +298,8 @@ wire        img_readonly;
 wire [63:0] img_size;
 
 wire  [7:0] filetype;
-wire        ioctl_download;
+wire        ioctl_downloading;
+reg         ioctl_download;
 wire [24:0] ioctl_addr;
 reg         ioctl_wait;
 
@@ -270,9 +324,9 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 1)) hps_io
 	.joystick_analog_1(joy_analog1),
 
 	.status(status),
-	.status_menumask({~gg_avail, bios_loaded, ~bk_ena}),
+	.status_menumask({(palette2_osd != 4'd14), ~gg_avail, bios_loaded, ~bk_ena}),
 
-	.ioctl_download(ioctl_download),
+	.ioctl_download(ioctl_downloading),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_wr(loader_clk),
 	.ioctl_dout(file_input),
@@ -339,7 +393,7 @@ pll_cfg pll_cfg
 	.reconfig_from_pll(reconfig_from_pll)
 );
 
-always @(posedge CLK_50M) begin
+always @(posedge CLK_50M) begin : cfg_block
 	reg pald = 0, pald2 = 0;
 	reg [2:0] state = 0;
 
@@ -401,7 +455,7 @@ wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], j
 wire [7:0] nes_joy_C = { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], joyC[4] };
 wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], joyD[4] };
 
-wire mic_button = joyA[10] | joyB[10];
+wire mic_button = joyA[9] | joyB[9];
 wire fds_btn = joyA[8] | joyB[8];
 
 reg [22:0] clkcount;
@@ -471,7 +525,7 @@ zapper zap (
 	.trigger_mode(status[21]),
 	.ps2_mouse(ps2_mouse),
 	.analog(~status[18] ? joy_analog0 : joy_analog1),
-	.analog_trigger(~status[18] ? joyA[9] : joyB[9]),
+	.analog_trigger(~status[18] ? joyA[10] : joyB[10]),
 	.cycle(cycle),
 	.scanline(scanline),
 	.color(color),
@@ -514,7 +568,7 @@ wire       loader_clk;
 wire [21:0] loader_addr;
 wire [7:0] loader_write_data;
 reg  [7:0] old_filetype;
-wire loader_reset = !download_reset || ((old_filetype != filetype) && |filetype && ~type_gg); //loader_conf[0];
+reg loader_reset;
 wire loader_write;
 wire [31:0] loader_flags;
 reg  [31:0] mapper_flags;
@@ -529,7 +583,8 @@ GameLoader loader
 	.clk              ( clk               ),
 	.reset            ( loader_reset      ),
 	.downloading      ( downloading       ),
-	.filetype         ( filetype          ),
+	.filetype         ( {4'b0000, type_nsf, type_fds, type_nes, type_bios} ),
+	.is_bios          ( is_bios           ),
 	.indata           ( loader_input      ),
 	.indata_clk       ( loader_clk        ),
 	.invert_mirroring ( mirroring_osd     ),
@@ -540,11 +595,12 @@ GameLoader loader
 	.mapper_flags     ( loader_flags      ),
 	.busy             ( loader_busy       ),
 	.done             ( loader_done       ),
-	.error            ( loader_fail       )      
+	.error            ( loader_fail       ),
+	.rom_loaded       ( rom_loaded        )
 );
 
 reg [24:0] rom_sz;
-always @(posedge clk) begin
+always @(posedge clk) begin : flags_block
 	reg done = 0;
 	
 	done <= loader_done;
@@ -555,7 +611,7 @@ always @(posedge clk) begin
 end
 
 reg led_blink;
-always @(posedge clk) begin
+always @(posedge clk) begin : blink_block
 	int cnt = 0;
 	cnt <= cnt + 1;
 	if(cnt == 10000000) begin
@@ -591,6 +647,8 @@ reg [1:0] diskside;
 
 wire lightgun_en = |status[19:18];
 
+wire gg_reset = (type_fds | type_gg | type_nes | type_nsf) && ioctl_download;
+
 NES nes (
 	.clk             (clk),
 	.reset_nes       (reset_nes),
@@ -599,7 +657,7 @@ NES nes (
 	.mapper_flags    (downloading ? 32'd0 : mapper_flags),
 	.gg              (status[20]),
 	.gg_code         (gg_code),
-	.gg_reset        (ioctl_download && loader_clk && !ioctl_addr),
+	.gg_reset        (gg_reset && loader_clk && !ioctl_addr),
 	.gg_avail        (gg_avail),
 	// Audio
 	.sample          (sample),
@@ -804,8 +862,6 @@ always @(posedge clk) begin
 		bk_pending <= 1'b0;
 end
 
-wire downloading = ioctl_download && ~type_gg;
-wire type_gg = &filetype;
 ///////////////////////////////////////////////////
 
 wire hit_x = (9'h027 >= cycle && 9'h020 <= cycle);
@@ -832,6 +888,42 @@ end
 end
 
 ///////////////////////////////////////////////////
+// palette loader
+reg [14:0] pal_color;
+reg [5:0] pal_index;
+reg [1:0] pal_count;
+
+wire pal_write = ioctl_download && type_palette ? ~|pal_count : 1'b0;
+
+always @(posedge clk) begin
+	if (ioctl_download && loader_clk && type_palette && ioctl_addr < 192) begin
+		pal_count <= pal_count == 2 ? 2'd0 : pal_count + 2'd1;
+		case (pal_count)
+			0: begin 
+				pal_color[4:0] <= file_input[7:3];
+				//pal_write <= 0;
+				pal_index <= ioctl_addr > 0 ? pal_index + 1'd1 : pal_index;
+			end
+
+			1: begin
+				pal_color[9:5] <= file_input[7:3];
+			end
+
+			2: begin
+				pal_color[14:10] <= file_input[7:3];
+				//pal_write <= 1;
+			end
+		endcase
+	end
+
+	if (!ioctl_download) begin
+		//pal_write <= 0;
+		pal_count <= 0;
+		pal_index <= 0;
+	end
+end
+
+///////////////////////////////////////////////////
 wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
 assign VGA_SL = sl[1:0];
@@ -853,6 +945,9 @@ video video
 	.scale(scale),
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
+	.load_color(pal_write && ioctl_download),
+	.load_color_data(pal_color),
+	.load_color_index(pal_index),
 	.emphasis(emphasis),
 	.reticle(displayp ? disksidepixel : ~status[22] ? reticle : 2'b00),
 	.pal_video(pal_video),
@@ -860,12 +955,13 @@ video video
 );
 
 reg ce_out;
-always @(posedge CLK_VIDEO) begin
-	reg old_clk;
-	
-	old_clk <= clk;
+always @(posedge CLK_VIDEO) begin : video_align
+	reg old_pix;
+	old_pix <= ce_pix;
 	ce_out <= 0;
-	if(old_clk & ~clk) ce_out <= ce_pix;
+
+	if (~old_pix & ce_pix)
+		ce_out <= 1;
 end
 
 assign CE_PIXEL = ce_out;
@@ -940,7 +1036,7 @@ wire [1:0] next_btn_diskside = (last_diskside == diskside_btn) ? 2'd0 : diskside
 typedef enum bit [1:0] { S_IDLE, S_COPY } mystate;
 mystate bk_state = S_IDLE;
 
-always @(posedge clk) begin
+always @(posedge clk) begin : save_block
 	reg old_load = 0, old_save = 0, old_ack;
 	reg old_downloading = 0;
 	
@@ -1010,6 +1106,7 @@ module GameLoader
 	input         reset,
 	input         downloading,
 	input   [7:0] filetype,
+	input         is_bios,
 	input   [7:0] indata,
 	input         indata_clk,
 	input         invert_mirroring,
@@ -1020,8 +1117,13 @@ module GameLoader
 	output [31:0] mapper_flags,
 	output reg    busy,
 	output reg    done,
-	output reg    error
+	output reg    error,
+	output reg    rom_loaded
 );
+
+initial begin
+	rom_loaded <= 0;
+end
 
 reg [7:0] prgsize;
 reg [3:0] ctr;
@@ -1066,7 +1168,7 @@ wire is_dirty = !is_nes20 && ((ines[9][7:1] != 0)
 // Read the mapper number
 wire [7:0] mapper = {is_dirty ? 4'b0000 : ines[7][7:4], ines[6][7:4]};
 wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
-wire [3:0] prgram = {is_nes20 ? ines[10][3:0] : 4'h00};
+wire [3:0] prgram = {is_nes20 ? ines[10][3:0] : 4'h0};
 wire       piano = is_nes20 && (ines[15][5:0] == 6'h19);
 wire has_saves = ines[6][1];
 
@@ -1082,12 +1184,15 @@ reg copybios;
 typedef enum bit [3:0] { S_LOADHEADER, S_LOADPRG, S_LOADCHR, S_LOADFDS, S_ERROR, S_CLEARRAM, S_COPYBIOS, S_LOADNSFH, S_LOADNSFD, S_COPYPLAY, S_DONE } mystate;
 mystate state;
 
-wire type_bios = (filetype == 0 || filetype == 2); //*.BIOS or boot.rom or boot0.rom
-//wire type_nes = (filetype == 1 || filetype==8'h40); //*.NES or boot1.rom  //default
-wire type_fds = (filetype == 8'b01000001 || filetype==8'h80); //*.FDS or boot2.rom
-wire type_nsf = (filetype == 8'b10000001 || filetype==8'hC0); //*.NFS or boot3.rom
+wire type_bios = filetype[0];
+wire type_nes = filetype[1];
+wire type_fds = filetype[2];
+wire type_nsf = filetype[3];
 
 always @(posedge clk) begin
+	if (downloading && (type_fds || type_nes || type_nsf))
+		rom_loaded <= 1;
+
 	if (reset) begin
 		state <= S_LOADHEADER;
 		busy <= 0;
@@ -1181,7 +1286,7 @@ always @(posedge clk) begin
 				ines[15] <= 8'h00;
 				state <= S_CLEARRAM;
 				clearclk <= 4'h0;
-				copybios <= (|filetype); // Don't copybios for bootrom0
+				copybios <= ~is_bios; // Don't copybios for bootrom0
 			 end
 			end
 		S_CLEARRAM: begin // Read the next |bytes_left| bytes into |mem_addr|

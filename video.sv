@@ -17,6 +17,10 @@ module video
 	input  [1:0] reticle,
 	input        pal_video,
 
+	input        load_color,
+	input [14:0] load_color_data,
+	input  [5:0] load_color_index,
+
 	output       ce_pix,
 	output   reg hold_reset,
 
@@ -205,6 +209,17 @@ wire [15:0] pal_nintendulator_lut[64] = '{
 	'h439C, 'h43D9, 'h53F6, 'h67F5, 'h7BB5, 'h5AD6, 'h0000, 'h0000
 };
 
+wire [14:0] mem_data;
+
+spram #(.addr_width(6), .data_width(15), .mem_name("pal"), .mem_init_file("tao.mif")) pal_ram
+(
+	.clock(clk),
+	.address(load_color ? load_color_index : color_ef),
+	.data(load_color_data),
+	.wren(load_color),
+	.q(mem_data)
+);
+
 reg [14:0] pixel;
 reg HBlank_r, VBlank_r;
 
@@ -226,6 +241,7 @@ always @(posedge clk) begin
 			11: pixel <= pal_greyscale_lut[color_ef][14:0];
 			12: pixel <= pal_rockman9_lut[color_ef][14:0];
 			13: pixel <= pal_nintendulator_lut[color_ef][14:0];
+			14: pixel <= mem_data;
 			default:pixel <= pal_smooth_lut[color_ef][14:0];
 		endcase
 	
