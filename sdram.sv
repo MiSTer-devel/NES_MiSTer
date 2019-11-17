@@ -76,7 +76,7 @@ localparam STATE_IDLE  = 3'd0;             // state to check the requests
 localparam STATE_START = STATE_IDLE+1'd1;  // state in which a new command is started
 localparam STATE_NEXT  = STATE_START+1'd1; // state in which a new command is started
 localparam STATE_CONT  = STATE_START+RASCAS_DELAY;
-localparam STATE_READY = STATE_CONT+CAS_LATENCY+1'd1;
+localparam STATE_READY = STATE_CONT+CAS_LATENCY+2'd2;
 localparam STATE_LAST  = STATE_READY;      // last state in cycle
 
 reg  [2:0] state;
@@ -192,6 +192,7 @@ wire [1:0] dqm = {we & ~a[0], we & a[0]};
 // SDRAM state machines
 always @(posedge clk) begin
 	reg [15:0] last_data[3];
+	reg [15:0] data_reg;
 
 	if(state == STATE_START) SDRAM_BA <= (mode == MODE_NORMAL) ? bank : 2'b00;
 
@@ -211,7 +212,6 @@ always @(posedge clk) begin
 
 	casex({ram_req,mode,state})
 		{1'b1,  MODE_NORMAL, STATE_START}: SDRAM_A <= a[13:1];
-		{1'b1,  MODE_NORMAL, STATE_NEXT}:  SDRAM_A <= '1;
 		{1'b1,  MODE_NORMAL, STATE_CONT }: SDRAM_A <= {dqm, 2'b10, a[22:14]};
 
 		// init
@@ -221,13 +221,15 @@ always @(posedge clk) begin
 		                          default: SDRAM_A <= 13'b0000000000000;
 	endcase
 
+	data_reg <= SDRAM_DQ;
+
 	if(state == STATE_READY) begin
 		if(ch0_busy) begin
 			if(ram_req) begin
 				if(we) ch0_dout <= data[7:0];
 				else begin
-					ch0_dout <= a[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
-					last_data[0] <= SDRAM_DQ;
+					ch0_dout <= a[0] ? data_reg[15:8] : data_reg[7:0];
+					last_data[0] <= data_reg;
 				end
 			end
 			else ch0_dout <= a[0] ? last_data[0][15:8] : last_data[0][7:0];
@@ -236,8 +238,8 @@ always @(posedge clk) begin
 			if(ram_req) begin
 				if(we) ch1_dout <= data[7:0];
 				else begin
-					ch1_dout <= a[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
-					last_data[1] <= SDRAM_DQ;
+					ch1_dout <= a[0] ? data_reg[15:8] : data_reg[7:0];
+					last_data[1] <= data_reg;
 				end
 			end
 			else ch1_dout <= a[0] ? last_data[1][15:8] : last_data[1][7:0];
@@ -246,8 +248,8 @@ always @(posedge clk) begin
 			if(ram_req) begin
 				if(we) ch2_dout <= data[7:0];
 				else begin
-					ch2_dout <= a[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
-					last_data[2] <= SDRAM_DQ;
+					ch2_dout <= a[0] ? data_reg[15:8] : data_reg[7:0];
+					last_data[2] <= data_reg;
 				end
 			end
 			else ch2_dout <= a[0] ? last_data[2][15:8] : last_data[2][7:0];

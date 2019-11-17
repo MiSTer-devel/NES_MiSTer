@@ -164,8 +164,8 @@ wire [7:0] cpu_dout;
 reg odd_or_even = 0; // 1 == odd, 0 == even
 
 // Clock Dividers
-wire [4:0] div_cpu_n = 5'd12;
-wire [2:0] div_ppu_n = 3'd4; 
+localparam div_cpu_n = 5'd12;
+localparam div_ppu_n = 3'd4; 
 
 // Counters
 reg [4:0] div_cpu = 5'd1;
