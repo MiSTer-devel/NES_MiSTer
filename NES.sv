@@ -307,6 +307,8 @@ wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
 wire        forced_scandoubler;
 
+wire [21:0] gamma_bus;
+
 hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 1)) hps_io
 (
 	.clk_sys(clk),
@@ -325,6 +327,8 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 1)) hps_io
 
 	.status(status),
 	.status_menumask({(palette2_osd != 4'd14), ~gg_avail, bios_loaded, ~bk_ena}),
+
+	.gamma_bus(gamma_bus),
 
 	.ioctl_download(ioctl_downloading),
 	.ioctl_addr(ioctl_addr),
