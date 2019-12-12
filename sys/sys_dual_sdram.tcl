@@ -42,11 +42,7 @@ set_location_assignment PIN_AE17 -to SDRAM2_A[3]
 
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SDRAM2_*
 set_instance_assignment -name CURRENT_STRENGTH_NEW "MAXIMUM CURRENT" -to SDRAM2_*
-set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to SDRAM2_A*
-set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to SDRAM2_BA*
-set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to SDRAM2_DQ[*]
-set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to SDRAM2_DQM*
-set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to SDRAM2_n*
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to SDRAM2_*
 set_instance_assignment -name FAST_OUTPUT_ENABLE_REGISTER ON -to SDRAM2_DQ[*]
 set_instance_assignment -name ALLOW_SYNCH_CTRL_USAGE OFF -to *|SDRAM2_*
 
