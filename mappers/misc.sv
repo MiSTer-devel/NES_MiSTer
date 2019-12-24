@@ -285,7 +285,7 @@ wire [7:0] ram_addr;
 wire ram_read;
 assign mapper_addr[17:8] = 0;
 assign mapper_addr[7:0] = ram_addr;
-assign mapper_ovr = 1'b1;
+assign mapper_ovr = mapper159 || submapper5;
 
 EEPROM_24C0x eeprom(
 	.type_24C01(mapper159),         //24C01 is 128 bytes, 24C02 is 256 bytes
