@@ -285,7 +285,7 @@ wire [7:0] ram_addr;
 wire ram_read;
 assign mapper_addr[17:8] = 0;
 assign mapper_addr[7:0] = ram_addr;
-assign mapper_ovr = 1'b1;
+assign mapper_ovr = mapper159 || submapper5;
 
 EEPROM_24C0x eeprom(
 	.type_24C01(mapper159),         //24C01 is 128 bytes, 24C02 is 256 bytes
@@ -1883,11 +1883,9 @@ reg irq;
 reg irq_enable;
 reg [15:0] irq_counter;
 
-reg [4:0] prgbank_reg0, prgbank_reg1, prgbank_reg2, prgbank_reg3;
+reg [4:0] prgbank_reg[3:0];
 reg [3:0] prgbank_reg4;
-
-reg [7:0] chrbank_reg0, chrbank_reg1, chrbank_reg2, chrbank_reg3,
-          chrbank_reg4, chrbank_reg5, chrbank_reg6, chrbank_reg7;
+reg [7:0] chrbank_reg[7:0];
 
 reg [1:0] dipswitch; // alters title screen, wrong dipswitch can result in garbled graphics
 
@@ -1902,15 +1900,14 @@ reg [1:0] wrambank;
 always@(posedge clk) begin
     if (~enable) begin
         {irq, irq_mode, irq_latch, irq_enable, irq_counter} <= 0;
-        {prg_reg3_enable, prgbank_mode, mirroring} <= 0;
-        {prgbank_reg0, prgbank_reg1, prgbank_reg2, prgbank_reg3} <= 0;
-        {prgbank_reg4} <= 0;
-        {chrbank_reg0, chrbank_reg1, chrbank_reg2, chrbank_reg3} <= 0;
-        {chrbank_reg4, chrbank_reg5, chrbank_reg6, chrbank_reg7} <= 0;
-        outer_bank <= 0;
-        wrambank <= 0;
-        scratch_ram <= '{default:0};
-        dipswitch <= 0;
+        {prg_reg3_enable, prgbank_mode, mirroring}          <= 0;
+        outer_bank   <= 0;
+        wrambank     <= 0;
+        dipswitch    <= 0;
+        chrbank_reg  <= '{default:0};
+        prgbank_reg  <= '{default:0};
+        prgbank_reg4 <= 0;
+        scratch_ram  <= '{default:0};
     end else if(ce) begin
         if (prg_write) begin
             casez(prg_ain[15:8])
@@ -1932,31 +1929,15 @@ always@(posedge clk) begin
                     end
                 end
                 8'b1???_??11 : begin
-                    casez(prg_ain[7:0])
-                        8'b???0_??00 : prgbank_reg0 <= prg_din[4:0];
-                        8'b???0_??01 : prgbank_reg1 <= prg_din[4:0];
-                        8'b???0_??10 : prgbank_reg2 <= prg_din[4:0];
-                        8'b???0_??11 : prgbank_reg3 <= prg_din[4:0];
-
-                        8'b???1_0000 : chrbank_reg0 <= prg_din;
-                        8'b???1_0001 : chrbank_reg1 <= prg_din;
-                        8'b???1_0010 : chrbank_reg2 <= prg_din;
-                        8'b???1_0011 : chrbank_reg3 <= prg_din;
-                        8'b???1_0100 : chrbank_reg4 <= prg_din;
-                        8'b???1_0101 : chrbank_reg5 <= prg_din;
-                        8'b???1_0110 : chrbank_reg6 <= prg_din;
-                        8'b???1_0111 : chrbank_reg7 <= prg_din;
-                    endcase
+                    if (prg_ain[4]) begin
+                        if (!prg_ain[3])
+                            chrbank_reg[prg_ain[2:0]] <= prg_din;
+                    end else
+                        prgbank_reg[prg_ain[1:0]] <= prg_din[4:0];
                 end
                 8'b0101_???? : begin
-                    if (|prg_ain[11:8]) begin
-                        casez(prg_ain[1:0])
-                            2'h0 : scratch_ram[0] <= prg_din;
-                            2'h1 : scratch_ram[1] <= prg_din;
-                            2'h2 : scratch_ram[2] <= prg_din;
-                            2'h3 : scratch_ram[3] <= prg_din;
-                        endcase
-                    end
+                    if (|prg_ain[11:8])
+                        scratch_ram[prg_ain[1:0]] <= prg_din;
                 end
             endcase
         end
@@ -1992,15 +1973,15 @@ always_comb begin
         5'b00_10? : prgsel = {prgbank_reg4, prg_ain[13]}; // 0x8000-0xBFFF
         5'b00_11? : prgsel = {4'b1111,      prg_ain[13]}; // 0xC000-0xFFFF
         // mode 1
-        5'b01_1?? : prgsel = {prgbank_reg4[3:1], prg_ain[14:13]};
+        5'b01_1?? : prgsel = {prgbank_reg4[3:1], prg_ain[14:13]}; // 0x8000-0xFFFF
         // mode 2 and 3
-        5'b1?_100 : prgsel = prgbank_reg0; // 0x8000-0x9FFF
-        5'b1?_101 : prgsel = prgbank_reg1; // 0xA000-0xBFFF
-        5'b1?_110 : prgsel = prgbank_reg2; // 0xC000-0xDFFF
-        5'b1?_111 : prgsel = 5'b11_111;    // 0xE000-0xFFFF
+        5'b1?_100 : prgsel = prgbank_reg[0]; // 0x8000-0x9FFF
+        5'b1?_101 : prgsel = prgbank_reg[1]; // 0xA000-0xBFFF
+        5'b1?_110 : prgsel = prgbank_reg[2]; // 0xC000-0xDFFF
+        5'b1?_111 : prgsel = 5'b11_111;      // 0xE000-0xFFFF
         // all modes
-        5'b??_011 : prgsel = prgbank_reg3; // 0x6000-0x7FFF
-        default   : prgsel = 0;
+        5'b??_011 : prgsel = prgbank_reg[3]; // 0x6000-0x7FFF
+        default   : prgsel = {2'd0, prg_ain[15:13]};
     endcase
 end
 
@@ -2008,21 +1989,15 @@ end
 reg [9:0] chrsel;
 always_comb begin
     chrsel = 0;
-    casez({submapper1, chr_ain[13:10]})
+    casez({submapper1, chr_ain[13:11]})
         // submapper 1
-        5'b1_000? : chrsel = {1'b0, chrbank_reg0, chr_ain[10]};
-        5'b1_001? : chrsel = {1'b0, chrbank_reg1, chr_ain[10]};
-        5'b1_010? : chrsel = {1'b0, chrbank_reg6, chr_ain[10]};
-        5'b1_011? : chrsel = {1'b0, chrbank_reg7, chr_ain[10]};
+        4'b1_000 : chrsel = {1'b0, chrbank_reg[0], chr_ain[10]};
+        4'b1_001 : chrsel = {1'b0, chrbank_reg[1], chr_ain[10]};
+        4'b1_010 : chrsel = {1'b0, chrbank_reg[6], chr_ain[10]};
+        4'b1_011 : chrsel = {1'b0, chrbank_reg[7], chr_ain[10]};
         // submapper 0 and 2
-        5'b0_0000 : chrsel = {submapper2 ? outer_bank : 2'b00, chrbank_reg0};
-        5'b0_0001 : chrsel = {submapper2 ? outer_bank : 2'b00, chrbank_reg1};
-        5'b0_0010 : chrsel = {submapper2 ? outer_bank : 2'b00, chrbank_reg2};
-        5'b0_0011 : chrsel = {submapper2 ? outer_bank : 2'b00, chrbank_reg3};
-        5'b0_0100 : chrsel = {submapper2 ? outer_bank : 2'b00, chrbank_reg4};
-        5'b0_0101 : chrsel = {submapper2 ? outer_bank : 2'b00, chrbank_reg5};
-        5'b0_0110 : chrsel = {submapper2 ? outer_bank : 2'b00, chrbank_reg6};
-        5'b0_0111 : chrsel = {submapper2 ? outer_bank : 2'b00, chrbank_reg7};
+        4'b0_0?? : chrsel = {submapper2 ? outer_bank : 2'b00, chrbank_reg[chr_ain[12:10]]};
+        // all submappers
         default   : chrsel = {6'd0, chr_ain[13:10]};
     endcase
 end
@@ -2032,12 +2007,7 @@ always_comb begin
     casez(prg_ain[15:12])
         4'h5 : begin
             if (|prg_ain[11:8]) begin
-                casez(prg_ain[1:0])
-                    2'b00 : prg_dout = scratch_ram[0];
-                    2'b01 : prg_dout = scratch_ram[1];
-                    2'b10 : prg_dout = scratch_ram[2];
-                    2'b11 : prg_dout = scratch_ram[3];
-                endcase
+                prg_dout = scratch_ram[prg_ain[1:0]];
             end else
                 prg_dout = {6'b1111_11, dipswitch};
         end
