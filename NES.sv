@@ -987,12 +987,11 @@ video video
 
 reg ce_out;
 always @(posedge CLK_VIDEO) begin : video_align
-	reg old_pix;
-	old_pix <= ce_pix;
-	ce_out <= 0;
+	reg old_clk;
 
-	if (~old_pix & ce_pix)
-		ce_out <= 1;
+	old_clk <= clk;
+	ce_out <= 0;
+	if(old_clk & ~clk) ce_out <= ce_pix;
 end
 
 assign CE_PIXEL = ce_out;
