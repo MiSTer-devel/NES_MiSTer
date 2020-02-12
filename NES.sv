@@ -363,8 +363,6 @@ wire clock_locked;
 wire clk85;
 wire clk;
 
-assign SDRAM_CLK = ~clk85;
-
 pll pll
 (
 	.refclk(CLK_50M),
@@ -791,16 +789,7 @@ end
 
 sdram sdram
 (
-	.SDRAM_DQ   ( SDRAM_DQ   ),
-	.SDRAM_A    ( SDRAM_A    ),
-	.SDRAM_DQML ( SDRAM_DQML ),
-	.SDRAM_DQMH ( SDRAM_DQMH ),
-	.SDRAM_BA   ( SDRAM_BA   ),
-	.SDRAM_nCS  ( SDRAM_nCS  ),
-	.SDRAM_nWE  ( SDRAM_nWE  ),
-	.SDRAM_nRAS ( SDRAM_nRAS ),
-	.SDRAM_nCAS ( SDRAM_nCAS ),
-	.SDRAM_CKE  ( SDRAM_CKE  ),
+	.*,
 
 	// system interface
 	.clk        ( clk85           ),
@@ -812,12 +801,14 @@ sdram sdram
 	.ch0_din    (  (downloading | loader_busy) ? loader_write_data_mem : ppu_dout  ),
 	.ch0_rd     ( ~(downloading | loader_busy)                         & ppu_read  ),
 	.ch0_dout   ( ppu_din   ),
+	.ch0_busy   ( ),
 
 	.ch1_addr   ( cpu_addr  ),
 	.ch1_wr     ( cpu_write ),
 	.ch1_din    ( cpu_dout  ),
 	.ch1_rd     ( cpu_read  ),
 	.ch1_dout   ( cpu_din   ),
+	.ch1_busy   ( ),
 
 	// reserved for backup ram save/load
 	.ch2_addr   ( {4'b1111, save_addr} ),
@@ -978,12 +969,11 @@ video video
 
 reg ce_out;
 always @(posedge CLK_VIDEO) begin : video_align
-	reg old_pix;
-	old_pix <= ce_pix;
-	ce_out <= 0;
+	reg div = 0;
 
-	if (~old_pix & ce_pix)
-		ce_out <= 1;
+	div <= ~div;
+	ce_out <= 0;
+	if (div & ce_pix) ce_out <= 1;
 end
 
 assign CE_PIXEL = ce_out;

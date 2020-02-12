@@ -1,6 +1,6 @@
 set_global_assignment -name QIP_FILE t65/t65.qip
 set_global_assignment -name QIP_FILE SOUND/OPLL/OPLL.qip
-set_global_assignment -name QIP_FILE sdram.qip
+set_global_assignment -name SYSTEMVERILOG_FILE sdram.sv
 set_global_assignment -name VHDL_FILE dpram.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE ddram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE EEPROM_24C0x.sv

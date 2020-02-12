@@ -32,6 +32,7 @@ module sdram
 	output reg        SDRAM_nWE,  // write enable
 	output reg        SDRAM_nRAS, // row address select
 	output reg        SDRAM_nCAS, // columns address select
+	output            SDRAM_CLK,
 	output            SDRAM_CKE,
 
 	// cpu/chipset interface
@@ -42,21 +43,21 @@ module sdram
 	input             ch0_rd,
 	input             ch0_wr,
 	input       [7:0] ch0_din,
-	output reg  [7:0] ch0_dout,
+	output      [7:0] ch0_dout,
 	output reg        ch0_busy,
 
 	input      [24:0] ch1_addr,
 	input             ch1_rd,
 	input             ch1_wr,
 	input       [7:0] ch1_din,
-	output reg  [7:0] ch1_dout,
+	output      [7:0] ch1_dout,
 	output reg        ch1_busy,
 
 	input      [24:0] ch2_addr,
 	input             ch2_rd,
 	input             ch2_wr,
 	input       [7:0] ch2_din,
-	output reg  [7:0] ch2_dout,
+	output      [7:0] ch2_dout,
 	output reg        ch2_busy
 );
 
@@ -77,7 +78,8 @@ localparam STATE_IDLE  = 3'd0;             // state to check the requests
 localparam STATE_START = STATE_IDLE+1'd1;  // state in which a new command is started
 localparam STATE_NEXT  = STATE_START+1'd1; // state in which a new command is started
 localparam STATE_CONT  = STATE_START+RASCAS_DELAY;
-localparam STATE_READY = STATE_CONT+CAS_LATENCY+2'd2;
+localparam STATE_LATCH = STATE_CONT+CAS_LATENCY+2'd1;
+localparam STATE_READY = STATE_LATCH+2'd1;
 localparam STATE_LAST  = STATE_READY;      // last state in cycle
 
 reg  [2:0] state;
@@ -97,6 +99,7 @@ always @(posedge clk) begin
 	reg old_ref;
 	reg  [2:0] old_rd,old_wr;//,rd,wr;
 	reg [24:1] last_a[3] = '{'1,'1,'1};
+	reg [15:0] data_reg;
 
 	old_rd <= old_rd & rd;
 	old_wr <= old_wr & wr;
@@ -142,10 +145,17 @@ always @(posedge clk) begin
 		end
 	end
 
+	if (state == STATE_LATCH) data_reg <= SDRAM_DQ;
+
 	if (state == STATE_READY) begin
 		ch0_busy <= 0;
 		ch1_busy <= 0;
 		ch2_busy <= 0;
+		if(ram_req && ~we) begin
+			if(ch0_busy) last_data[0] <= data_reg;
+			if(ch1_busy) last_data[1] <= data_reg;
+			if(ch2_busy) last_data[2] <= data_reg;
+		end
 	end
 
 	if(mode != MODE_NORMAL || state != STATE_IDLE || reset) begin
@@ -189,10 +199,13 @@ localparam CMD_LOAD_MODE       = 3'b000;
 
 wire [1:0] dqm = {we & ~a[0], we & a[0]};
 
+assign ch0_dout = ch0_addr[0] ? last_data[0][15:8] : last_data[0][7:0];
+assign ch1_dout = ch1_addr[0] ? last_data[1][15:8] : last_data[1][7:0];
+assign ch2_dout = ch2_addr[0] ? last_data[2][15:8] : last_data[2][7:0];
+
 // SDRAM state machines
+reg [15:0] last_data[3];
 always @(posedge clk) begin
-	reg [15:0] last_data[3];
-	reg [15:0] data_reg;
 
 	if(state == STATE_START) SDRAM_BA <= (mode == MODE_NORMAL) ? bank : 2'b00;
 
@@ -220,41 +233,32 @@ always @(posedge clk) begin
 
 		                          default: SDRAM_A <= 13'b0000000000000;
 	endcase
-
-	data_reg <= SDRAM_DQ;
-
-	if(state == STATE_READY) begin
-		if(ch0_busy) begin
-			if(ram_req) begin
-				if(we) ch0_dout <= data[7:0];
-				else begin
-					ch0_dout <= a[0] ? data_reg[15:8] : data_reg[7:0];
-					last_data[0] <= data_reg;
-				end
-			end
-			else ch0_dout <= a[0] ? last_data[0][15:8] : last_data[0][7:0];
-		end
-		if(ch1_busy) begin
-			if(ram_req) begin
-				if(we) ch1_dout <= data[7:0];
-				else begin
-					ch1_dout <= a[0] ? data_reg[15:8] : data_reg[7:0];
-					last_data[1] <= data_reg;
-				end
-			end
-			else ch1_dout <= a[0] ? last_data[1][15:8] : last_data[1][7:0];
-		end
-		if(ch2_busy) begin
-			if(ram_req) begin
-				if(we) ch2_dout <= data[7:0];
-				else begin
-					ch2_dout <= a[0] ? data_reg[15:8] : data_reg[7:0];
-					last_data[2] <= data_reg;
-				end
-			end
-			else ch2_dout <= a[0] ? last_data[2][15:8] : last_data[2][7:0];
-		end
-	end
 end
+
+
+altddio_out
+#(
+	.extend_oe_disable("OFF"),
+	.intended_device_family("Cyclone V"),
+	.invert_output("OFF"),
+	.lpm_hint("UNUSED"),
+	.lpm_type("altddio_out"),
+	.oe_reg("UNREGISTERED"),
+	.power_up_high("OFF"),
+	.width(1)
+)
+sdramclk_ddr
+(
+	.datain_h(1'b0),
+	.datain_l(1'b1),
+	.outclock(clk),
+	.dataout(SDRAM_CLK),
+	.aclr(1'b0),
+	.aset(1'b0),
+	.oe(1'b1),
+	.outclocken(1'b1),
+	.sclr(1'b0),
+	.sset(1'b0)
+);
 
 endmodule
