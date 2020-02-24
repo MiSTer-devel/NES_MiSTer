@@ -276,7 +276,7 @@ end else if (ce) begin
 		else // Color Dreams
 			{chr_bank, prg_bank} <= {3'b0, prg_din[7:4], 3'b0, prg_din[1:0]};
 	end else if ((prg_ain[15:12]==4'h7) & prg_write & BitCorps) begin
-		{chr_bank, prg_bank} <= {3'b0, prg_din[3:0]};
+		{chr_bank, prg_bank} <= {5'b0, prg_din[3:2], 3'b0, prg_din[1:0]};
 	end else if ((prg_ain[15:12]==4'h6) & prg_write) begin
 		if (Mapper140) begin
 			{prg_bank, chr_bank} <= {3'b0, prg_din[5:4], 3'b0, prg_din[3:0]};
