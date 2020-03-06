@@ -36,18 +36,37 @@ module hps_io #(parameter STRLEN=0, PS2DIV=0, WIDE=0, VDNUM=1, PS2WE=0)
 	// parameter STRLEN and the actual length of conf_str have to match
 	input [(8*STRLEN)-1:0] conf_str,
 
+	// buttons up to 32
 	output reg [31:0] joystick_0,
 	output reg [31:0] joystick_1,
 	output reg [31:0] joystick_2,
 	output reg [31:0] joystick_3,
 	output reg [31:0] joystick_4,
 	output reg [31:0] joystick_5,
+	
+	// analog -127..+127, Y: [15:8], X: [7:0]
 	output reg [15:0] joystick_analog_0,
 	output reg [15:0] joystick_analog_1,
 	output reg [15:0] joystick_analog_2,
 	output reg [15:0] joystick_analog_3,
 	output reg [15:0] joystick_analog_4,
 	output reg [15:0] joystick_analog_5,
+
+	// paddle 0..255
+	output reg  [7:0] paddle_0,
+	output reg  [7:0] paddle_1,
+	output reg  [7:0] paddle_2,
+	output reg  [7:0] paddle_3,
+	output reg  [7:0] paddle_4,
+	output reg  [7:0] paddle_5,
+
+	// spinner [7:0] -128..+127, [8] - toggle with every update
+	output reg  [8:0] spinner_0,
+	output reg  [8:0] spinner_1,
+	output reg  [8:0] spinner_2,
+	output reg  [8:0] spinner_3,
+	output reg  [8:0] spinner_4,
+	output reg  [8:0] spinner_5,
 
 	output      [1:0] buttons,
 	output            forced_scandoubler,
@@ -217,7 +236,8 @@ reg  [9:0] byte_cnt;
 always@(posedge clk_sys) begin
 	reg [15:0] cmd;
 	reg  [2:0] b_wr;
-	reg  [2:0] stick_idx;
+	reg  [3:0] stick_idx;
+	reg  [3:0] pdsp_idx;
 	reg        ps2skip = 0;
 	reg  [3:0] stflg = 0;
 	reg [63:0] status_req;
@@ -362,14 +382,28 @@ always@(posedge clk_sys) begin
 
 					// joystick analog
 					'h1a: case(byte_cnt)
-								1: stick_idx <= io_din[2:0]; // first byte is joystick index
+								1: {pdsp_idx,stick_idx} <= io_din[7:0]; // first byte is joystick index
 								2: case(stick_idx)
-										0: joystick_analog_0 <= io_din;
-										1: joystick_analog_1 <= io_din;
-										2: joystick_analog_2 <= io_din;
-										3: joystick_analog_3 <= io_din;
-										4: joystick_analog_4 <= io_din;
-										5: joystick_analog_5 <= io_din;
+										 0: joystick_analog_0 <= io_din;
+										 1: joystick_analog_1 <= io_din;
+										 2: joystick_analog_2 <= io_din;
+										 3: joystick_analog_3 <= io_din;
+										 4: joystick_analog_4 <= io_din;
+										 5: joystick_analog_5 <= io_din;
+										15: case(pdsp_idx)
+												 0: paddle_0 <= io_din[7:0];
+												 1: paddle_1 <= io_din[7:0];
+												 2: paddle_2 <= io_din[7:0];
+												 3: paddle_3 <= io_din[7:0];
+												 4: paddle_4 <= io_din[7:0];
+												 5: paddle_5 <= io_din[7:0];
+												 8: spinner_0 <= {~spinner_0[8],io_din[7:0]};
+												 9: spinner_1 <= {~spinner_1[8],io_din[7:0]};
+												10: spinner_2 <= {~spinner_2[8],io_din[7:0]};
+												11: spinner_3 <= {~spinner_3[8],io_din[7:0]};
+												12: spinner_4 <= {~spinner_4[8],io_din[7:0]};
+												13: spinner_5 <= {~spinner_5[8],io_din[7:0]};
+											endcase
 									endcase
 							endcase
 
