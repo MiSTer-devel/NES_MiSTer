@@ -167,7 +167,7 @@ parameter CONF_STR2 = {
 	"H3F3,PAL,Custom Palette;",
 	"-;",
 	"O9,Swap Joysticks,No,Yes;",
-	"o02,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2),Vaus,Vaus(A-Trigger);",
+	"o02,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2),Vaus,Vaus(A-Trigger),Family Trainer;",
 	"OL,Zapper Trigger,Mouse,Joystick;",
 	"OM,Crosshairs,On,Off;",
 	"OA,Multitap,Disabled,Enabled;",
@@ -179,7 +179,7 @@ parameter CONF_STR2 = {
 `endif
 	"-;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
+	"J1,A,B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP/Mat 1,PP/Mat 2,PP/Mat 3,PP/Mat 4,PP/Mat 5,PP/Mat 6,PP/Mat 7,PP/Mat 8,PP/Mat 9,PP/Mat 10,PP/Mat 11,PP/Mat 12;",
 	"jn,A,B,Select,Start,L,,R;",
 	"jp,B,Y,Select,Start,L,,R;",
 	"V,v",`BUILD_DATE
@@ -450,13 +450,19 @@ wire  [8:0] cycle;
 wire  [8:0] scanline;
 wire [15:0] sample;
 wire  [5:0] color;
-wire        joypad_strobe;
+wire  [2:0] joypad_out;
 wire  [1:0] joypad_clock;
 reg  [23:0] joypad_bits, joypad_bits2;
 reg   [7:0] powerpad_d3, powerpad_d4;
 reg   [1:0] last_joypad_clock;
 
 wire [11:0] powerpad = joyA[22:11] | joyB[22:11] | joyC[22:11] | joyD[22:11];
+
+wire [3:0] famtr;
+assign famtr[0] = (~joypad_out[2] & powerpad[3]) | (~joypad_out[1] & powerpad[7]) | (~joypad_out[0] & powerpad[11]);
+assign famtr[1] = (~joypad_out[2] & powerpad[2]) | (~joypad_out[1] & powerpad[6]) | (~joypad_out[0] & powerpad[10]);
+assign famtr[2] = (~joypad_out[2] & powerpad[1]) | (~joypad_out[1] & powerpad[5]) | (~joypad_out[0] & powerpad[9] );
+assign famtr[3] = (~joypad_out[2] & powerpad[0]) | (~joypad_out[1] & powerpad[4]) | (~joypad_out[0] & powerpad[8] );
 
 wire [7:0] nes_joy_A = { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], ~paddle_atr & joyA[4] };
 wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], ~paddle_atr & joyB[4] };
@@ -510,32 +516,33 @@ assign USER_OUT[4] = 1'b1;
 assign USER_OUT[5] = 1'b1;
 assign USER_OUT[6] = 1'b1;
 
+reg [4:0] joypad1_data, joypad2_data;
+
 always_comb begin
 	if (raw_serial) begin
-		USER_OUT[0] = joypad_strobe;
-		USER_OUT[1] = ~joy_swap ? ~joypad_clock[1] : ~joypad_clock[0];
-		joy_data = {serial_d4, ~USER_IN[2], ~joy_swap ? ~USER_IN[5] : joypad_bits2[0], ~joy_swap ? joypad_bits[0] : ~USER_IN[5]};
+		USER_OUT[0]  = joypad_out[0];
+		USER_OUT[1]  = ~joy_swap ? ~joypad_clock[1] : ~joypad_clock[0];
+		joypad1_data = {2'b0, mic, 1'b0, ~joy_swap ? joypad_bits[0] : ~USER_IN[5]};
+		joypad2_data = {serial_d4, ~USER_IN[2], 2'b00, ~joy_swap ? ~USER_IN[5] : joypad_bits2[0]};
 	end else begin
-		USER_OUT[0] = 1'b1;
-		USER_OUT[1] = 1'b1;
-		joy_data = {lightgun_en ? trigger : powerpad_d4[0],lightgun_en ? light : paddle_en ? paddle_btn : powerpad_d3[0],joypad_bits2[0],joypad_bits[0]};
+		USER_OUT[0]  = 1'b1;
+		USER_OUT[1]  = 1'b1;
+		joypad1_data = {2'b0, mic, paddle_en & paddle_btn, joypad_bits[0]};
+		joypad2_data = {lightgun_en ? trigger : powerpad_d4[0],lightgun_en ? light : paddle_en ? paddle_btn : powerpad_d3[0], 1'b0, paddle_en & powerpad_d4[0], joypad_bits2[0]};
+		if (status[34:32] == 6) joypad2_data[4:1] = ~famtr;
 	end
 end
 
-wire [3:0] joy_data;
-
-reg [7:0] mic_cnt;
-
 wire mic = (mic_cnt < 8'd215) && mic_button;
-always @(posedge clk)
-	mic_cnt <= (mic_cnt == 8'd250) ? 8'd0 : mic_cnt + 1'b1;
+reg [7:0] mic_cnt;
+always @(posedge clk) mic_cnt <= (mic_cnt == 8'd250) ? 8'd0 : mic_cnt + 1'b1;
 
 assign {UART_RTS, UART_DTR} = 1;
 wire [15:0] uart_data;
 miraclepiano miracle(
 	.clk(clk),
 	.reset(reset_nes || !piano),
-	.strobe(joypad_strobe),
+	.strobe(joypad_out[0]),
 	.joypad_o(),
 	.joypad_clock(joypad_clock[0]),
 	.data_o(uart_data),
@@ -590,7 +597,7 @@ always @(posedge clk) begin
 		powerpad_d4 <= 0;
 		last_joypad_clock <= 0;
 	end else begin
-		if (joypad_strobe) begin
+		if (joypad_out[0]) begin
 			joypad_bits  <= piano ? {15'h0000, uart_data[8:0]}
 			               : {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, joy_swap ? nes_joy_B : nes_joy_A};
 			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, joy_swap ? nes_joy_A : nes_joy_B};
@@ -719,11 +726,10 @@ NES nes (
 	.scanline        (scanline),
 	.mask            (status[28:27]),
 	// User Input
-	.joypad_strobe   (joypad_strobe),
+	.joypad_out      (joypad_out),
 	.joypad_clock    (joypad_clock),
-	.joypad_data     (joy_data),
-	.vaus            ({paddle_en & powerpad_d4[0], paddle_en & paddle_btn}),
-	.mic             (mic),
+	.joypad1_data    (joypad1_data),
+	.joypad2_data    (joypad2_data),
 	.diskside_req    (diskside_req),
 	.diskside        (diskside),
 	.fds_busy        (fds_busy),

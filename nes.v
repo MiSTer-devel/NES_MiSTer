@@ -77,11 +77,10 @@ module NES(
 	input  [31:0] mapper_flags,
 	output [15:0] sample,         // sample generated from APU
 	output  [5:0] color,          // pixel generated from PPU
-	output        joypad_strobe,  // Set to 1 to strobe joypads. Then set to zero to keep the value.
 	output  [1:0] joypad_clock,   // Set to 1 for each joypad to clock it.
-	input   [3:0] joypad_data,    // Data for each joypad + 1 powerpad.
-	input   [1:0] vaus,           // famicom paddle input
-	input         mic,            // Microphone RNG
+	output  [2:0] joypad_out,     // Set to 1 to strobe joypads. Then set to zero to keep the value.
+	input   [4:0] joypad1_data,   // Port1
+	input   [4:0] joypad2_data,   // Port2
 	input         fds_busy,       // FDS Disk Swap Busy
 	input         fds_eject,      // FDS Disk Swap Pause
 	output  [1:0] diskside_req,
@@ -370,14 +369,13 @@ wire [15:0] audio_mappers = (audio_en == 2'd1) ? 16'd0 : sample_inverted;
 wire joypad1_cs = (addr == 'h4016);
 wire joypad2_cs = (addr == 'h4017);
 
-reg joy_strobe;
-
+reg [2:0] joy_out;
 always @(posedge clk) begin
 	if (joypad1_cs && mw_int)
-		joy_strobe <= cpu_dout[0];
+		joy_out <= cpu_dout[2:0];
 end
 
-assign joypad_strobe = joy_strobe;
+assign joypad_out = joy_out;
 assign joypad_clock = {joypad2_cs && mr_int, joypad1_cs && mr_int};
 
 
@@ -544,9 +542,9 @@ always @* begin
 		raw_data_bus = 0;
 	else if (apu_cs) begin
 		if (joypad1_cs)
-			raw_data_bus = {open_bus_data[7:5], 2'b0, mic, vaus[0], joypad_data[0]};
+			raw_data_bus = {open_bus_data[7:5], joypad1_data};
 		else if (joypad2_cs)
-			raw_data_bus = {open_bus_data[7:5], joypad_data[3:2], 1'b0, vaus[1], joypad_data[1]};
+			raw_data_bus = {open_bus_data[7:5], joypad2_data};
 		else
 			raw_data_bus = (addr == 16'h4015) ? apu_dout : open_bus_data;
 	end else if (ppu_cs) begin
