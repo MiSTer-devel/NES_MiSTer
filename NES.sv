@@ -167,7 +167,7 @@ parameter CONF_STR2 = {
 	"H3F3,PAL,Custom Palette;",
 	"-;",
 	"O9,Swap Joysticks,No,Yes;",
-	"o02,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2),Vaus;",
+	"o02,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2),Vaus,Vaus(A-Trigger);",
 	"OL,Zapper Trigger,Mouse,Joystick;",
 	"OM,Crosshairs,On,Off;",
 	"OA,Multitap,Disabled,Enabled;",
@@ -179,7 +179,7 @@ parameter CONF_STR2 = {
 `endif
 	"-;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start,FDS,Mic,Trigger,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
+	"J1,A,B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
 	"jn,A,B,Select,Start,L,,R;",
 	"jp,B,Y,Select,Start,L,,R;",
 	"V,v",`BUILD_DATE
@@ -306,7 +306,7 @@ reg         ioctl_wait;
 
 wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
-wire  [7:0] paddle;
+wire  [7:0] pdl[4];
 wire        forced_scandoubler;
 
 wire [21:0] gamma_bus;
@@ -326,7 +326,10 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 1)) hps_io
 	.joystick_3(joyD),
 	.joystick_analog_0(joy_analog0),
 	.joystick_analog_1(joy_analog1),
-	.paddle_0(paddle),
+	.paddle_0(pdl[0]),
+	.paddle_1(pdl[1]),
+	.paddle_2(pdl[2]),
+	.paddle_3(pdl[3]),
 
 	.status(status),
 	.status_menumask({~raw_serial, (palette2_osd != 4'd14), ~gg_avail, bios_loaded, ~bk_ena}),
@@ -455,10 +458,10 @@ reg   [1:0] last_joypad_clock;
 
 wire [11:0] powerpad = joyA[22:11] | joyB[22:11] | joyC[22:11] | joyD[22:11];
 
-wire [7:0] nes_joy_A = { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], joyA[4] };
-wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], joyB[4] };
-wire [7:0] nes_joy_C = { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], joyC[4] };
-wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], joyD[4] };
+wire [7:0] nes_joy_A = { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], ~paddle_atr & joyA[4] };
+wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], ~paddle_atr & joyB[4] };
+wire [7:0] nes_joy_C = { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], ~paddle_atr & joyC[4] };
+wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], ~paddle_atr & joyD[4] };
 
 wire mic_button = joyA[9] | joyB[9];
 wire fds_btn = joyA[8] | joyB[8];
@@ -515,7 +518,7 @@ always_comb begin
 	end else begin
 		USER_OUT[0] = 1'b1;
 		USER_OUT[1] = 1'b1;
-		joy_data = {lightgun_en ? trigger : powerpad_d4[0],lightgun_en ? light : powerpad_d3[0],joypad_bits2[0],joypad_bits[0]};
+		joy_data = {lightgun_en ? trigger : powerpad_d4[0],lightgun_en ? light : paddle_en ? paddle_btn : powerpad_d3[0],joypad_bits2[0],joypad_bits[0]};
 	end
 end
 
@@ -558,11 +561,26 @@ zapper zap (
 	.trigger(trigger)
 );
 
+reg [7:0] paddle = 0;
+always @(posedge clk) begin
+	reg [7:0] old_pdl[4];
+	reg [1:0] num = 0;
+
+	for(reg [2:0] i=0; i<4; i++) begin
+		old_pdl[i] <= pdl[i];
+		if($signed((pdl[i] - old_pdl[i])) > 4) num <= i[1:0];
+	end
+	
+	paddle <= pdl[num];
+end
+
 localparam [7:0] paddle_off = 32;
 
-wire [7:0] paddle_adj = paddle_off + ((paddle < 48) ? 8'd48 : (paddle > 208) ? 8'd208 : paddle);
+wire [7:0] paddle_adj = paddle_off + ((paddle < 40) ? 8'd40 : (paddle > 216) ? 8'd216 : paddle);
 wire [7:0] paddle_nes = ~{paddle_adj[0],paddle_adj[1],paddle_adj[2],paddle_adj[3],paddle_adj[4],paddle_adj[5],paddle_adj[6],paddle_adj[7]};
-wire       paddle_en  = (status[34:32] == 4);
+wire       paddle_en  = (status[34:33] == 2);
+wire       paddle_atr = paddle_en & status[32];
+wire       paddle_btn = paddle_atr ? (joyA[4] | joyB[4] | joyC[4] | joyD[4]) : (joyA[10] | joyB[10] | joyC[10] | joyD[10]);
 
 always @(posedge clk) begin
 	if (reset_nes) begin
@@ -576,16 +594,16 @@ always @(posedge clk) begin
 			joypad_bits  <= piano ? {15'h0000, uart_data[8:0]}
 			               : {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, joy_swap ? nes_joy_B : nes_joy_A};
 			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, joy_swap ? nes_joy_A : nes_joy_B};
-			powerpad_d4 <= paddle_en ? paddle_nes : {4'b0000, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
-			powerpad_d3 <= paddle_en ? {8{joyA[10]}} : {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
+			powerpad_d4 <= paddle_en ? paddle_nes : {4'b1111, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
+			powerpad_d3 <= {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
 		end
 		if (!joypad_clock[0] && last_joypad_clock[0]) begin
 			joypad_bits <= {1'b0, joypad_bits[23:1]};
 		end	
 		if (!joypad_clock[1] && last_joypad_clock[1]) begin
 			joypad_bits2 <= {1'b0, joypad_bits2[23:1]};
-			powerpad_d4 <= {1'b0, powerpad_d4[7:1]};
-			powerpad_d3 <= {1'b0, powerpad_d3[7:1]};
+			powerpad_d4 <= {~paddle_en, powerpad_d4[7:1]};
+			powerpad_d3 <= {1'b1, powerpad_d3[7:1]};
 		end	
 		last_joypad_clock <= joypad_clock;
 	end
@@ -704,7 +722,7 @@ NES nes (
 	.joypad_strobe   (joypad_strobe),
 	.joypad_clock    (joypad_clock),
 	.joypad_data     (joy_data),
-	.vaus            ({paddle_en & powerpad_d4[0], paddle_en & joyA[10]}),
+	.vaus            ({paddle_en & powerpad_d4[0], paddle_en & paddle_btn}),
 	.mic             (mic),
 	.diskside_req    (diskside_req),
 	.diskside        (diskside),
