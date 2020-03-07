@@ -158,6 +158,8 @@ module hps_io #(parameter STRLEN=0, PS2DIV=0, WIDE=0, VDNUM=1, PS2WE=0)
 	inout      [21:0] gamma_bus
 );
 
+localparam MAX_W = $clog2((512 > (STRLEN+1)) ? 512 : (STRLEN+1))-1;
+
 localparam DW = (WIDE) ? 15 : 7;
 localparam AW = (WIDE) ?  7 : 8;
 localparam VD = VDNUM-1;
@@ -231,7 +233,7 @@ reg [31:0] ps2_key_raw = 0;
 wire       pressed  = (ps2_key_raw[15:8] != 8'hf0);
 wire       extended = (~pressed ? (ps2_key_raw[23:16] == 8'he0) : (ps2_key_raw[15:8] == 8'he0));
 
-reg  [9:0] byte_cnt;
+reg [MAX_W:0] byte_cnt;
 
 always@(posedge clk_sys) begin
 	reg [15:0] cmd;
@@ -327,13 +329,13 @@ always@(posedge clk_sys) begin
 								mouse_we   <= 1;
 							end
 							if(&io_din[15:8]) ps2skip <= 1;
-							if(~&io_din[15:8] & ~ps2skip) begin
-								case(byte_cnt)
+							if(~&io_din[15:8] && ~ps2skip && !byte_cnt[MAX_W:2]) begin
+								case(byte_cnt[1:0])
 									1: ps2_mouse[7:0]   <= io_din[7:0];
 									2: ps2_mouse[15:8]  <= io_din[7:0];
 									3: ps2_mouse[23:16] <= io_din[7:0];
 								endcase
-								case(byte_cnt)
+								case(byte_cnt[1:0])
 									1: ps2_mouse_ext[7:0]  <= {io_din[14], io_din[14:8]};
 									2: ps2_mouse_ext[11:8] <= io_din[11:8];
 									3: ps2_mouse_ext[15:12]<= io_din[11:8];
@@ -355,12 +357,14 @@ always@(posedge clk_sys) begin
 					'h14: if(byte_cnt < STRLEN + 1) io_dout[7:0] <= conf_str[(STRLEN - byte_cnt)<<3 +:8];
 
 					// reading sd card status
-					'h16: case(byte_cnt)
-								1: io_dout <= sd_cmd;
-								2: io_dout <= sd_lba[15:0];
-								3: io_dout <= sd_lba[31:16];
-								4: io_dout <= sd_req_type;
-							endcase
+					'h16: if(!byte_cnt[MAX_W:3]) begin
+								case(byte_cnt[2:0])
+									1: io_dout <= sd_cmd;
+									2: io_dout <= sd_lba[15:0];
+									3: io_dout <= sd_lba[31:16];
+									4: io_dout <= sd_req_type;
+								endcase
+							end
 
 					// send SD config IO -> FPGA
 					// flag that download begins
@@ -381,31 +385,33 @@ always@(posedge clk_sys) begin
 						end
 
 					// joystick analog
-					'h1a: case(byte_cnt)
-								1: {pdsp_idx,stick_idx} <= io_din[7:0]; // first byte is joystick index
-								2: case(stick_idx)
-										 0: joystick_analog_0 <= io_din;
-										 1: joystick_analog_1 <= io_din;
-										 2: joystick_analog_2 <= io_din;
-										 3: joystick_analog_3 <= io_din;
-										 4: joystick_analog_4 <= io_din;
-										 5: joystick_analog_5 <= io_din;
-										15: case(pdsp_idx)
-												 0: paddle_0 <= io_din[7:0];
-												 1: paddle_1 <= io_din[7:0];
-												 2: paddle_2 <= io_din[7:0];
-												 3: paddle_3 <= io_din[7:0];
-												 4: paddle_4 <= io_din[7:0];
-												 5: paddle_5 <= io_din[7:0];
-												 8: spinner_0 <= {~spinner_0[8],io_din[7:0]};
-												 9: spinner_1 <= {~spinner_1[8],io_din[7:0]};
-												10: spinner_2 <= {~spinner_2[8],io_din[7:0]};
-												11: spinner_3 <= {~spinner_3[8],io_din[7:0]};
-												12: spinner_4 <= {~spinner_4[8],io_din[7:0]};
-												13: spinner_5 <= {~spinner_5[8],io_din[7:0]};
-											endcase
-									endcase
-							endcase
+					'h1a: if(!byte_cnt[MAX_W:2]) begin
+								case(byte_cnt[1:0])
+									1: {pdsp_idx,stick_idx} <= io_din[7:0]; // first byte is joystick index
+									2: case(stick_idx)
+											 0: joystick_analog_0 <= io_din;
+											 1: joystick_analog_1 <= io_din;
+											 2: joystick_analog_2 <= io_din;
+											 3: joystick_analog_3 <= io_din;
+											 4: joystick_analog_4 <= io_din;
+											 5: joystick_analog_5 <= io_din;
+											15: case(pdsp_idx)
+													 0: paddle_0 <= io_din[7:0];
+													 1: paddle_1 <= io_din[7:0];
+													 2: paddle_2 <= io_din[7:0];
+													 3: paddle_3 <= io_din[7:0];
+													 4: paddle_4 <= io_din[7:0];
+													 5: paddle_5 <= io_din[7:0];
+													 8: spinner_0 <= {~spinner_0[8],io_din[7:0]};
+													 9: spinner_1 <= {~spinner_1[8],io_din[7:0]};
+													10: spinner_2 <= {~spinner_2[8],io_din[7:0]};
+													11: spinner_3 <= {~spinner_3[8],io_din[7:0]};
+													12: spinner_4 <= {~spinner_4[8],io_din[7:0]};
+													13: spinner_5 <= {~spinner_5[8],io_din[7:0]};
+												endcase
+										endcase
+								endcase
+							end
 
 					// notify image selection
 					'h1c: begin
@@ -417,12 +423,14 @@ always@(posedge clk_sys) begin
 					'h1d: if(byte_cnt<5) img_size[{byte_cnt-1'b1, 4'b0000} +:16] <= io_din;
 
 					// status, 64bit version
-					'h1e: case(byte_cnt)
-								1: status[15:00] <= io_din;
-								2: status[31:16] <= io_din;
-								3: status[47:32] <= io_din;
-								4: status[63:48] <= io_din;
-							endcase
+					'h1e: if(!byte_cnt[MAX_W:3]) begin
+								case(byte_cnt[2:0])
+									1: status[15:00] <= io_din;
+									2: status[31:16] <= io_din;
+									3: status[47:32] <= io_din;
+									4: status[63:48] <= io_din;
+								endcase
+							end
 
 					// reading keyboard LED status
 					'h1f: io_dout <= {|PS2WE, 2'b01, ps2_kbd_led_status[2], ps2_kbd_led_use[2], ps2_kbd_led_status[1], ps2_kbd_led_use[1], ps2_kbd_led_status[0], ps2_kbd_led_use[0]};
@@ -453,13 +461,15 @@ always@(posedge clk_sys) begin
 					'h28: io_dout <= uart_mode;
 
 					//status set
-					'h29: case(byte_cnt)
-								1: io_dout <= status_req[15:00];
-								2: io_dout <= status_req[31:16];
-								3: io_dout <= status_req[47:32];
-								4: io_dout <= status_req[63:48];
-							endcase
-					
+					'h29: if(!byte_cnt[MAX_W:3]) begin
+								case(byte_cnt[2:0])
+									1: io_dout <= status_req[15:00];
+									2: io_dout <= status_req[31:16];
+									3: io_dout <= status_req[47:32];
+									4: io_dout <= status_req[63:48];
+								endcase
+							end
+
 					//menu mask
 					'h2E: if(byte_cnt == 1) io_dout <= status_menumask;
 					
@@ -475,18 +485,22 @@ always@(posedge clk_sys) begin
 					end
 
 					//CD get
-					'h34: case(byte_cnt)
-								1: io_dout <= cd_in[15:0];
-								2: io_dout <= cd_in[31:16];
-								3: io_dout <= cd_in[47:32];
-							endcase
+					'h34: if(!byte_cnt[MAX_W:3]) begin
+								case(byte_cnt[2:0])
+									1: io_dout <= cd_in[15:0];
+									2: io_dout <= cd_in[31:16];
+									3: io_dout <= cd_in[47:32];
+								endcase
+							end
 
 					//CD set
-					'h35: case(byte_cnt)
-								1: cd_out[15:0]  <= io_din;
-								2: cd_out[31:16] <= io_din;
-								3: cd_out[47:32] <= io_din;
-							endcase 
+					'h35: if(!byte_cnt[MAX_W:3]) begin
+								case(byte_cnt[2:0])
+									1: cd_out[15:0]  <= io_din;
+									2: cd_out[31:16] <= io_din;
+									3: cd_out[47:32] <= io_din;
+								endcase
+							end
 				endcase
 			end
 		end
