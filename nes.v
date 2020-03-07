@@ -80,6 +80,7 @@ module NES(
 	output        joypad_strobe,  // Set to 1 to strobe joypads. Then set to zero to keep the value.
 	output  [1:0] joypad_clock,   // Set to 1 for each joypad to clock it.
 	input   [3:0] joypad_data,    // Data for each joypad + 1 powerpad.
+	input   [1:0] vaus,           // famicom paddle input
 	input         mic,            // Microphone RNG
 	input         fds_busy,       // FDS Disk Swap Busy
 	input         fds_eject,      // FDS Disk Swap Pause
@@ -543,9 +544,9 @@ always @* begin
 		raw_data_bus = 0;
 	else if (apu_cs) begin
 		if (joypad1_cs)
-			raw_data_bus = {open_bus_data[7:5], 2'b0, mic, 1'b0, joypad_data[0]};
+			raw_data_bus = {open_bus_data[7:5], 2'b0, mic, vaus[0], joypad_data[0]};
 		else if (joypad2_cs)
-			raw_data_bus = {open_bus_data[7:5], joypad_data[3:2], 2'b00, joypad_data[1]};
+			raw_data_bus = {open_bus_data[7:5], joypad_data[3:2], 1'b0, vaus[1], joypad_data[1]};
 		else
 			raw_data_bus = (addr == 16'h4015) ? apu_dout : open_bus_data;
 	end else if (ppu_cs) begin

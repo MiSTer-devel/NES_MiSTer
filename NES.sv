@@ -131,10 +131,10 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 `define DEBUG_AUDIO
 
 // Status Bit Map:
-// 0         1         2         3 
-// 01234567890123456789012345678901
-// 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX
+// 0         1         2         3          4         5         6 
+// 01234567890123456789012345678901 23456789012345678901234567890123
+// 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
+// XXXXXXXXXXX XXXXXX  XXXXXXXXXXXX XXX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -167,7 +167,7 @@ parameter CONF_STR2 = {
 	"H3F3,PAL,Custom Palette;",
 	"-;",
 	"O9,Swap Joysticks,No,Yes;",
-	"OIJ,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2);",
+	"o02,Peripheral,Powerpad,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2),Vaus;",
 	"OL,Zapper Trigger,Mouse,Joystick;",
 	"OM,Crosshairs,On,Off;",
 	"OA,Multitap,Disabled,Enabled;",
@@ -180,15 +180,15 @@ parameter CONF_STR2 = {
 	"-;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start,FDS,Mic,Trigger,PP 1,PP 2,PP 3,PP 4,PP 5,PP 6,PP 7,PP 8,PP 9,PP 10,PP 11,PP 12;",
-	"jn,A,B,Select,Start,L,R;",
-	"jp,B,Y,Select,Start,L,R;",
+	"jn,A,B,Select,Start,L,,R;",
+	"jp,B,Y,Select,Start,L,,R;",
 	"V,v",`BUILD_DATE
 };
 
 wire [22:0] joyA,joyB,joyC,joyD;
 wire [1:0] buttons;
 
-wire [31:0] status;
+wire [63:0] status;
 
 wire arm_reset = status[0];
 wire mirroring_osd = status[5];
@@ -306,6 +306,7 @@ reg         ioctl_wait;
 
 wire [24:0] ps2_mouse;
 wire [15:0] joy_analog0, joy_analog1;
+wire  [7:0] paddle;
 wire        forced_scandoubler;
 
 wire [21:0] gamma_bus;
@@ -325,6 +326,7 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 1)) hps_io
 	.joystick_3(joyD),
 	.joystick_analog_0(joy_analog0),
 	.joystick_analog_1(joy_analog1),
+	.paddle_0(paddle),
 
 	.status(status),
 	.status_menumask({~raw_serial, (palette2_osd != 4'd14), ~gg_avail, bios_loaded, ~bk_ena}),
@@ -538,14 +540,16 @@ miraclepiano miracle(
 	.rxd(UART_RXD)
 );
 
+wire lightgun_en = ~status[34] & |status[33:32];
+
 zapper zap (
 	.clk(clk),
 	.reset(reset_nes | ~lightgun_en),
-	.mode(status[19]),
+	.mode(status[33]),
 	.trigger_mode(status[21]),
 	.ps2_mouse(ps2_mouse),
-	.analog(~status[18] ? joy_analog0 : joy_analog1),
-	.analog_trigger(~status[18] ? joyA[10] : joyB[10]),
+	.analog(~status[32] ? joy_analog0 : joy_analog1),
+	.analog_trigger(~status[32] ? joyA[10] : joyB[10]),
 	.cycle(cycle),
 	.scanline(scanline),
 	.color(color),
@@ -553,6 +557,12 @@ zapper zap (
 	.light(light),
 	.trigger(trigger)
 );
+
+localparam [7:0] paddle_off = 32;
+
+wire [7:0] paddle_adj = paddle_off + ((paddle < 48) ? 8'd48 : (paddle > 208) ? 8'd208 : paddle);
+wire [7:0] paddle_nes = ~{paddle_adj[0],paddle_adj[1],paddle_adj[2],paddle_adj[3],paddle_adj[4],paddle_adj[5],paddle_adj[6],paddle_adj[7]};
+wire       paddle_en  = (status[34:32] == 4);
 
 always @(posedge clk) begin
 	if (reset_nes) begin
@@ -566,8 +576,8 @@ always @(posedge clk) begin
 			joypad_bits  <= piano ? {15'h0000, uart_data[8:0]}
 			               : {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, joy_swap ? nes_joy_B : nes_joy_A};
 			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, joy_swap ? nes_joy_A : nes_joy_B};
-			powerpad_d4 <= {4'b0000, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
-			powerpad_d3 <= {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
+			powerpad_d4 <= paddle_en ? paddle_nes : {4'b0000, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
+			powerpad_d3 <= paddle_en ? {8{joyA[10]}} : {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
 		end
 		if (!joypad_clock[0] && last_joypad_clock[0]) begin
 			joypad_bits <= {1'b0, joypad_bits[23:1]};
@@ -665,8 +675,6 @@ wire light;
 wire [1:0] diskside_req;
 reg [1:0] diskside;
 
-wire lightgun_en = |status[19:18];
-
 wire gg_reset = (type_fds | type_gg | type_nes | type_nsf) && ioctl_download;
 
 NES nes (
@@ -696,6 +704,7 @@ NES nes (
 	.joypad_strobe   (joypad_strobe),
 	.joypad_clock    (joypad_clock),
 	.joypad_data     (joy_data),
+	.vaus            ({paddle_en & powerpad_d4[0], paddle_en & joyA[10]}),
 	.mic             (mic),
 	.diskside_req    (diskside_req),
 	.diskside        (diskside),
