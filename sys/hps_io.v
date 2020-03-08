@@ -452,7 +452,7 @@ always@(posedge clk_sys) begin
 					'h22: RTC[(byte_cnt-6'd1)<<4 +:16] <= io_din;
 
 					//Video res.
-					'h23: if(!byte_cnt[9:4]) io_dout <= vc_dout;
+					'h23: if(!byte_cnt[MAX_W:4]) io_dout <= vc_dout;
 
 					//RTC
 					'h24: TIMESTAMP[(byte_cnt-6'd1)<<4 +:16] <= io_din;
