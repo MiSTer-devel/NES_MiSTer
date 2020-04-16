@@ -1,0 +1,370 @@
+~~~%%%~~~~~~~~~~~~~~~~~~~~~~~~~~~~%%%~~~
+ **   AspiringSquire's NES Palette   **
+~~~%%%~~~~~~~~~~~~~~~~~~~~~~~~~~~~%%%~~~
+
+See it, play it, and share it.
+
+
+ - A Revision of BMF's bmfpal40.pal [http://bmf.rustedmagick.com/]
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Great thanks goes to the people whose work has been of inestimable value to this
+project, e.g. making this project possible in the first place. They are:
+  * BMF, for the source palette - bmfpal40.pal
+  * Gavin, for "Palette Compare", a viewer made for comparing NES palettes
+    [http://gavin.panicus.org/projects.php]
+  * Members of the NES emulation community in general, for the many great
+    advancements they have made available for others to enjoy.
+  * Nintendo, for giving the world a reason to play -- revitalizing the video
+    game industry with such a fun little box.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+This release finalized  July 22, 2006  2:00 PM (EST)  --  RealityC.PAL
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  Insanity Is Its Own Reward.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+As before, a formula-based approach was used in the creation of this palette,
+but its complexity proved too agonizing for me to fully enumerate.  Just know
+that I did ensure general consistency during the palette's formation.
+
+This is not a perfectly accurate palette; I no longer have literal accuracy as
+the primary goal.  My intent has been to create a palette of colors that look
+good when used together, resemble the "best" versions of colors that I have seen
+the NES produce on traditional TVs, and represent the colors that I believe they
+were originally intended to be.  Finding an appropriate balance of these factors
+has proven so difficult that once I had it, any further changes seemed to only
+dissolve this fragile equilibrium.
+
+I have enjoyed using this very palette for a few months now, and I see no
+purpose in delaying its release any further.  This could easily be my last foray
+into the field of NES palette re-creation, unless I encounter an unexpectedly
+strong reason to reconsider and reconstruct another public release.
+
+Hopefully my palette will help enhance the NES experience just a bit, for those
+who choose to use it.  Thank you, and good night.
+
+--AspiringSquire
+
+
+Post Script Extras:
+ - My favorite freeware Hex Editor: [http://www.catch22.net/software/]
+
+As I doubt many people have guessed, naming my recent palettes "RealityB.pal",
+etc. is not really meant to declare supremacy.  I like to think of them as
+"alternate realities" -- RealityA, RealityB, RealityC...  You get to be in
+control; you choose your *own* reality.
+
+
+.
+
+.
+
+.
+
+   = = = = = = = = = = = = = = =
+*  Old News -> Previous Releases  *
+    - - - - - - - - - - - - - -
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The Story Behind the Palette
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+May 06, 2005  3:04 PM  --  ASQUIRE.PAL (Original Release)
+
+I don't know about you, but I have never been fully satisfied with any color
+palette that has been available for NES emulators to use (.pal format).
+
+The best that I found was custom work done by BMF. Since he got the colors
+directly from snapshots of the television screen (with special tools/software),
+it was closer to the real thing than anyone else's palettes, which most likely
+used hand-picked colors without a real basis for them. Still, I was disappointed
+that none of BMF's palettes seemed completely accurate.
+
+However, through extensive comparisons (in several of my favorite games), I
+determined that the 4.0 version of his palette was the best of all his revisions
+(near perfect, actually), but it was simply too dark. He also had a
+"brightness-corrected" edition of v4.0, but it was too pale, and some colors
+were less accurate.
+
+After searching for a palette editor, I found Palette Compare
+[http://gavin.panicus.org/projects.php], a simple Windows program by Gavin that
+displays every color in a .pal file, along with the corresponding Hexadecimal
+value. It can even show two palettes at once, for easy comparison.
+
+Using this as an invaluable reference, I was able to reliably hex-edit
+"bmfpal40.pal" to increase the brightness of colors—to a lesser extent than
+BMF's variation. I also made sure to do it *properly*, without disrupting the
+original color values.
+
+The "Choice" NES palette has arrived.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The Story Continues...
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+May 09, 2005  2:25 PM  --  ASQUIRE2.PAL
+
+This new revision has exactly seven colors that are changed, including three
+shades of blue-green (two taken from "BMFFINR2.PAL", the other from
+"BMFPAL50.PAL"), two shades of maroon/burgundy (from "BMFPAL50.PAL"), the bluest
+bright blue (also from "BMFPAL50.PAL"), and the impure "black" (just darkened a
+bit).
+
+All of the colors were brightness-adjusted to match the relative levels of the
+colors that were replaced. The black was just semi-arbitrarily darkened to what
+looks like a "good" level because I have no established basis for where it
+should actually be, unlike the other colors.
+
+Anyway, this should be more enjoyable than the first one I made; I estimate a
+40% increase in enjoyment (on average) when playing a game that utilizes these
+newly improved colors. Have fun!
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Revisiting the Past...
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+May 18, 2005  10:36 PM  --  ASQUIRE3.PAL
+
+It turned out that my brightness corrections for the new colors were not as
+complete as they were supposed to be. The lighter maroon-pink and the darker two
+of the three new blue-greens hadn't been properly adjusted; this time they have.
+
+The same two blue-greens have also been altered a bit for a different balance of
+blue and green; they are now slightly more green, and they are the first and
+only colors to be modified in any way other than brightness. I believe that it
+now looks more like it should.
+
+Amidst these changes and fixes, I realized that I had no good reason to replace
+the "bluest bright blue" (with the corresponding color in "BMFPAL50.PAL") in my
+last revision, so I have swapped it back to the value used in my palette's first
+release.
+
+
+May 19, 2005  1:16 PM  --  ASQUIRE3.PAL
+
+Hmm. I noticed another change that I should have made for this release. The
+bright pink color, which is related to the maroon-pinks, has been exchanged for
+the "BMFPAL50.PAL" value. That is all, and there is only a slight difference, so
+I decided to just re-release this under the same revision number.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Back to the Basics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+May 22, 2005  4:40 PM  --  ASQUIRE4.PAL
+
+Hearkening back to my original concept of only using colors from BMF's palettes,
+this version replaces the two darker blue-greens yet again. It now utilizes the
+brightness-adjusted colors from "BMFFINR3.PAL", and it looks even better than
+before (but the difference is minimal). This _should_ be the last change for
+those two colors. Hopefully I won't find something else that needs improvement.
+:P
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Mistaken No More
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+May 31, 2005  6:17 PM  --  ASQUIRE5.PAL
+
+I had forgotten about one swap I made for my initial palette release; I inserted
+a dark grey in place of one of the (identical) quasi-blacks because
+"BMFPAL50.PAL" had it that way. It looked good in the palette viewer, but maybe
+I should have realized that it probably wouldn't be right since it was the only
+one of BMF's palettes (except for "BMFPAL51.PAL", which was a direct revision of
+the other) to have that as a dark grey instead of 'black'.
+
+The odd appearance of "Maniac Mansion" has convinced me to revert the dark grey
+to match the other quasi-blacks.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Reinventing the System
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+June 06, 2005  2:20 PM  --  ASQUIRE6.PAL
+
+Here lies the proud results of some extensive experimentation with the rules to
+which I hold myself accountable in the making of this palette.
+
+First of all, staying true to the use of colors taken only from BMF's palettes,
+I have included the purple-ish blues from "BMFFINR1.PAL" (2 changed colors), the
+lightest blue-green from "bmfpal22.pal", the bright orange from "bmfpal11.pal",
+and the purples, red-purples, and yellows from "BMFPAL50.PAL" (12 colors); that
+is sixteen "new" colors in total, all of which were brightness-adjusted
+appropriately.
+
+The other big change, affecting three-fourths of the palette, is sweeping
+alteration to the brightness of colors. There are four "tiers" of color
+brightness/intensity in the NES palette, meaning four shades of red, four of
+purple, four of blue-green, etc. The relative brightness levels of each tier to
+the others have been modified to reduce the gaps between them. The resulting
+effect is significantly closer to the appearance it would have on a TV.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Lousy Bug-fixing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+June 08, 2005  11:44 PM  --  ASQUIRE6.PAL
+
+Well, I found a 'bug' in the palette that needed to be corrected. The
+medium-dark yellow/brown was not aligned relative to the other new yellows; this
+was an issue in BMF's own 5.0 palette which he fixed for "BMFPAL51.PAL" (the
+other yellows remained the same). My palette now has that improvement as well.
+
+Same version number because it is too high already, and this was meant to be
+part of the last release anyway.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Happy Ending
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+June 23, 2005  1:29 PM  --  Reality.PAL
+
+More than a simple upgrade, this palette returns to the root of its existence,
+"bmfpal40.pal". After much toiling, I discovered the method by which the source
+palette could be adjusted towards true accuracy.
+
+Because listing the colors that have changed since the last release would be
+pointless, given that I started from scratch, I will instead elaborate on the
+formula I utilized for the entire palette in order to achieve the desired end
+result.
+
+
+For those colors that have, of the three core "color-ingredients" (red, green,
+and blue):
+-Only one of the three: add 16 (or, converted into hexadecimal form, "10")
+-Two of the three: add 8 to the 'lesser' core-color and 24 (hex: "18") to the
+ 'greater' core-color
+-All three: add 8 to the 'lesser' core-color, 16 to the 'neutral' core-color,
+ and 24 to the 'greater' core-color
+
+To have consistency in determining what the 'greater', 'lesser', and 'neutral'
+core-colors are for each color in the palette, I simply divided the palette into
+two equal parts, two 'sets' that would be treated separately but identically for
+individual colors within each group. The whites, blacks, and greys were a group
+unto themselves; I added 16 (hex: "10") to each core-color within them (the
+"true" black was left untouched).
+
+As labeled below, Color Set #1's 'greater' core-color is blue, 'lesser' is red,
+and 'neutral' is green. Color Set #2's 'greater' core-color is red, 'lesser' is
+blue, and 'neutral' is green. The following is a list of numerical designations
+given to colors by Palette Compare (in hexadecimal values, of course),
+distinguishing to which color set each belongs.
+Color Set #1:  01-04,0B-0C,11-14,1B-1C,21-24,2B-2C,31-34,3B-3C
+Color Set #2:  05-0A,15-1A,25-2A,35-3A
+
+
+While it may still not be perfect, I'm confident that this is closer to the real
+thing than anyone has previously achieved. Behold and enjoy.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+It Never Ends
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+July 11, 2005  2:28 PM  --  RealityA.PAL
+
+Ok, -this- time I've finally figured out how to make the sky blue in Super Mario
+Bros. (while still maintaining some consistency in my overall procedure). Not
+only that, but everything else is looking better too! My notes below demonstrate
+what I did—starting with the original "bmfpal40.pal"—to create this release.
+
+For Three Core Ingredients:
+Color Set #1 +42 blue, +18 green
+Color Set #2 +42 red, +18 green
+
+For Two Core Ingredients:
+Color Set #1 +31 blue, +9 green
+Color Set #2 +31 red, +9 green
+
+For One Core Ingredient / For Greys:
++20 of that color / +20 each color
+
+I also changed the quasi-black; it is now +12 (each color) instead of +16.
+
+Now, the biggest breakthrough I've made in formulating my method: the sky is
+blue, the grass is green, etc. For those colors of the palette that reach a
+maximum in intensity (i.e. hex: "FF") for one of the "color ingredients" before
+all has been added to it, I simply took the leftover adding of that core-color
+and subtracted half of the amount from the other two core-colors to effectively
+increase the relative value of the over-dosed core-color.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ Not Just Another Palette . . .
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+November 09, 2005  3:02 PM  --  RealityB.PAL
+
+First, I'd like to give BMF an extra special thanks for creating, and offering
+publicly, the perfect basis (bmfpal40.pal) for me to use in this palette
+project. I could not have come this far without his work preceding mine.
+
+This is a fairly idealized version of the NES's true palette; I based it mainly
+on my more vivid memories of playing the NES in its glory days. Since I was
+judging colors by their relative appearance (next to other colors) and
+extensively comparing them in several games, I am confident in the results I
+have obtained.
+
+Essentially, I added (in hexadecimal) 20 per "color-ingredient" to the entire
+palette and altered the distribution of the total of 60 or 40 (per color) among
+the "color-ingredients" to achieve more accurate colors. By comparison, Red and
+Blue were added equivalently throughout, while Green had much less added to the
+palette overall.
+
+~~Procedural Nonsense:
+The formulaic changes to the colors are listed by column, which are denoted by
+the numerical assignment given by Palette Compare to the first color in each
+respective column. There are two sets of color additives for each distinct
+column. The first applies to colors of the source palette (bmfpal40.pal) which
+have a non-zero amount of each of the "color-ingredients" (red, green, and
+blue); the second set of added "color-ingredients" applies to the remaining
+colors in the column (those with fewer than three "color-ingredients").
+Quasi-blacks and greys have equal amounts added each of red, green, and blue.
+All numbers/amounts below are given in hexadecimal form.
+
+Quasi-Blacks: RGB+10
+Greys: RGB+20
+01: R+1A G+14 B+32
+   < G+08 B+38
+02: R+1C G+12 B+32
+   < B+20
+03: R+20 G+10 B+30
+   < R+14 B+2C
+04: R+2A G+0C B+2A
+   < R+20 B+20
+05: R+30 G+10 B+20
+   < R+2C B+14
+06: R+32 G+12 B+1C
+   < R+20
+07: R+32 G+14 B+1A
+   < R+38 G+08
+08: R+34 G+16 B+16
+   < R+36 G+0A
+09: R+32 G+14 B+1A
+   < R+34 G+0C
+0A: R+26 G+14 B+26
+   < G+20
+0B: R+1A G+14 B+32
+   < G+0C B+34
+0C: R+16 G+16 B+34
+   < G+0A B+36
+
+
+. . . . . . . . . . . . . . . .
+Copyright © 2005/2006 AspiringSquire
+The palette and this Readme file are freely distributable, but please give me
+specific credit somewhere if you offer the palette without this file.
+All other rights reserved.
+. . . . . . . . . . . . . . . .
+See above for more information.
