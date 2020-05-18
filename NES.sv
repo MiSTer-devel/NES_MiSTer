@@ -630,7 +630,6 @@ wire [7:0] loader_input = (loader_busy && !downloading) ? !nsf ? bios_data : nsf
 wire       loader_clk;
 wire [21:0] loader_addr;
 wire [7:0] loader_write_data;
-reg  [7:0] old_filetype;
 reg loader_reset;
 wire loader_write;
 wire [31:0] loader_flags;
@@ -670,7 +669,6 @@ always @(posedge clk) begin : flags_block
 	if(~done & loader_done) rom_sz <= ioctl_addr - 1'd1;
 	
 	if (loader_done) mapper_flags <= loader_flags;
-	old_filetype <= filetype;
 end
 
 reg led_blink;
@@ -782,7 +780,7 @@ always @(posedge clk) begin
 	end
 end
 
-dpram #("fdspatch.mif", 13) biospatch
+dpram #("rtl/fdspatch.mif", 13) biospatch
 (
 	.clock_a(clk),
 	.address_a(ioctl_addr[12:0]),
@@ -796,7 +794,7 @@ dpram #("fdspatch.mif", 13) biospatch
 );
 
 wire [7:0] nsf_data;
-spram #(12, 8, "loopy_NSF.mif") nsfplayrom
+spram #(12, 8, "rtl/loopy_NSF.mif") nsfplayrom
 (
 	.clock(clk),
 	.address(loader_addr[11:0]),

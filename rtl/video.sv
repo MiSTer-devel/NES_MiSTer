@@ -213,7 +213,7 @@ wire [15:0] pal_nintendulator_lut[64] = '{
 
 wire [14:0] mem_data;
 
-spram #(.addr_width(6), .data_width(15), .mem_name("pal"), .mem_init_file("tao.mif")) pal_ram
+spram #(.addr_width(6), .data_width(15), .mem_name("pal"), .mem_init_file("rtl/tao.mif")) pal_ram
 (
 	.clock(clk),
 	.address(load_color ? load_color_index : color_ef),

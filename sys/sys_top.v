@@ -235,9 +235,11 @@ wire        io_clk = gp_outr[17];
 wire        io_ss0 = gp_outr[18];
 wire        io_ss1 = gp_outr[19];
 wire        io_ss2 = gp_outr[20];
-//wire        io_sdd    = gp_outr[21]; // used only in ST core
 
+`ifndef DEBUG_NOHDMI
 wire io_osd_hdmi = io_ss1 & ~io_ss0;
+`endif
+
 wire io_fpga     = ~io_ss1 & io_ss0;
 wire io_uio      = ~io_ss1 & io_ss2;
 
@@ -277,11 +279,16 @@ cyclonev_hps_interface_mpu_general_purpose h2f_gp
 
 reg [15:0] cfg;
 
-reg        cfg_got      = 0;
 reg        cfg_set      = 0;
 wire       vga_fb       = cfg[12];
 wire [1:0] hdmi_limited = {cfg[11],cfg[8]};
+
+`ifdef DEBUG_NOHDMI
+wire       direct_video = 1;
+`else
 wire       direct_video = cfg[10];
+`endif
+
 wire       dvi_mode     = cfg[7];
 wire       audio_96k    = cfg[6];
 wire       csync_en     = cfg[3];
@@ -303,13 +310,16 @@ reg  [8:0] coef_data;
 reg        coef_wr = 0;
 
 wire [7:0] ARX, ARY;
-reg [11:0] VSET = 0;
+reg [11:0] VSET = 0, HSET = 0;
+reg        FREESCALE = 0;
 reg  [2:0] scaler_flt;
 reg        lowlat = 0;
 reg        cfg_dis = 0;
 
 reg        vs_wait = 0;
+reg [11:0] vs_line = 0;
 
+reg        scaler_out = 0;
 always@(posedge clk_sys) begin
 	reg  [7:0] cmd;
 	reg        has_cmd;
@@ -336,6 +346,7 @@ always@(posedge clk_sys) begin
 			if(cmd == 1) begin
 				cfg <= io_din;
 				cfg_set <= 1;
+				scaler_out <= 1;
 			end
 			if(cmd == 'h20) begin
 				cfg_set <= 0;
@@ -351,6 +362,7 @@ always@(posedge clk_sys) begin
 						6: if(VS     != io_din[11:0]) VS     <= io_din[11:0];
 						7: if(VBP    != io_din[11:0]) VBP    <= io_din[11:0];
 					endcase
+`ifndef DEBUG_NOHDMI
 					if(cnt == 1) begin
 						cfg_custom_p1 <= 0;
 						cfg_custom_p2 <= 0;
@@ -366,6 +378,7 @@ always@(posedge clk_sys) begin
 						cnt[2:0] <= 3'b100;
 					end
 					if(cnt == 8) {lowlat,cfg_dis} <= io_din[15:14];
+`endif
 				end
 			end
 			if(cmd == 'h2F) begin
@@ -384,27 +397,19 @@ always@(posedge clk_sys) begin
 			end
 			if(cmd == 'h25) {led_overtake, led_state} <= io_din;
 			if(cmd == 'h26) vol_att <= io_din[4:0];
-			if(cmd == 'h27) VSET    <= io_din[11:0];
+			if(cmd == 'h27) VSET <= io_din[11:0];
 			if(cmd == 'h2A) {coef_wr,coef_addr,coef_data} <= {1'b1,io_din};
 			if(cmd == 'h2B) scaler_flt <= io_din[2:0];
+			if(cmd == 'h37) {FREESCALE,HSET} <= {io_din[15],io_din[11:0]};
+			if(cmd == 'h38) vs_line <= io_din[11:0];
 		end
 	end
-	
+
 	vs_d0 <= HDMI_TX_VS;
 	if(vs_d0 == HDMI_TX_VS) vs_d1 <= vs_d0;
 
 	vs_d2 <= vs_d1;
 	if(~vs_d2 & vs_d1) vs_wait <= 0;
-end
-
-always @(posedge clk_sys) begin
-	reg vsd, vsd2;
-	if(~cfg_ready || ~cfg_set) cfg_got <= cfg_set;
-	else begin
-		vsd  <= HDMI_TX_VS;
-		vsd2 <= vsd;
-		if(~vsd2 & vsd) cfg_got <= cfg_set;
-	end
 end
 
 cyclonev_hps_interface_peripheral_uart uart
@@ -434,7 +439,7 @@ cyclonev_hps_interface_peripheral_spi_master spi
 	.ss_in_n(1)
 );
 
-wire [63:0] f2h_irq = {HDMI_TX_VS};
+wire [63:0] f2h_irq = {video_sync,HDMI_TX_VS};
 cyclonev_hps_interface_interrupts interrupts
 (
 	.irq(f2h_irq)
@@ -461,7 +466,6 @@ always @(posedge FPGA_CLK2_50) begin
 end
 
 wire clk_100m;
-wire clk_hdmi  = hdmi_clk_out;
 wire clk_audio = FPGA_CLK3_50;
 wire clk_pal   = FPGA_CLK3_50;
 
@@ -571,6 +575,9 @@ wire         vbuf_write;
 wire  [23:0] hdmi_data;
 wire         hdmi_vs, hdmi_hs, hdmi_de;
 
+`ifndef DEBUG_NOHDMI
+wire clk_hdmi  = hdmi_clk_out;
+
 ascal 
 #(
 	.RAMBASE(32'h20000000),
@@ -599,7 +606,7 @@ ascal
 	.vimax    (0),
 
 	.o_clk    (clk_hdmi),
-	.o_ce     (1),
+	.o_ce     (scaler_out),
 	.o_r      (hdmi_data[23:16]),
 	.o_g      (hdmi_data[15:8]),
 	.o_b      (hdmi_data[7:0]),
@@ -648,6 +655,7 @@ ascal
 	.avl_read         (vbuf_read),
 	.avl_byteenable   (vbuf_byteenable)
 );
+`endif
 
 reg        FB_EN     = 0;
 reg        FB_FLT    = 0;
@@ -671,7 +679,12 @@ always @(posedge clk_vid) begin
 	reg  [2:0] state;
 	reg [11:0] videow;
 	reg [11:0] videoh;
-	
+	reg [11:0] height;
+	reg [11:0] width;
+
+	height <= (VSET && (VSET < HEIGHT)) ? VSET : HEIGHT;
+	width  <= (HSET && (HSET < WIDTH))  ? HSET : WIDTH;
+
 	state <= state + 1'd1;
 	case(state)
 		0: if(FB_EN) begin
@@ -681,22 +694,17 @@ always @(posedge clk_vid) begin
 				vmax <= FB_VMAX;
 				state<= 0;
 			end
-			else if(ARX && ARY) begin
-				wcalc <= VSET ? (VSET*ARX)/ARY : (HEIGHT*ARX)/ARY;
-				hcalc <= (WIDTH*ARY)/ARX;
+			else if(ARX && ARY && !FREESCALE) begin
+				wcalc <= (height*ARX)/ARY;
+				hcalc <= (width*ARY)/ARX;
 			end
 			else begin
-				hmin <= 0;
-				hmax <= WIDTH - 1'd1;
-				vmin <= 0;
-				vmax <= HEIGHT - 1'd1;
-				wcalc<= WIDTH;
-				hcalc<= HEIGHT;
-				state<= 0;
+				wcalc <= width;
+				hcalc <= height;
 			end
 		6: begin
-				videow <= (!VSET && (wcalc > WIDTH))     ? WIDTH  : wcalc[11:0];
-				videoh <= VSET ? VSET : (hcalc > HEIGHT) ? HEIGHT : hcalc[11:0];
+				videow <= (wcalc > width)  ? width  : wcalc[11:0];
+				videoh <= (hcalc > height) ? height : hcalc[11:0];
 			end
 		7: begin
 				hmin <= ((WIDTH  - videow)>>1);
@@ -707,8 +715,8 @@ always @(posedge clk_vid) begin
 	endcase
 end
 
+`ifndef DEBUG_NOHDMI
 wire [15:0] lltune;
-
 pll_hdmi_adj pll_hdmi_adj
 (
 	.clk(FPGA_CLK1_50),
@@ -726,6 +734,9 @@ pll_hdmi_adj pll_hdmi_adj
 	.o_address(cfg_address),
 	.o_writedata(cfg_data)
 );
+`else
+	assign led_locked = 0;
+`endif
 
 wire [63:0] pal_data;
 wire [47:0] pal_d = {pal_data[55:32], pal_data[23:0]};
@@ -745,7 +756,7 @@ end
 
 
 /////////////////////////  HDMI output  /////////////////////////////////
-
+`ifndef DEBUG_NOHDMI
 wire hdmi_clk_out;
 pll_hdmi pll_hdmi
 (
@@ -755,6 +766,7 @@ pll_hdmi pll_hdmi
 	.reconfig_from_pll(reconfig_from_pll),
 	.outclk_0(hdmi_clk_out)
 );
+`endif
 
 //1920x1080@60 PCLK=148.5MHz CEA
 reg  [11:0] WIDTH  = 1920;
@@ -776,6 +788,7 @@ reg         adj_write;
 reg   [5:0] adj_address;
 reg  [31:0] adj_data;
 
+`ifndef DEBUG_NOHDMI
 pll_cfg pll_cfg
 (
 	.mgmt_clk(FPGA_CLK1_50),
@@ -790,8 +803,18 @@ pll_cfg pll_cfg
 	.reconfig_from_pll(reconfig_from_pll)
 );
 
-reg cfg_ready = 0;
+reg cfg_got = 0;
+always @(posedge clk_sys) begin
+	reg vsd, vsd2;
+	if(~cfg_ready || ~cfg_set) cfg_got <= cfg_set;
+	else begin
+		vsd  <= HDMI_TX_VS;
+		vsd2 <= vsd;
+		if(~vsd2 & vsd) cfg_got <= cfg_set;
+	end
+end
 
+reg cfg_ready = 0;
 always @(posedge FPGA_CLK1_50) begin
 	reg gotd = 0, gotd2 = 0;
 	reg custd = 0, custd2 = 0;
@@ -820,6 +843,12 @@ always @(posedge FPGA_CLK1_50) begin
 	if(old_wait & ~adj_waitrequest & gotd) cfg_ready <= 1;
 end
 
+`else
+
+wire cfg_ready = 1;
+
+`endif
+
 wire hdmi_config_done;
 hdmi_config hdmi_config
 (
@@ -836,6 +865,7 @@ hdmi_config hdmi_config
 	.ypbpr(ypbpr_en & direct_video)
 );
 
+`ifndef DEBUG_NOHDMI
 wire [23:0] hdmi_data_sl;
 wire        hdmi_de_sl, hdmi_vs_sl, hdmi_hs_sl;
 scanlines #(1) HDMI_scanlines
@@ -856,6 +886,7 @@ scanlines #(1) HDMI_scanlines
 
 wire [23:0] hdmi_data_osd;
 wire        hdmi_de_osd, hdmi_vs_osd, hdmi_hs_osd;
+
 osd hdmi_osd
 (
 	.clk_sys(clk_sys),
@@ -879,6 +910,7 @@ osd hdmi_osd
 	.osd_status(osd_status)
 `endif
 );
+`endif
 
 wire hdmi_cs_osd;
 csync csync_hdmi(clk_hdmi, hdmi_hs_osd, hdmi_vs_osd, hdmi_cs_osd);
@@ -925,12 +957,16 @@ always @(posedge clk_vid) begin
 end
 
 wire hdmi_tx_clk;
+`ifndef DEBUG_NOHDMI
 cyclonev_clkselect hdmi_clk_sw
 ( 
 	.clkselect({1'b1, ~vga_fb & direct_video}),
 	.inclk({clk_vid, hdmi_clk_out, 2'b00}),
 	.outclk(hdmi_tx_clk)
 );
+`else
+assign hdmi_tx_clk = clk_vid;
+`endif
 
 altddio_out
 #(
@@ -1047,6 +1083,31 @@ csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
 	assign VGA_B  = (VGA_EN | SW[3]) ? 6'bZZZZZZ : vga_o[7:2];
 `endif
 
+reg video_sync = 0;
+always @(posedge clk_vid) begin
+	reg [11:0] line_cnt  = 0;
+	reg [11:0] sync_line = 0;
+	reg  [1:0] hs_cnt = 0;
+	reg        old_hs;
+
+	old_hs <= hs_fix;
+	if(~old_hs & hs_fix) begin
+
+		video_sync <= (sync_line == line_cnt);
+
+		line_cnt <= line_cnt + 1'd1;
+		if(~hs_cnt[1]) begin	
+			hs_cnt <= hs_cnt + 1'd1;
+			if(hs_cnt[0]) begin
+				sync_line <= (line_cnt - vs_line);
+				line_cnt <= 0;
+			end
+		end
+	end
+
+	if(de_emu) hs_cnt <= 0;
+end
+
 /////////////////////////  Audio output  ////////////////////////////////
 
 assign SDCD_SPDIF =(SW[3] & ~spdif) ? 1'b0 : 1'bZ;
@@ -1137,7 +1198,6 @@ alsa alsa
 	.pcm_l(alsa_l),
 	.pcm_r(alsa_r)
 );
-
 
 ////////////////  User I/O (USB 3.0 connector) /////////////////////////
 
