@@ -208,7 +208,11 @@ wire int_audio = 1;
 reg type_bios, type_fds, type_gg, type_nsf, type_nes, type_palette, is_bios, downloading;
 
 always_ff @(posedge clk) begin
-	loader_reset <= !download_reset || ((old_filetype != filetype) && |filetype && ~type_gg && ~type_palette); //loader_conf[0];
+	reg old_downld;
+
+	old_downld <= downloading;
+	loader_reset <= !download_reset || (~old_downld && downloading);
+
 	ioctl_download <= ioctl_downloading;
 	{type_bios, type_fds, type_gg, type_nsf, type_nes, type_palette, is_bios, downloading} <= 0;
 	if (~|filetype[5:0])
