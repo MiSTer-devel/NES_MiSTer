@@ -382,40 +382,6 @@ if (~enable) begin
 	irq_enable <= 4'h0;
 end else if (ce) begin
 	irq_ack <= 1'b0;
-	if (prg_write)
-		if(prg_ain[15]) // Cover all from $8000 to $FFFF to maximize compatibility
-			case({prg_ain[14:12],prg_ain[1:0]})
-				5'b000_00: prg_bank_0[3:0] <= prg_din[3:0];
-				5'b000_01: prg_bank_0[7:4] <= prg_din[3:0];
-				5'b000_10: prg_bank_1[3:0] <= prg_din[3:0];
-				5'b000_11: prg_bank_1[7:4] <= prg_din[3:0];
-				5'b001_00: prg_bank_2[3:0] <= prg_din[3:0];
-				5'b001_01: prg_bank_2[7:4] <= prg_din[3:0];
-				5'b010_00: chr_bank_0[3:0] <= prg_din[3:0];
-				5'b010_01: chr_bank_0[7:4] <= prg_din[3:0];
-				5'b010_10: chr_bank_1[3:0] <= prg_din[3:0];
-				5'b010_11: chr_bank_1[7:4] <= prg_din[3:0];
-				5'b011_00: chr_bank_2[3:0] <= prg_din[3:0];
-				5'b011_01: chr_bank_2[7:4] <= prg_din[3:0];
-				5'b011_10: chr_bank_3[3:0] <= prg_din[3:0];
-				5'b011_11: chr_bank_3[7:4] <= prg_din[3:0];
-				5'b100_00: chr_bank_4[3:0] <= prg_din[3:0];
-				5'b100_01: chr_bank_4[7:4] <= prg_din[3:0];
-				5'b100_10: chr_bank_5[3:0] <= prg_din[3:0];
-				5'b100_11: chr_bank_5[7:4] <= prg_din[3:0];
-				5'b101_00: chr_bank_6[3:0] <= prg_din[3:0];
-				5'b101_01: chr_bank_6[7:4] <= prg_din[3:0];
-				5'b101_10: chr_bank_7[3:0] <= prg_din[3:0];
-				5'b101_11: chr_bank_7[7:4] <= prg_din[3:0];
-				5'b110_00: irq_reload[3:0] <= prg_din[3:0];
-				5'b110_01: irq_reload[7:4] <= prg_din[3:0];
-				5'b110_10: irq_reload[11:8] <= prg_din[3:0];
-				5'b110_11: irq_reload[15:12] <= prg_din[3:0];
-				5'b111_00: {irq_ack, irq_counter} <= {1'b1, irq_reload};
-				5'b111_01: {irq_ack, irq_enable} <= {1'b1, prg_din[3:0]};
-				5'b111_10: mirroring <= prg_din[1:0];
-				5'b111_11: ram_enable <= prg_din[1:0];
-			endcase
 
 	//Is this necessary? or even correct?  Just load number of needed bits into separate counter instead?
 	if (irq_enable[0]) begin
@@ -445,6 +411,43 @@ end else if (ce) begin
 			end
 		end
 	end
+
+	if (prg_write)
+		if(prg_ain[15]) // Cover all from $8000 to $FFFF to maximize compatibility
+			case({prg_ain[14:12],prg_ain[1:0]})
+				5'b000_00: prg_bank_0[3:0] <= prg_din[3:0];
+				5'b000_01: prg_bank_0[7:4] <= prg_din[3:0];
+				5'b000_10: prg_bank_1[3:0] <= prg_din[3:0];
+				5'b000_11: prg_bank_1[7:4] <= prg_din[3:0];
+				5'b001_00: prg_bank_2[3:0] <= prg_din[3:0];
+				5'b001_01: prg_bank_2[7:4] <= prg_din[3:0];
+				5'b001_10: ram_enable <= prg_din[1:0];
+				5'b010_00: chr_bank_0[3:0] <= prg_din[3:0];
+				5'b010_01: chr_bank_0[7:4] <= prg_din[3:0];
+				5'b010_10: chr_bank_1[3:0] <= prg_din[3:0];
+				5'b010_11: chr_bank_1[7:4] <= prg_din[3:0];
+				5'b011_00: chr_bank_2[3:0] <= prg_din[3:0];
+				5'b011_01: chr_bank_2[7:4] <= prg_din[3:0];
+				5'b011_10: chr_bank_3[3:0] <= prg_din[3:0];
+				5'b011_11: chr_bank_3[7:4] <= prg_din[3:0];
+				5'b100_00: chr_bank_4[3:0] <= prg_din[3:0];
+				5'b100_01: chr_bank_4[7:4] <= prg_din[3:0];
+				5'b100_10: chr_bank_5[3:0] <= prg_din[3:0];
+				5'b100_11: chr_bank_5[7:4] <= prg_din[3:0];
+				5'b101_00: chr_bank_6[3:0] <= prg_din[3:0];
+				5'b101_01: chr_bank_6[7:4] <= prg_din[3:0];
+				5'b101_10: chr_bank_7[3:0] <= prg_din[3:0];
+				5'b101_11: chr_bank_7[7:4] <= prg_din[3:0];
+				5'b110_00: irq_reload[3:0] <= prg_din[3:0];
+				5'b110_01: irq_reload[7:4] <= prg_din[3:0];
+				5'b110_10: irq_reload[11:8] <= prg_din[3:0];
+				5'b110_11: irq_reload[15:12] <= prg_din[3:0];
+				5'b111_00: {irq_ack, irq_counter} <= {1'b1, irq_reload};
+				5'b111_01: {irq_ack, irq_enable} <= {1'b1, prg_din[3:0]};
+				5'b111_10: mirroring <= prg_din[1:0];
+
+			endcase
+
 	if (irq_ack)
 		irq <= 1'b0; // IRQ ACK
 end
