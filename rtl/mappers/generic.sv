@@ -163,6 +163,7 @@ reg [4:0] prgbank;
 reg [1:0] chrbank;
 reg nametable;
 wire four_screen = flags[16] && flags[14];
+wire battery = flags[25];
 
 always @(posedge clk) begin
 	if (~enable) begin
@@ -170,7 +171,8 @@ always @(posedge clk) begin
 		chrbank   <= 0;
 		nametable <= 0;
 	end else if (ce) begin
-		if (prg_ain[15] & prg_write) begin
+		// with battery bit set $C000-$FFFF else $8000-$FFFF
+		if (prg_ain[15] & (prg_ain[14] | ~battery) & prg_write) begin
 			{nametable, chrbank, prgbank}   <= prg_din[7:0];
 		end
 	end
