@@ -555,6 +555,7 @@ reg [7:0] chrreg7;
 reg prgmode;
 reg mirror;
 wire submapper1 = (flags[21] == 1); // default (0) default submapper; (1) Major League
+wire ram_support = (flags[29:26] == 4'd7); // Image Fight (Japan)
 reg [4:0] prgsel;
 reg [7:0] chrsel;
 
@@ -610,9 +611,12 @@ always begin
 	endcase
 end
 
+wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]};
+wire prg_is_ram = (prg_ain[15:13] == 3'b011) && ram_support; // $6000-$7FFF
+
 assign vram_ce = chr_ain[13];
-assign prg_aout = {4'b00_00, prgsel, prg_ain[12:0]};
-assign prg_allow = prg_ain[15] && !prg_write;
+assign prg_aout = prg_is_ram ? prg_ram : {4'b00_00, prgsel, prg_ain[12:0]};
+assign prg_allow = prg_ain[15] && !prg_write || prg_is_ram;
 assign chr_allow = flags[15];
 assign chr_aout = {4'b10_00, chrsel, chr_ain[9:0]};
 

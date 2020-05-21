@@ -377,7 +377,7 @@ end else if (ce) begin
 
 		if (mapper154)
 			mirroring <= !prg_din[6];
-		if (DxROM || mapper76)
+		if (DxROM || mapper76 || mapper88)
 			mirroring <= flags[14]; // Hard-wired mirroring
 	end
 	else if (regs_7e && prg_write && prg_ain[15:4]==12'h7EF) begin
