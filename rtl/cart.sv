@@ -126,12 +126,12 @@ MMC1 mmc1(
 
 //*****************************************************************************//
 // Name   : Tepples                                                            //
-// Mappers: 0, 2, 3, 7, 28, 94, 180                                            //
+// Mappers: 0, 2, 3, 7, 28, 94, 97, 180, 185                                   //
 // Status : Working                                                            //
 // Notes  : This mapper relies on open bus and bus conflict behavior.          //
 // Games  : Donkey Kong                                                        //
 //*****************************************************************************//
-wire mapper28_en = me[0] | me[2] | me[3] | me[7] | me[94] | me[180] | me[185] | me[28];
+wire mapper28_en = me[0] | me[2] | me[3] | me[7] | me[94] | me[97] | me[180] | me[185] | me[28];
 Mapper28 map28(
 	.clk        (clk),
 	.ce         (ce),
