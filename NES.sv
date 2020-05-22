@@ -482,7 +482,7 @@ always@(posedge clk) begin
 	end
 end
 
-wire fds_eject = swap_delay[2] | fds_swap_invert ? fds_btn : (clkcount[21] | fds_btn);
+wire fds_eject = swap_delay[2] | fds_swap_invert ? fds_btn : (clkcount[22] | fds_btn);
 
 reg [1:0] nes_ce;
 
@@ -638,7 +638,6 @@ wire fds = (mapper_flags[7:0] == 8'h14);
 wire nsf = (loader_flags[7:0] == 8'h1F);
 wire piano = (mapper_flags[30]);
 wire loader_busy, loader_done, loader_fail;
-wire bios_download;
 
 GameLoader loader
 (
@@ -646,14 +645,13 @@ GameLoader loader
 	.reset            ( loader_reset      ),
 	.downloading      ( downloading       ),
 	.filetype         ( {4'b0000, type_nsf, type_fds, type_nes, type_bios} ),
-	.is_bios          ( is_bios           ),
+	.is_bios          ( is_bios           ), // boot0 bios
 	.indata           ( loader_input      ),
 	.indata_clk       ( loader_clk        ),
 	.invert_mirroring ( mirroring_osd     ),
 	.mem_addr         ( loader_addr       ),
 	.mem_data         ( loader_write_data ),
 	.mem_write        ( loader_write      ),
-	.bios_download    ( bios_download     ),
 	.mapper_flags     ( loader_flags      ),
 	.busy             ( loader_busy       ),
 	.done             ( loader_done       ),
@@ -767,16 +765,17 @@ wire  [7:0] cpu_dout, cpu_din, ppu_dout, ppu_din;
 
 wire [2:0] emphasis;
 
-wire [7:0] xor_data;
 wire [7:0] bios_data;
+wire bios_download = downloading & type_bios;
 wire bios_write = (loader_write && bios_download && ~bios_loaded);
+
 reg bios_loaded = 0; // Only load bios once
 reg last_bios_download = 0;
 
 always @(posedge clk) begin
 	last_bios_download <= bios_download;
 	if(last_bios_download && ~bios_download) begin
-		bios_loaded = 1;
+		bios_loaded <= 1;
 	end
 end
 
@@ -786,7 +785,7 @@ dpram #("rtl/fdspatch.mif", 13) biospatch
 	.address_a(ioctl_addr[12:0]),
 	.wren_a(bios_write),
 	.data_a(bios_data ^ loader_write_data),
-	.q_a(xor_data),
+	.q_a(),
 	
 	.clock_b(clk),
 	.address_b(loader_addr[12:0]),
@@ -812,7 +811,7 @@ always @(posedge clk) begin
 	if(loader_write) begin
 		loader_write_triggered <= 1'b1;
 		loader_addr_mem <= loader_addr;
-		loader_write_data_mem <= bios_download ? loader_write_data ^ xor_data : loader_write_data;
+		loader_write_data_mem <= loader_write_data;
 		ioctl_wait <= 1;
 	end
 
@@ -1164,7 +1163,6 @@ module GameLoader
 	output reg [21:0] mem_addr,
 	output [7:0]  mem_data,
 	output        mem_write,
-	output reg    bios_download,
 	output [31:0] mapper_flags,
 	output reg    busy,
 	output reg    done,
@@ -1184,6 +1182,7 @@ reg [21:0] bytes_left;
 wire [7:0] prgrom = ines[4];	// Number of 16384 byte program ROM pages
 wire [7:0] chrrom = ines[5];	// Number of 8192 byte character ROM pages (0 indicates CHR RAM)
 wire has_chr_ram = (chrrom == 0);
+
 assign mem_data = (state == S_CLEARRAM || (~copybios && state == S_COPYBIOS)) ? 8'h00 : indata;
 assign mem_write = (((bytes_left != 0) && (state == S_LOADPRG || state == S_LOADCHR)
                     || (downloading && (state == S_LOADHEADER || state == S_LOADFDS || state == S_LOADNSFH || state == S_LOADNSFD))) && indata_clk)
@@ -1252,7 +1251,6 @@ always @(posedge clk) begin
 		mem_addr <= type_fds ? 22'b11_1100_0000_0000_0001_0000 :
 		            type_nsf ? 22'b00_0000_0000_0001_0000_0000   // Address for NSF Header (0x80 bytes)
 									: 22'b00_0000_0000_0000_0000_0000;  // Address for FDS : BIOS/PRG
-		bios_download <= 0;
 		copybios <= 0;
 	end else begin
 		case(state)
@@ -1279,7 +1277,6 @@ always @(posedge clk) begin
 					state <= S_LOADFDS;
 					mem_addr <= 22'b00_0000_0000_0000_0001_0000;  // Address for BIOS skip Header
 					bytes_left <= 21'b1;
-					bios_download <= 1;
 				 end else if(type_fds) begin // FDS
 					state <= S_LOADFDS;
 					mem_addr <= 22'b11_1100_0000_0000_0010_0000;  // Address for FDS no Header
@@ -1416,7 +1413,6 @@ always @(posedge clk) begin
 		S_DONE: begin // Read the next |bytes_left| bytes into |mem_addr|
 			 done <= 1;
 			 busy <= 0;
-			 bios_download <= 0;
 			end
 		endcase
 	end
