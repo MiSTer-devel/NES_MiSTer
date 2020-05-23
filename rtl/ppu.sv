@@ -96,12 +96,12 @@ always @(posedge clk) if (ce) begin
 		if (~is_rendering) begin
 			loopy_v <= loopy_v + (ppu_incr ? 15'd32 : 15'd1);
 		end else begin
-			// During rendering (on the pre-render line and the visible lines 0-239, provided either background or sprite rendering is 
-			// enabled), it will update v in an odd way, triggering a coarse X increment and a Y increment simultaneously (with normal 
-			// wrapping behavior). Internally, this is caused by the carry inputs to various sections of v being set up for rendering, 
-			// and the $2007 access triggering a "load next value" signal for all of v (when not rendering, the carry inputs are set up 
-			// to linearly increment v by either 1 or 32). This behavior is not affected by the status of the increment bit. The Young 
-			// Indiana Jones Chronicles uses this for some effects to adjust the Y scroll during rendering, and also Burai Fighter (U) 
+			// During rendering (on the pre-render line and the visible lines 0-239, provided either background or sprite rendering is
+			// enabled), it will update v in an odd way, triggering a coarse X increment and a Y increment simultaneously (with normal
+			// wrapping behavior). Internally, this is caused by the carry inputs to various sections of v being set up for rendering,
+			// and the $2007 access triggering a "load next value" signal for all of v (when not rendering, the carry inputs are set up
+			// to linearly increment v by either 1 or 32). This behavior is not affected by the status of the increment bit. The Young
+			// Indiana Jones Chronicles uses this for some effects to adjust the Y scroll during rendering, and also Burai Fighter (U)
 			// to draw the scorebar.
 			loopy_v[4:0] <= loopy_v[4:0] + 1'd1;
 			loopy_v[10] <= loopy_v[10] ^ (loopy_v[4:0] == 31);
@@ -325,7 +325,7 @@ wire [4:0] bits_orig =
 	bits6[1:0]  != 0 ? bits6 :
 	bits7[1:0]  != 0 || ~extra_sprites ? bits7 :
 	bits_ex;
-	
+
 wire [4:0] bits_ex =
 	bits8[1:0]  != 0 ? bits8 :
 	bits9[1:0]  != 0 ? bits9 :
@@ -441,7 +441,7 @@ end else if (ce) begin
 		318: oam_state <= STATE_REFRESH; // 19 cycles
 	endcase
 
-	// It is also the case that if OAMADDR is not less than eight when rendering starts, 
+	// It is also the case that if OAMADDR is not less than eight when rendering starts,
 	// the eight bytes starting at OAMADDR & 0xF8 are copied to the first eight bytes
 	// of OAM
 	if (rendering && cycle == 0) begin
@@ -535,7 +535,7 @@ end else if (ce) begin
 						end else begin
 							eval_counter <= eval_counter + 2'd1;
 							{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd1;
-							
+
 							if (&eval_counter) begin // end of copy
 								if (oam_temp_wren) begin
 									last_y <= oam[{oam_addr[7:2], 2'b00}];
@@ -602,7 +602,7 @@ end else if (ce) begin
 		oam_data <= oam[oam_addr]; // Keep it available in case it's read
 	end
 
-	// OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render 
+	// OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render
 	// and visible scanlines.
 	if (oam_state == STATE_FETCH && rendering)
 		oam_addr <= 0;
@@ -1078,7 +1078,7 @@ SpriteAddressGen address_gen(
 	.scanline  (scanline),
 	.obj_patt  (obj_patt),               // Object size and pattern table
 	.cycle     (cycle[2:0]),             // Cycle counter
-	.temp      (is_pre_render_line ? 8'hFF : oam_bus),                // Info from temp buffer.
+	.temp      (is_pre_render_line || ~is_rendering ? 8'hFF : oam_bus),                // Info from temp buffer.
 	.vram_addr (sprite_vram_addr),       // [out] VRAM Address that we want data from
 	.vram_data (vram_din),               // [in] Data at the specified address
 	.load      (spriteset_load),
@@ -1098,7 +1098,7 @@ SpriteAddressGenEx address_gen_ex(
 	.scanline       (scanline[7:0]),
 	.obj_patt       (obj_patt),               // Object size and pattern table
 	.cycle          (cycle[2:0]),             // Cycle counter
-	.temp           (is_pre_render_line ? 32'hFFFFFFFF : oam_bus_ex),                // Info from temp buffer.
+	.temp           (is_pre_render_line || ~is_rendering ? 32'hFFFFFFFF : oam_bus_ex),                // Info from temp buffer.
 	.vram_addr      (sprite_vram_addr_ex),    // [out] VRAM Address that we want data from
 	.vram_data      (vram_din),               // [in] Data at the specified address
 	.load           (spriteset_load_ex),
