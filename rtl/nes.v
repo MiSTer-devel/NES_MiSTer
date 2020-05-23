@@ -101,6 +101,9 @@ module NES(
 	output  [7:0] ppumem_dout,
 	input   [7:0] ppumem_din,
 
+	input  [20:0] prg_mask,
+	input  [19:0] chr_mask,
+
 	// Override for BRAM
 	output [17:0] bram_addr,      // address to access
 	input   [7:0] bram_din,       // Data from BRAM
@@ -475,6 +478,8 @@ cart_top multi_mapper (
 	.prg_allow         (prg_allow),               // Simulates internal CE/Locking
 	.chr_aout          (chr_linaddr),             // SDRAM adjusted CHR RAM address
 	.chr_allow         (chr_allow),               // Simulates internal CE/Locking
+	.prg_mask          (prg_mask),                // PRG Mask for SDRAM translation
+	.chr_mask          (chr_mask),                // CHR Mask for SDRAM translation
 	// External hardware interface (EEPROM)
 	.mapper_addr       (bram_addr),
 	.mapper_data_in    (bram_din),

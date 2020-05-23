@@ -32,6 +32,8 @@ module cart_top (
 	output reg        prg_allow,      // PRG Allow write access
 	output reg        prg_bus_write,  // PRG Data Driven
 	output reg        prg_conflict,   // PRG Data is ROM & prg_din
+	input      [20:0] prg_mask,       // PRG Mask for SDRAM translation
+	input      [19:0] chr_mask,       // CHR Mask for SDRAM translation
 	input             chr_ex,         // chr_addr is from an extra sprite read if high
 	input             chr_read,       // Read from CHR
 	input             chr_write,      // Write to CHR
@@ -1822,35 +1824,11 @@ vrc6_mixed snd_vrc6 (
 );
 
 
-wire [6:0] prg_mask;
-wire [6:0] chr_mask;
 wire [255:0] me;
 
 always @* begin
 	me = 256'd0;
 	me[flags[7:0]] = 1'b1;
-
-	case(flags[10:8])
-		0: prg_mask = 7'b0000000;
-		1: prg_mask = 7'b0000001;
-		2: prg_mask = 7'b0000011;
-		3: prg_mask = 7'b0000111;
-		4: prg_mask = 7'b0001111;
-		5: prg_mask = 7'b0011111;
-		6: prg_mask = 7'b0111111;
-		7: prg_mask = 7'b1111111;
-	endcase
-
-	case(flags[13:11])
-		0: chr_mask = 7'b0000000;
-		1: chr_mask = 7'b0000001;
-		2: chr_mask = 7'b0000011;
-		3: chr_mask = 7'b0000111;
-		4: chr_mask = 7'b0001111;
-		5: chr_mask = 7'b0011111;
-		6: chr_mask = 7'b0111111;
-		7: chr_mask = 7'b1111111;
-	endcase
 
 	// Mapper output to cart pins
 	{prg_aout,   prg_allow,   chr_aout,   vram_a10,   vram_ce,   chr_allow,   prg_dout,   chr_dout,   irq,   audio} =
@@ -1867,10 +1845,11 @@ always @* begin
 
 	// Address translation for SDRAM
 	if (prg_aout[21] == 1'b0)
-		prg_aout[20:0] = {prg_aout[20:14] & prg_mask, prg_aout[13:0]};
+		prg_aout[20:0] = (prg_aout[20:0] & prg_mask);
 
 	if (chr_aout[21:20] == 2'b10)
-		chr_aout[19:0] = {chr_aout[19:13] & chr_mask, chr_aout[12:0]};
+		chr_aout[19:0] = {chr_aout[19:0] & chr_mask};
+
 
 	// Remap the CHR address into VRAM, if needed.
 	chr_aout = vram_ce ? {11'b11_0000_0000_0, vram_a10, chr_ain[9:0]} : chr_aout;
