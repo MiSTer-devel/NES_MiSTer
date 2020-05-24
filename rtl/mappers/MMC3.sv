@@ -502,15 +502,26 @@ wire ram_protect_a = !MMC6 ? (ram_protect[prg_ain[12:11]])
 						:   !(ram6_enabled && ram6_enable && ram6_protect && prg_ain[12] == 1'b1 && prg_ain[9] == 1'b0)
 						 && !(ram6_enabled && ram_enable[3] && ram_protect[3] && prg_ain[12] == 1'b1 && prg_ain[9] == 1'b1);
 
-assign {chr_allow, chr_aout} =
-	(TQROM && chrsel[6])                    ? {1'b1, 9'b11_1111_111,    chrsel[2:0], chr_ain[9:0]} :   // TQROM 8kb CHR-RAM
-	(mapper74 && chrsel[7:1]==7'b0000100)   ? {1'b1, 11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
-	(mapper191 && chrsel[7])                ? {1'b1, 11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
-	(mapper192 && chrsel[7:2]==6'b000010)   ? {1'b1, 10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
-	(mapper194 && chrsel[7:1]==7'b0000000)  ? {1'b1, 11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
-	(mapper195 && chrsel[7:2]==6'b000000)   ? {1'b1, 10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
-	(four_screen_mirroring && chr_ain[13])  ? {1'b1, 9'b11_1111_111,   chr_ain[13], chr_ain[11:0]} :   // DxROM 8kb CHR-RAM
-							{flags[15], 3'b10_0, chrsel, chr_ain[9:0]};               // Standard MMC3
+wire chr_ram_cs =
+		TQROM                 ? chrsel[6]               :
+		mapper74              ? chrsel[7:1]==7'b0000100 :
+		mapper191             ? chrsel[7]               :
+		mapper192             ? chrsel[7:2]==6'b000010  :
+		mapper194             ? chrsel[7:1]==7'b0000000 :
+		mapper195             ? chrsel[7:2]==6'b000000  :
+		four_screen_mirroring ? chr_ain[13]             :
+		flags[15];
+
+assign chr_allow = chr_ram_cs;
+assign chr_aout =
+		(TQROM & chr_ram_cs)                 ? {9'b11_1111_111,    chrsel[2:0], chr_ain[9:0]} :   // TQROM 8kb CHR-RAM
+		(mapper74 & chr_ram_cs)              ? {11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
+		(mapper191 & chr_ram_cs)             ? {11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
+		(mapper192 & chr_ram_cs)             ? {10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
+		(mapper194 & chr_ram_cs)             ? {11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
+		(mapper195 & chr_ram_cs)             ? {10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
+		(four_screen_mirroring & chr_ram_cs) ? {9'b11_1111_111,   chr_ain[13], chr_ain[11:0]} :   // DxROM 8kb CHR-RAM
+		                                       {3'b10_0,                chrsel, chr_ain[9:0]};    // Standard MMC3
 
 assign prg_is_ram = (prg_ain[15:13] == 3'b011) && ((prg_ain[12:8] == 5'b1_1111) | ~internal_128) //(>= 'h6000 && < 'h8000) && (==7Fxx or external_ram)
 					&& ram_enable_a && !(ram_protect_a && prg_write);
@@ -583,7 +594,7 @@ reg ram_enable, ram_protect;       // RAM protection bits
 reg [5:0] prg_bank_0, prg_bank_1;  // Selected PRG banks
 wire prg_is_ram;
 
-reg [6:0] chr_bank_0, chr_bank_1;  // Selected CHR banks
+reg [7:0] chr_bank_0, chr_bank_1;  // Selected CHR banks
 reg [7:0] chr_bank_2, chr_bank_4;
 reg latch_0, latch_1;
 
@@ -609,8 +620,8 @@ end else if (ce) begin
 			3'b00_0: {chr_a12_invert, prg_rom_bank_mode, bank_select} <= {prg_din[7], prg_din[6], prg_din[2:0]}; // Bank select ($8000-$9FFE, even)
 			3'b00_1: begin // Bank data ($8001-$9FFF, odd)
 				case (bank_select)
-					0: chr_bank_0 <= prg_din[7:1];  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
-					1: chr_bank_1 <= prg_din[7:1];  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
+					0: chr_bank_0 <= {prg_din[7:1], 1'b0};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
+					1: chr_bank_1 <= {prg_din[7:1], 1'b0};  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
 					2: chr_bank_2 <= prg_din;       // Select 1 KB CHR bank at PPU $1000-$13FF (or $0000-$03FF);
 					3: ;                            // Select 1 KB CHR bank at PPU $1400-$17FF (or $0400-$07FF);
 					4: chr_bank_4 <= prg_din;       // Select 1 KB CHR bank at PPU $1800-$1BFF (or $0800-$0BFF);
@@ -670,22 +681,24 @@ wire [21:0] prg_aout_tmp = {3'b00_0,  prgsel, prg_ain[12:0]};
 // PPU reads $1FE0 through $1FEF: latch 1 is set to $FE for subsequent reads
 always @(posedge clk)
 if (ce && chr_read) begin
-	latch_0 <= (chr_ain & 14'h3fff) == 14'h0fd0 ? 1'd0 : (chr_ain & 14'h3fff) == 14'h0fe0 ? 1'd1 : latch_0;
-	latch_1 <= (chr_ain & 14'h3ff0) == 14'h1fd0 ? 1'd0 : (chr_ain & 14'h3ff0) == 14'h1fe0 ? 1'd1 : latch_1;
+	latch_0 <= (chr_ain_o       == 14'h0fd0) ? 1'd0 : (chr_ain_o       == 14'h0fe0) ? 1'd1 : latch_0;
+	latch_1 <= (chr_ain_o[13:4] == 10'h1fd ) ? 1'd0 : (chr_ain_o[13:4] == 10'h1fe ) ? 1'd1 : latch_1;
 end
 
 // The CHR bank to load. Each increment here is 1kb. So valid values are 0..255.
 reg [7:0] chrsel;
 always @* begin
 	casez({chr_ain[12] ^ chr_a12_invert, latch_0, latch_1})
-		3'b0_0?: chrsel = {chr_bank_0, chr_ain[10]}; // 2Kb page
-		3'b0_1?: chrsel = {chr_bank_1, chr_ain[10]}; // 2Kb page
+		3'b0_0?: chrsel = chr_bank_0;
+		3'b0_1?: chrsel = chr_bank_1;
 		3'b1_?0: chrsel = chr_bank_2;
 		3'b1_?1: chrsel = chr_bank_4;
 	endcase
 end
 
-assign {chr_allow, chr_aout} = {flags[15] && (chrsel < 4), 4'b10_00, chrsel, chr_ain[9:0]};
+assign chr_allow = !chrsel; // page 0 is CHR-RAM
+assign chr_aout = !chrsel ? {10'b11_1111_1111, chr_ain[11:0]} :   // 4KB CHR-RAM
+				{4'b10_00, chrsel[7:2], chr_ain[11:0]}; // CHR-ROM per 4KB page
 
 assign prg_is_ram = prg_ain >= 'h6000 && prg_ain < 'h8000 && ram_enable && !(ram_protect && prg_write);
 assign prg_allow = prg_ain[15] && !prg_write || prg_is_ram;
