@@ -502,15 +502,26 @@ wire ram_protect_a = !MMC6 ? (ram_protect[prg_ain[12:11]])
 						:   !(ram6_enabled && ram6_enable && ram6_protect && prg_ain[12] == 1'b1 && prg_ain[9] == 1'b0)
 						 && !(ram6_enabled && ram_enable[3] && ram_protect[3] && prg_ain[12] == 1'b1 && prg_ain[9] == 1'b1);
 
-assign {chr_allow, chr_aout} =
-	(TQROM && chrsel[6])                    ? {1'b1, 9'b11_1111_111,    chrsel[2:0], chr_ain[9:0]} :   // TQROM 8kb CHR-RAM
-	(mapper74 && chrsel[7:1]==7'b0000100)   ? {1'b1, 11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
-	(mapper191 && chrsel[7])                ? {1'b1, 11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
-	(mapper192 && chrsel[7:2]==6'b000010)   ? {1'b1, 10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
-	(mapper194 && chrsel[7:1]==7'b0000000)  ? {1'b1, 11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
-	(mapper195 && chrsel[7:2]==6'b000000)   ? {1'b1, 10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
-	(four_screen_mirroring && chr_ain[13])  ? {1'b1, 9'b11_1111_111,   chr_ain[13], chr_ain[11:0]} :   // DxROM 8kb CHR-RAM
-							{flags[15], 3'b10_0, chrsel, chr_ain[9:0]};               // Standard MMC3
+wire chr_ram_cs =
+		TQROM                 ? chrsel[6]               :
+		mapper74              ? chrsel[7:1]==7'b0000100 :
+		mapper191             ? chrsel[7]               :
+		mapper192             ? chrsel[7:2]==6'b000010  :
+		mapper194             ? chrsel[7:1]==7'b0000000 :
+		mapper195             ? chrsel[7:2]==6'b000000  :
+		four_screen_mirroring ? chr_ain[13]             :
+		flags[15];
+
+assign chr_allow = chr_ram_cs;
+assign chr_aout =
+		(TQROM & chr_ram_cs)                 ? {9'b11_1111_111,    chrsel[2:0], chr_ain[9:0]} :   // TQROM 8kb CHR-RAM
+		(mapper74 & chr_ram_cs)              ? {11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
+		(mapper191 & chr_ram_cs)             ? {11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
+		(mapper192 & chr_ram_cs)             ? {10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
+		(mapper194 & chr_ram_cs)             ? {11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
+		(mapper195 & chr_ram_cs)             ? {10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
+		(four_screen_mirroring & chr_ram_cs) ? {9'b11_1111_111,   chr_ain[13], chr_ain[11:0]} :   // DxROM 8kb CHR-RAM
+		                                       {3'b10_0,                chrsel, chr_ain[9:0]};    // Standard MMC3
 
 assign prg_is_ram = (prg_ain[15:13] == 3'b011) && ((prg_ain[12:8] == 5'b1_1111) | ~internal_128) //(>= 'h6000 && < 'h8000) && (==7Fxx or external_ram)
 					&& ram_enable_a && !(ram_protect_a && prg_write);
