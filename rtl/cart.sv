@@ -1028,9 +1028,9 @@ Mapper111 map111(
 //*****************************************************************************//
 // Name   : Mapper 165                                                         //
 // Mappers: 165                                                                //
-// Status : Corrupt Graphics                                                   //
+// Status : Working                                                            //
 // Notes  : Possibly merge-able with MMC3, only used for one bootleg game      //
-// Games  : Fire Emblem Gaiden (unl)                                           //
+// Games  : Fire Emblem (unl)                                                  //
 //*****************************************************************************//
 Mapper165 map165(
 	.clk        (clk),
