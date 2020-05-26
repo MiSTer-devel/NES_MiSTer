@@ -206,6 +206,7 @@ wire int_audio = 1;
 
 // Figure out file types
 reg type_bios, type_fds, type_gg, type_nsf, type_nes, type_palette, is_bios, downloading;
+reg [24:0] rom_sz;
 
 always_ff @(posedge clk) begin
 	reg old_downld;
@@ -236,6 +237,7 @@ always_ff @(posedge clk) begin
 	end else if (filetype[1:0] == 2'b11)
 		type_palette <= 1;
 
+	if(old_downld && ~downloading & (type_fds|type_nsf|type_nes)) rom_sz <= ioctl_addr - 1'd1;
 end
 
 assign BUTTONS[0] = osd_btn;
@@ -663,15 +665,7 @@ GameLoader loader
 	.rom_loaded       ( rom_loaded        )
 );
 
-reg [24:0] rom_sz;
-always @(posedge clk) begin : flags_block
-	reg done = 0;
-	
-	done <= loader_done;
-	if(~done & loader_done) rom_sz <= ioctl_addr - 1'd1;
-	
-	if (loader_done) mapper_flags <= loader_flags;
-end
+always @(posedge clk) if (loader_done) mapper_flags <= loader_flags;
 
 reg led_blink;
 always @(posedge clk) begin : blink_block
