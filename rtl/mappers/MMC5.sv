@@ -439,23 +439,26 @@ wire [15:0] DmaAddr;  // Address DMC wants to read
 reg odd_or_even;
 wire apu_irq;         // TODO: IRQ asserted
 
-always @(posedge clk) 
-if (~enable)
-	odd_or_even <= 0;
-else if (ce) 
-	odd_or_even <= ~odd_or_even;
-
+reg phi2;
+always @(posedge clk) begin
+	phi2 <= ce;
+	if (~enable)
+		odd_or_even <= 0;
+	else if (ce)
+		odd_or_even <= ~odd_or_even;
+end
 
 APU mmc5apu(
 	.MMC5           (1),
 	.clk            (clk),
 	.ce             (ce),
+	.PHI2           (phi2),
+	.CS             (apu_cs),
 	.reset          (~enable),
 	.ADDR           (addr_in[4:0]),
 	.DIN            (data_in),
 	.DOUT           (data_out),
-	.MW             (wren && apu_cs),
-	.MR             (rden && apu_cs),
+	.RW             (~wren),
 	.audio_channels (5'b10011),
 	.Sample         (audio),
 	.DmaReq         (DmaReq),

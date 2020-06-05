@@ -1,6 +1,6 @@
 // Copyright (c) 2012-2013 Ludvig Strigeus
 // This program is GPL Licensed. See COPYING for the full license.
-// 
+//
 // MiSTer port: Copyright (C) 2017,2018 Sorgelig
 
 module emu
@@ -131,7 +131,7 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 `define DEBUG_AUDIO
 
 // Status Bit Map:
-// 0         1         2         3          4         5         6 
+// 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
 // XXXXXXXXXXX XXXXXX  XXXXXXXXXXXX XXX
@@ -147,7 +147,7 @@ parameter CONF_STR = {
 	"OG,Disk Swap ("
 	};
 parameter CONF_STR2 = {
-	"),Auto,FDS button;",	
+	"),Auto,FDS button;",
 	"O5,Invert Mirroring,Off,On;",
 	"-;",
 	"C,Cheats;",
@@ -246,7 +246,7 @@ wire rom_loaded;
 reg osd_btn = 0;
 always @(posedge clk) begin : osd_block
 	integer timeout = 0;
-	
+
 	if(!RESET) begin
 		osd_btn <= 0;
 		if(timeout < 61000000) begin
@@ -362,7 +362,7 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 1)) hps_io
 	.ps2_kbd_led_status(0),
 
 	.ps2_mouse(ps2_mouse),
-	
+
 	.uart_mode(16'b000_11111_000_11111)
 );
 
@@ -585,7 +585,7 @@ always @(posedge clk) begin
 		old_pdl[i] <= pdl[i];
 		if($signed((pdl[i] - old_pdl[i])) > 4) num <= i[1:0];
 	end
-	
+
 	paddle <= pdl[num];
 end
 
@@ -614,12 +614,12 @@ always @(posedge clk) begin
 		end
 		if (!joypad_clock[0] && last_joypad_clock[0]) begin
 			joypad_bits <= {1'b0, joypad_bits[23:1]};
-		end	
+		end
 		if (!joypad_clock[1] && last_joypad_clock[1]) begin
 			joypad_bits2 <= {1'b0, joypad_bits2[23:1]};
 			joypad_d4 <= {~paddle_en, joypad_d4[7:1]};
 			joypad_d3 <= {1'b1, joypad_d3[7:1]};
-		end	
+		end
 		last_joypad_clock <= joypad_clock;
 	end
 end
@@ -666,10 +666,10 @@ GameLoader loader
 reg [24:0] rom_sz;
 always @(posedge clk) begin : flags_block
 	reg done = 0;
-	
+
 	done <= loader_done;
 	if(~done & loader_done) rom_sz <= ioctl_addr - 1'd1;
-	
+
 	if (loader_done) mapper_flags <= loader_flags;
 end
 
@@ -682,8 +682,8 @@ always @(posedge clk) begin : blink_block
 		led_blink <= ~led_blink;
 	end;
 end
- 
-wire reset_nes = 
+
+wire reset_nes =
 	~init_reset_n  ||
 	buttons[1]     ||
 	arm_reset      ||
@@ -713,6 +713,7 @@ wire gg_reset = (type_fds | type_gg | type_nes | type_nsf) && ioctl_download;
 NES nes (
 	.clk             (clk),
 	.reset_nes       (reset_nes),
+	.cold_reset      (downloading & (type_fds | type_nes)),
 	.sys_type        (status[24:23]),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 32'd0 : mapper_flags),
@@ -793,7 +794,7 @@ dpram #("rtl/fdspatch.mif", 13) biospatch
 	.wren_a(bios_write),
 	.data_a(bios_data ^ loader_write_data),
 	.q_a(),
-	
+
 	.clock_b(clk),
 	.address_b(loader_addr[12:0]),
 	.q_b(bios_data)
@@ -940,7 +941,7 @@ end else begin
 		disksidepixel[0] <= 1'b1;
 	else
 		disksidepixel[0] <= 1'b0;
-	
+
 	disksidepixel[1] <= ((cycle[0] == 1'b1) && (cycle[2:1] <= diskside));
 end
 end
@@ -957,7 +958,7 @@ always @(posedge clk) begin
 	if (ioctl_download && loader_clk && type_palette && ioctl_addr < 192) begin
 		pal_count <= pal_count == 2 ? 2'd0 : pal_count + 2'd1;
 		case (pal_count)
-			0: begin 
+			0: begin
 				pal_color[4:0] <= file_input[7:3];
 				//pal_write <= 0;
 				pal_index <= ioctl_addr > 0 ? pal_index + 1'd1 : pal_index;
@@ -1050,7 +1051,7 @@ always_ff @(posedge clk) begin
 			8:  gg_code[39:32]   <= file_input;  // Compare Bottom Word
 			9:  gg_code[47:40]   <= file_input;  // Compare Bottom Word
 			10: gg_code[55:48]   <= file_input;  // Compare top Word
-			11: gg_code[63:56]   <= file_input;  // Compare top Word                                       
+			11: gg_code[63:56]   <= file_input;  // Compare top Word
 			12: gg_code[7:0]     <= file_input;  // Replace Bottom Word
 			13: gg_code[15:8]    <= file_input;  // Replace Bottom Word
 			14: gg_code[23:16]   <= file_input;  // Replace Top Word
@@ -1070,7 +1071,7 @@ reg [1:0] last_diskside = 2'd3;
 always @(posedge clk) begin
 	old_downloading <= downloading;
 	if(~old_downloading & downloading) bk_ena <= 0;
-	
+
 	//Save file always mounted in the end of downloading state.
 	if(downloading && img_mounted && !img_readonly) bk_ena <= 1;
 	if(~bk_ena && loader_write_triggered) last_diskside <= loader_addr_mem[17:16];
@@ -1096,7 +1097,7 @@ mystate bk_state = S_IDLE;
 always @(posedge clk) begin : save_block
 	reg old_load = 0, old_save = 0, old_ack;
 	reg old_downloading = 0;
-	
+
 	old_downloading <= downloading;
 
 	old_load <= bk_load & bk_ena;
@@ -1104,7 +1105,7 @@ always @(posedge clk) begin : save_block
 	old_ack  <= sd_ack;
 	fds_busy <= (bk_state != S_IDLE) || bk_request;
 	old_fds_btn <= fds_btn;
-	
+
 	if(~old_ack & sd_ack) {sd_rd, sd_wr} <= 0;
 	if (swap_delay == {1'b1, clkcount[22:21]}) begin
 		swap_delay[2] <= 0;
@@ -1120,7 +1121,7 @@ always @(posedge clk) begin : save_block
 		if((~old_load & bk_load) | (~old_save & bk_save)) begin
 			bk_loading <= bk_load;
 			bk_request <= 1;
-		end else if((diskside_req_use != diskside) && ~downloading && ~bk_request && fds) begin		
+		end else if((diskside_req_use != diskside) && ~downloading && ~bk_request && fds) begin
 			diskside <= diskside_req_use;
 			swap_delay <= {1'b1, ~clkcount[22:21]};
 		end
@@ -1187,7 +1188,7 @@ reg [7:0] prgsize;
 reg [3:0] ctr;
 reg [7:0] ines[0:15]; // 16 bytes of iNES header
 reg [21:0] bytes_left;
-  
+
 wire [7:0] prgrom = ines[4];	// Number of 16384 byte program ROM pages
 wire [7:0] chrrom = ines[5];	// Number of 8192 byte character ROM pages (0 indicates CHR RAM)
 wire has_chr_ram = (chrrom == 0);
@@ -1231,7 +1232,7 @@ wire [2:0] prg_size = prgrom <= 1  ? 3'd0 :		// 16KB
                       prgrom <= 16 ? 3'd4 : 		// 256KB
                       prgrom <= 32 ? 3'd5 : 		// 512KB
                       prgrom <= 64 ? 3'd6 : 3'd7;// 1MB/2MB
-                        
+
 wire [2:0] chr_size = chrrom <= 1  ? 3'd0 : 		// 8KB
                       chrrom <= 2  ? 3'd1 : 		// 16KB
                       chrrom <= 4  ? 3'd2 : 		// 32KB
@@ -1239,7 +1240,7 @@ wire [2:0] chr_size = chrrom <= 1  ? 3'd0 : 		// 8KB
                       chrrom <= 16 ? 3'd4 : 		// 128KB
                       chrrom <= 32 ? 3'd5 : 		// 256KB
                       chrrom <= 64 ? 3'd6 : 3'd7;// 512KB/1MB
-  
+
 // differentiate dirty iNES1.0 headers from proper iNES2.0 ones
 wire is_dirty = !is_nes20 && ((ines[9][7:1] != 0)
 								  || (ines[10] != 0)
