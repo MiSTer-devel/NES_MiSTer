@@ -206,6 +206,7 @@ wire int_audio = 1;
 
 // Figure out file types
 reg type_bios, type_fds, type_gg, type_nsf, type_nes, type_palette, is_bios, downloading;
+reg [24:0] rom_sz;
 
 always_ff @(posedge clk) begin
 	reg old_downld;
@@ -236,6 +237,7 @@ always_ff @(posedge clk) begin
 	end else if (filetype[1:0] == 2'b11)
 		type_palette <= 1;
 
+	if(old_downld && ~downloading & (type_fds|type_nsf|type_nes)) rom_sz <= ioctl_addr - 1'd1;
 end
 
 assign BUTTONS[0] = osd_btn;
@@ -663,15 +665,7 @@ GameLoader loader
 	.rom_loaded       ( rom_loaded        )
 );
 
-reg [24:0] rom_sz;
-always @(posedge clk) begin : flags_block
-	reg done = 0;
-
-	done <= loader_done;
-	if(~done & loader_done) rom_sz <= ioctl_addr - 1'd1;
-
-	if (loader_done) mapper_flags <= loader_flags;
-end
+always @(posedge clk) if (loader_done) mapper_flags <= loader_flags;
 
 reg led_blink;
 always @(posedge clk) begin : blink_block
@@ -1191,7 +1185,8 @@ reg [21:0] bytes_left;
 
 wire [7:0] prgrom = ines[4];	// Number of 16384 byte program ROM pages
 wire [7:0] chrrom = ines[5];	// Number of 8192 byte character ROM pages (0 indicates CHR RAM)
-wire has_chr_ram = (chrrom == 0);
+wire [3:0] chrram = ines[11][3:0]; // NES 2.0 CHR-RAM size shift count (64 << count)
+wire has_chr_ram = ~is_nes20 ? (chrrom == 0) : |chrram;
 
 assign mem_data = (state == S_CLEARRAM || (~copybios && state == S_COPYBIOS)) ? 8'h00 : indata;
 assign mem_write = (((bytes_left != 0) && (state == S_LOADPRG || state == S_LOADCHR)
@@ -1205,21 +1200,19 @@ wire is_nes20_chr = (is_nes20 && (ines[9][7:4] == 4'hF));
 
 // NES 2.0 PRG & CHR sizes
 reg [21:0] prg_size2, chr_size2, prg_mask_a, chr_mask_a;
-reg [2:0] prg_mult, chr_mult;
+reg [21:0] chr_ram_size;
 always @(posedge clk) begin
-
 	// PRG
 	// ines[4][1:0]: Multiplier, actual value is MM*2+1 (1,3,5,7)
-	prg_mult <= {ines[4][1:0], 1'b0} + 3'd1;
 	// ines[4][7:2]: Exponent (2^E), 0-63
-	prg_size2 <= is_nes20_prg ? ({19'b0, prg_mult} << ines[4][7:2]) : {prgrom, 14'b0};
+	prg_size2 <= is_nes20_prg ? ({19'b0, ines[4][1:0], 1'b1} << ines[4][7:2]) : {prgrom, 14'b0};
 	prg_mask_a <= prg_size2 - 1'b1;
 
 	// CHR
-	chr_mult <= {ines[5][1:0], 1'b0} + 3'd1;
-	chr_size2 <= is_nes20_chr ? ({19'b0, chr_mult} << ines[5][7:2]) : {1'b0, chrrom, 13'b0};
-	chr_mask_a <= |chr_size2 ? (chr_size2 - 1'b1) : 22'h1FFF; // 0 is CHR RAM
+	chr_size2 <= is_nes20_chr ? ({19'b0, ines[5][1:0], 1'b1} << ines[5][7:2]) : {1'b0, chrrom, 13'b0};
+	chr_ram_size <= is_nes20 ? (22'd64 << chrram) : 22'h2000;
 
+	chr_mask_a <= |chr_size2 ? (chr_size2 - 1'b1) : (chr_ram_size - 1'b1);
 end
 
 assign prg_mask = prg_mask_a[20:0];
@@ -1420,13 +1413,13 @@ always @(posedge clk) begin
 				mem_addr <= 22'b00_0000_0000_0001_1000_0000; // Address for NSF Player (0x180)
 				bytes_left <= 21'h0E80;
 				ines[4] <= 8'h80;//no masking
-				ines[5] <= 8'h00;//0x2000
+				ines[5] <= 8'h00;//no CHR ROM
 				ines[6] <= 8'hF0;//Use Mapper 31
 				ines[7] <= 8'h18;//Use NES 2.0
 				ines[8] <= 8'hF0;//Use Submapper 15
 				ines[9] <= 8'h00;
 				ines[10] <= 8'h00;
-				ines[11] <= 8'h00;
+				ines[11] <= 8'h07;//NES 2.0 8KB CHR RAM
 				ines[12] <= 8'h00;
 				ines[13] <= 8'h00;
 				ines[14] <= 8'h00;
