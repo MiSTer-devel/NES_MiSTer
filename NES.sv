@@ -128,13 +128,11 @@ assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DD
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 
-`define DEBUG_AUDIO
-
 // Status Bit Map:
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXX  XXXXXXXXXXXX XXX
+// XXXXX XXXXX XXXXXX  XXXXXXXXXXXX XXX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -143,39 +141,39 @@ parameter CONF_STR = {
 	"H1F2,BIN,Load FDS BIOS;",
 	"-;",
 	"ONO,System Type,NTSC,PAL,Dendy;",
-	"-;",
-	"OG,Disk Swap ("
+	"OG,FDS Disk Swap ("
 	};
 parameter CONF_STR2 = {
 	"),Auto,FDS button;",
-	"O5,Invert Mirroring,Off,On;",
+	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Ninten.,Custom;",
+	"H3F3,PAL,Custom Palette;",
 	"-;",
 	"C,Cheats;",
 	"H2OK,Cheats Enabled,On,Off;",
 	"-;",
-	"D0R6,Load Backup RAM;",
-	"D0R7,Save Backup RAM;",
-	"D0OH,Autosave,Off,On;",
+	"OH,Autosave,Off,On;",
+	"H5D0R6,Load Backup RAM;",
+	"H5D0R7,Save Backup RAM;",
 	"-;",
-	"O8,Aspect Ratio,4:3,16:9;",
-	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	"O4,Hide Overscan,Off,On;",
-	"ORS,Mask Edges,Off,Left,Both,Auto;",
-	"OP,Extra Sprites,Off,On;",
-	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Ninten.,Custom;",
-	"H3F3,PAL,Custom Palette;",
-	"-;",
-	"O9,Swap Joysticks,No,Yes;",
-	"o02,Periphery,None,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2),Vaus,Vaus(A-Trigger),Powerpad,Family Trainer;",
-	"OL,Zapper Trigger,Mouse,Joystick;",
-	"OM,Crosshairs,On,Off;",
-	"OA,Multitap,Disabled,Enabled;",
-	"OQ,Serial Mode,None,SNAC;",
-	"H4OT,SNAC Zapper,Off,On;",
-`ifdef DEBUG_AUDIO
-	"-;",
-	"OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
-`endif
+	"P1,Audio & Video;",
+		"P1O8,Aspect Ratio,4:3,16:9;",
+		"P1O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+		"P1O4,Hide Overscan,Off,On;",
+		"P1ORS,Mask Edges,Off,Left,Both,Auto;",
+		"P1OP,Extra Sprites,Off,On;",
+		"P1-;",
+
+		"P1-;",
+		"P1OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
+	"P2,Input Options;",
+		"P2O9,Swap Joysticks,No,Yes;",
+		"P2OA,Multitap,Disabled,Enabled;",
+		"P2OQ,Serial Mode,None,SNAC;",
+		"H4P2OT,SNAC Zapper,Off,On;",
+		"P2o02,Periphery,None,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2),Vaus,Vaus(A-Trigger),Powerpad,Family Trainer;",
+		"P2-;",
+		"P2OL,Zapper Trigger,Mouse,Joystick;",
+		"P2OM,Crosshairs,On,Off;",
 	"-;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP/Mat 1,PP/Mat 2,PP/Mat 3,PP/Mat 4,PP/Mat 5,PP/Mat 6,PP/Mat 7,PP/Mat 8,PP/Mat 9,PP/Mat 10,PP/Mat 11,PP/Mat 12;",
@@ -190,19 +188,13 @@ wire [1:0] buttons;
 wire [63:0] status;
 
 wire arm_reset = status[0];
-wire mirroring_osd = status[5];
 wire pal_video = |status[24:23];
 wire hide_overscan = status[4] && ~pal_video;
 wire [3:0] palette2_osd = status[15:12];
 wire joy_swap = status[9] ^ (raw_serial || piano); // Controller on port 2 for Miracle Piano/SNAC
 wire fds_swap_invert = status[16];
-`ifdef DEBUG_AUDIO
 wire ext_audio = ~status[30];
 wire int_audio = ~status[31];
-`else
-wire ext_audio = 1;
-wire int_audio = 1;
-`endif
 
 // Figure out file types
 reg type_bios, type_fds, type_gg, type_nsf, type_nes, type_palette, is_bios, downloading;
@@ -221,7 +213,7 @@ always_ff @(posedge clk) begin
 			2'b00: begin type_bios <= 1; is_bios <= 1; downloading <= ioctl_downloading; end
 			2'b01: begin type_nes <= 1; downloading <= ioctl_downloading; end
 			2'b10: begin type_fds <= 1; downloading <= ioctl_downloading; end
-			2'b11: begin type_nsf <= 1; downloading <= ioctl_downloading; end
+			2'b11: begin type_palette <= 1; end
 		endcase
 	else if(&filetype)
 		type_gg <= 1;
@@ -337,7 +329,7 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 1)) hps_io
 	.paddle_3(pdl[3]),
 
 	.status(status),
-	.status_menumask({~raw_serial, (palette2_osd != 4'd14), ~gg_avail, bios_loaded, ~bk_ena}),
+	.status_menumask({status[17], ~raw_serial, (palette2_osd != 4'd14), ~gg_avail, bios_loaded, ~bk_ena}),
 
 	.gamma_bus(gamma_bus),
 
@@ -652,7 +644,6 @@ GameLoader loader
 	.is_bios          ( is_bios           ), // boot0 bios
 	.indata           ( loader_input      ),
 	.indata_clk       ( loader_clk        ),
-	.invert_mirroring ( mirroring_osd     ),
 	.mem_addr         ( loader_addr       ),
 	.mem_data         ( loader_write_data ),
 	.mem_write        ( loader_write      ),
@@ -1161,7 +1152,6 @@ module GameLoader
 	input         is_bios,
 	input   [7:0] indata,
 	input         indata_clk,
-	input         invert_mirroring,
 	output reg [21:0] mem_addr,
 	output [7:0]  mem_data,
 	output        mem_write,
@@ -1254,7 +1244,7 @@ wire has_saves = ines[6][1];
 // ines[6][3] is 4 screen mode
 // ines[8][7:4] is NES 2.0 submapper
 // ines[10][3:0] is NES 2.0 PRG RAM shift size (64 << size)
-assign mapper_flags = {1'b0, piano, prgram, has_saves, ines2mapper, ines[6][3], has_chr_ram, ines[6][0] ^ invert_mirroring, chr_size, prg_size, mapper};
+assign mapper_flags = {1'b0, piano, prgram, has_saves, ines2mapper, ines[6][3], has_chr_ram, ines[6][0], chr_size, prg_size, mapper};
 
 reg [3:0] clearclk; //Wait for SDRAM
 reg copybios;

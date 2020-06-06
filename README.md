@@ -1,4 +1,4 @@
-# NES for [MiSTer](https://github.com/MiSTer-devel/Main_MiSTer/wiki) 
+# NES for [MiSTer](https://github.com/MiSTer-devel/Main_MiSTer/wiki)
 
 This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://github.com/strigeus/fpganes) by Ludvig Strigeus and ported to MiSTer.
 
@@ -21,7 +21,7 @@ Copy the NES_\*.rbf file to the root of the SD card. Create a **NES** folder on 
 - boot0.rom = FDS BIOS file.  Will be used for any FDS images loaded
 - boot1.rom = NES Cart file.  Can be used with boot0.rom (BIOS) in place
 - boot2.rom = FDS image file.  Requires boot0.rom (BIOS).  Use a blank FDS (header only) to boot the FDS BIOS without a disk image.
-- boot3.rom = NFS image file.  Can be used with boot0.rom (BIOS) in place
+- boot3.rom = PAL file. It can be used to set your default custom palette. Save the menu option on "Custom" to apply immediately.
 
 ## Famicom Disk System Usage
 Before loading \*.FDS files, you must first load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom and placed in the same folder as the ROMs (NES).  Alternatively, it can be loaded from the OSD if boot0.rom doesn't exist. After loading the core and the bios you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the FDS button on the player 1 controller. The "Disk Swap" OSD option manually controls the disk side.  Each button press increments the disk side.  Press and hold the fds button to eject and increment the disk side in this mode.  Some games only work correctly in manual disk swap mode, and require holding the FDS button for up to a few seconds (Gall Force,...).
