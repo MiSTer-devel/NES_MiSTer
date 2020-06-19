@@ -33,7 +33,26 @@ module emu
 	output        VGA_VS,
 	output        VGA_DE,    // = ~(VBlank | HBlank)
 	output        VGA_F1,
-	output  [1:0] VGA_SL,
+	output [1:0]  VGA_SL,
+
+	/*
+	// Use framebuffer from DDRAM (USE_FB=1 in qsf)
+	// FB_FORMAT:
+	//    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
+	//    [3]   : 0=16bits 565 1=16bits 1555
+	//    [4]   : 0=RGB  1=BGR (for 16/24/32 modes)
+	//
+	// FB_STRIDE either 0 (rounded to 256 bytes) or multiple of 16 bytes.
+
+	output        FB_EN,
+	output  [4:0] FB_FORMAT,
+	output [11:0] FB_WIDTH,
+	output [11:0] FB_HEIGHT,
+	output [31:0] FB_BASE,
+	output [13:0] FB_STRIDE,
+	input         FB_VBL,
+	input         FB_LL,
+	*/
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
 
@@ -48,9 +67,10 @@ module emu
 	// b[0]: osd button
 	output  [1:0] BUTTONS,
 
+	input         CLK_AUDIO, // 24.576 MHz
 	output [15:0] AUDIO_L,
 	output [15:0] AUDIO_R,
-	output        AUDIO_S, // 1 - signed audio samples, 0 - unsigned
+	output        AUDIO_S,   // 1 - signed audio samples, 0 - unsigned
 	output  [1:0] AUDIO_MIX, // 0 - no mix, 1 - 25%, 2 - 50%, 3 - 100% (mono)
 
 	//ADC
@@ -109,8 +129,8 @@ module emu
 
 assign ADC_BUS  = 'Z;
 
-assign AUDIO_S   = 1'b1;
-assign AUDIO_L   = |mute_cnt ? 16'd0 : sample_signed[15:0];
+assign AUDIO_S   = 0;
+assign AUDIO_L   = |mute_cnt ? 16'd0 : sample[15:0];
 assign AUDIO_R   = AUDIO_L;
 assign AUDIO_MIX = 0;
 
@@ -141,7 +161,7 @@ parameter CONF_STR = {
 	"H1F2,BIN,Load FDS BIOS;",
 	"-;",
 	"ONO,System Type,NTSC,PAL,Dendy;",
-	"OG,FDS Disk Swap ("
+	"OG,Disk Swap ("
 	};
 parameter CONF_STR2 = {
 	"),Auto,FDS button;",
@@ -251,20 +271,7 @@ always @(posedge clk) begin : osd_block
 	end
 end
 
-
-// Remove DC offset and convert to signed
-// At this CE rate, it also slightly lowers the bass to
-// better imitate the real high pass of the system.
-jt49_dcrm2 #(.sw(16)) dc_filter (
-	.clk  (clk),
-	.cen  (apu_ce & &filter_cnt),
-	.rst  (reset_nes),
-	.din  (sample),
-	.dout (sample_signed)
-);
-
 wire apu_ce;
-wire signed [15:0] sample_signed;
 
 reg [20:0] mute_cnt = 21'h1FFFFF;
 
@@ -274,13 +281,6 @@ always_ff @(posedge clk) begin
 		mute_cnt <= 21'h1FFFFF;
 	else if (|mute_cnt)
 		mute_cnt <= mute_cnt - 1'b1;
-end
-
-// Filter CE impacts frequency response
-reg [2:0] filter_cnt;
-always_ff @(posedge clk) begin
-	if (apu_ce)
-		filter_cnt<= filter_cnt + 1'b1;
 end
 
 reg  [31:0] sd_lba;
