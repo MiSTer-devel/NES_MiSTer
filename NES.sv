@@ -199,6 +199,11 @@ parameter CONF_STR2 = {
 	"J1,A,B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP/Mat 1,PP/Mat 2,PP/Mat 3,PP/Mat 4,PP/Mat 5,PP/Mat 6,PP/Mat 7,PP/Mat 8,PP/Mat 9,PP/Mat 10,PP/Mat 11,PP/Mat 12;",
 	"jn,A,B,Select,Start,L,,R|P;",
 	"jp,B,Y,Select,Start,L,,R|P;",
+	"I,",
+	"Disk 1A,",
+	"Disk 1B,",
+	"Disk 2A,",
+	"Disk 2B;",
 	"V,v",`BUILD_DATE
 };
 
@@ -308,11 +313,11 @@ wire        forced_scandoubler;
 
 wire [21:0] gamma_bus;
 
-hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 1)) hps_io
+hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 2)) hps_io
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-	.conf_str({CONF_STR, diskside==3?"3":diskside==2?"2":diskside==1?"1":"0", CONF_STR2}),
+	.conf_str({CONF_STR, diskside==3?"2B":diskside==2?"2A":diskside==1?"1B":"1A", CONF_STR2}),
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
@@ -330,6 +335,8 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 1)) hps_io
 
 	.status(status),
 	.status_menumask({status[17], ~raw_serial, (palette2_osd != 4'd14), ~gg_avail, bios_loaded, ~bk_ena}),
+	.info_req(diskside_info),
+	.info({1'b0,diskside} + 3'd1),
 
 	.gamma_bus(gamma_bus),
 
@@ -692,6 +699,13 @@ wire light;
 
 wire [1:0] diskside_req;
 reg [1:0] diskside;
+reg       diskside_info;
+always @(posedge clk) begin
+	reg [1:0] old_diskside;
+	
+	old_diskside <= diskside;
+	diskside_info <= (old_diskside != diskside);
+end
 
 wire gg_reset = (type_fds | type_gg | type_nes | type_nsf) && ioctl_download;
 
@@ -907,31 +921,6 @@ always @(posedge clk) begin
 end
 
 ///////////////////////////////////////////////////
-
-wire hit_x = (9'h027 >= cycle && 9'h020 <= cycle);
-wire hit_y = (9'h0D7 >= scanline && 9'hD0 <= scanline);
-reg displayp;
-reg [1:0] disksidepixel;
-
-always @(posedge clk) begin
-if (reset_nes) begin
-	disksidepixel <= 0;
-	displayp <= 0;
-end else begin
-	if (swap_delay == {1'b0, ~clkcount[22:21]})
-		displayp = 1'b0;
-	if (swap_delay[2] || (fds_eject && fds_swap_invert))
-		displayp = 1'b1;
-	if (hit_x && hit_y && displayp)
-		disksidepixel[0] <= 1'b1;
-	else
-		disksidepixel[0] <= 1'b0;
-
-	disksidepixel[1] <= ((cycle[0] == 1'b1) && (cycle[2:1] <= diskside));
-end
-end
-
-///////////////////////////////////////////////////
 // palette loader
 reg [14:0] pal_color;
 reg [5:0] pal_index;
@@ -993,7 +982,7 @@ video video
 	.load_color_data(pal_color),
 	.load_color_index(pal_index),
 	.emphasis(emphasis),
-	.reticle(displayp ? disksidepixel : ~status[22] ? reticle : 2'b00),
+	.reticle(~status[22] ? reticle : 2'b00),
 	.pal_video(pal_video),
 	.ce_pix(ce_pix)
 );
