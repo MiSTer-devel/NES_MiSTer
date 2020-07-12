@@ -1,4 +1,4 @@
-# NES for [MiSTer](https://github.com/MiSTer-devel/Main_MiSTer/wiki) 
+# NES for [MiSTer](https://github.com/MiSTer-devel/Main_MiSTer/wiki)
 
 This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://github.com/strigeus/fpganes) by Ludvig Strigeus and ported to MiSTer.
 
@@ -21,10 +21,10 @@ Copy the NES_\*.rbf file to the root of the SD card. Create a **NES** folder on 
 - boot0.rom = FDS BIOS file.  Will be used for any FDS images loaded
 - boot1.rom = NES Cart file.  Can be used with boot0.rom (BIOS) in place
 - boot2.rom = FDS image file.  Requires boot0.rom (BIOS).  Use a blank FDS (header only) to boot the FDS BIOS without a disk image.
-- boot3.rom = NFS image file.  Can be used with boot0.rom (BIOS) in place
+- boot3.rom = PAL file. It can be used to set your default custom palette. Save the menu option on "Custom" to apply immediately.
 
 ## Famicom Disk System Usage
-Before loading \*.FDS files, you must first load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom and placed in the same folder as the ROMs (NES).  Alternatively, it can be loaded from the OSD if boot0.rom doesn't exist. After loading the core and the bios you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the FDS button on the player 1 controller. The "Disk Swap" OSD option manually controls the disk side.  Each button press increments the disk side.  Press and hold the fds button to eject and increment the disk side in this mode.  Some games only work correctly in manual disk swap mode, and require holding the FDS button for up to a few seconds (Doki Doki Panic, Bio Miracle Bokutte Upa, Gall Force,...).
+Before loading \*.FDS files, you must first load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom and placed in the same folder as the ROMs (NES).  Alternatively, it can be loaded from the OSD if boot0.rom doesn't exist. After loading the core and the bios you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the FDS button on the player 1 controller. The "Disk Swap" OSD option manually controls the disk side.  Each button press increments the disk side.  Press and hold the fds button to eject and increment the disk side in this mode.  Some games only work correctly in manual disk swap mode, and require holding the FDS button for up to a few seconds (Gall Force,...).
 
 ## Extra Sprites
 This feature will double the number of sprites drawn per scanlines, decreasing the flickering sprites that NES is known for. Some games relied on the 8 sprite behavior to work correctly, such as Simon's Quest swamps. Other mappers may be impacted by using extra sprites. While it works well in most games, glitches may occur with this enabled.
@@ -47,7 +47,7 @@ The Miracle Piano is a MIDI keyboard compatible with the Miracle Piano Education
 |**32**|**33**|**34**|**35**|**36**|**37**|**38**||~~40~~|**41**|**42**|~~43~~|~~44~~|~~45~~|**46**|**47**|
 |**48**|~~49~~|~~50~~|~~51~~|~~52~~|~~53~~|~~54~~|~~55~~|~~56~~|~~57~~|~~58~~|~~59~~|~~60~~|~~61~~|~~62~~|~~63~~|
 |**64**|**65**|**66**|**67**|**68**|**69**|**70**|**71**|**72**|**73**|**74**|**75**|**76**|**77**|**78**|**79**|
-|**80**|~~81~~|**82**|~~83~~|~~84~~|**85**|**86**|**87**|**88**|**89**|**90**|~~91~~|**92**|**93**|**94**|**95**|
+|**80**|~~81~~|**82**|**83**|~~84~~|**85**|**86**|**87**|**88**|**89**|**90**|~~91~~|**92**|**93**|**94**|**95**|
 |~~96~~|**97**||~~99~~|~~100~~|**101**|||~~104~~|**105**||**107**|~~108~~|~~109~~|~~110~~|**111**|
 |**112**|**113**|~~114~~|~~115~~|~~116~~|~~117~~|**118**|**119**|~~120~~||~~122~~|~~123~~||~~125~~|~~126~~|~~127~~|
 |~~128~~|~~129~~|~~130~~|~~131~~|**132**|**133**|~~134~~|~~135~~|**136**|**137**|**138**|**139**|**140**|**141**|~~142~~|**143**|

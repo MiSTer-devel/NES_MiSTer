@@ -2,7 +2,7 @@
 // hps_io.v
 //
 // Copyright (c) 2014 Till Harbaum <till@harbaum.org>
-// Copyright (c) 2017-2019 Alexey Melnikov
+// Copyright (c) 2017-2020 Alexey Melnikov
 //
 // This source file is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published
@@ -18,14 +18,11 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 ///////////////////////////////////////////////////////////////////////
+// altera message_off 10665
 
 //
 // Use buffer to access SD card. It's time-critical part.
 //
-// for synchronous projects default value for PS2DIV is fine for any frequency of system clock.
-// clk_ps2 = CLK_SYS/(PS2DIV*2)
-//
-
 // WIDE=1 for 16 bit file I/O
 // VDNUM 1-4
 module hps_io #(parameter STRLEN=0, PS2DIV=0, WIDE=0, VDNUM=1, PS2WE=0)
@@ -36,12 +33,15 @@ module hps_io #(parameter STRLEN=0, PS2DIV=0, WIDE=0, VDNUM=1, PS2WE=0)
 	// parameter STRLEN and the actual length of conf_str have to match
 	input [(8*STRLEN)-1:0] conf_str,
 
+	// buttons up to 32
 	output reg [31:0] joystick_0,
 	output reg [31:0] joystick_1,
 	output reg [31:0] joystick_2,
 	output reg [31:0] joystick_3,
 	output reg [31:0] joystick_4,
 	output reg [31:0] joystick_5,
+	
+	// analog -127..+127, Y: [15:8], X: [7:0]
 	output reg [15:0] joystick_analog_0,
 	output reg [15:0] joystick_analog_1,
 	output reg [15:0] joystick_analog_2,
@@ -49,13 +49,33 @@ module hps_io #(parameter STRLEN=0, PS2DIV=0, WIDE=0, VDNUM=1, PS2WE=0)
 	output reg [15:0] joystick_analog_4,
 	output reg [15:0] joystick_analog_5,
 
+	// paddle 0..255
+	output reg  [7:0] paddle_0,
+	output reg  [7:0] paddle_1,
+	output reg  [7:0] paddle_2,
+	output reg  [7:0] paddle_3,
+	output reg  [7:0] paddle_4,
+	output reg  [7:0] paddle_5,
+
+	// spinner [7:0] -128..+127, [8] - toggle with every update
+	output reg  [8:0] spinner_0,
+	output reg  [8:0] spinner_1,
+	output reg  [8:0] spinner_2,
+	output reg  [8:0] spinner_3,
+	output reg  [8:0] spinner_4,
+	output reg  [8:0] spinner_5,
+
 	output      [1:0] buttons,
 	output            forced_scandoubler,
+	output            direct_video,
 
-	output reg [31:0] status,
-	input      [31:0] status_in,
+	output reg [63:0] status,
+	input      [63:0] status_in,
 	input             status_set,
 	input      [15:0] status_menumask,
+
+	input             info_req,
+	input       [7:0] info,
 
 	//toggle to force notify of video mode change
 	input             new_vmode,
@@ -126,31 +146,42 @@ module hps_io #(parameter STRLEN=0, PS2DIV=0, WIDE=0, VDNUM=1, PS2WE=0)
 
 	// [24] - toggles with every event
 	output reg [24:0] ps2_mouse = 0,
-	output reg [15:0] ps2_mouse_ext = 0 // 15:8 - reserved(additional buttons), 7:0 - wheel movements
+	output reg [15:0] ps2_mouse_ext = 0, // 15:8 - reserved(additional buttons), 7:0 - wheel movements
+
+	inout      [21:0] gamma_bus,
+
+	// for core-specific extensions
+	inout      [35:0] EXT_BUS
 );
+
+assign EXT_BUS[31:16] = HPS_BUS[31:16];
+assign EXT_BUS[35:33] = HPS_BUS[35:33];
+
+localparam MAX_W = $clog2((512 > (STRLEN+1)) ? 512 : (STRLEN+1))-1;
 
 localparam DW = (WIDE) ? 15 : 7;
 localparam AW = (WIDE) ?  7 : 8;
 localparam VD = VDNUM-1;
 
-wire        io_wait  = ioctl_wait;
-wire        io_enable= |HPS_BUS[35:34];
 wire        io_strobe= HPS_BUS[33];
+wire        io_enable= HPS_BUS[34];
+wire        fp_enable= HPS_BUS[35];
 wire        io_wide  = (WIDE) ? 1'b1 : 1'b0;
 wire [15:0] io_din   = HPS_BUS[31:16];
 reg  [15:0] io_dout;
 
-assign HPS_BUS[37]   = io_wait;
+assign HPS_BUS[37]   = ioctl_wait;
 assign HPS_BUS[36]   = clk_sys;
 assign HPS_BUS[32]   = io_wide;
-assign HPS_BUS[15:0] = io_dout;
+assign HPS_BUS[15:0] = EXT_BUS[32] ? EXT_BUS[15:0] : io_dout;
 
-reg [7:0] cfg;
+reg [15:0] cfg;
 assign buttons = cfg[1:0];
 //cfg[2] - vga_scaler handled in sys_top
 //cfg[3] - csync handled in sys_top
 assign forced_scandoubler = cfg[4];
 //cfg[5] - ypbpr handled in sys_top
+assign direct_video = cfg[10];
 
 // command byte read by the io controller
 wire [15:0] sd_cmd =
@@ -169,129 +200,51 @@ wire [15:0] sd_cmd =
 	sd_rd[0]
 };
 
-///////////////// calc video parameters //////////////////
+/////////////////////////////////////////////////////////
 
-wire clk_100 = HPS_BUS[43];
-wire clk_vid = HPS_BUS[42];
-wire ce_pix  = HPS_BUS[41];
-wire de      = HPS_BUS[40];
-wire hs      = HPS_BUS[39];
-wire vs      = HPS_BUS[38];
-wire vs_hdmi = HPS_BUS[44];
-wire f1      = HPS_BUS[45];
+wire [15:0] vc_dout;
+video_calc video_calc
+(
+	.clk_100(HPS_BUS[43]),
+	.clk_vid(HPS_BUS[42]),
+	.clk_sys(clk_sys),
+	.ce_pix(HPS_BUS[41]),
+	.de(HPS_BUS[40]),
+	.hs(HPS_BUS[39]),
+	.vs(HPS_BUS[38]),
+	.vs_hdmi(HPS_BUS[44]),
+	.f1(HPS_BUS[45]),
+	.new_vmode(new_vmode),
 
-reg [31:0] vid_hcnt = 0;
-reg [31:0] vid_vcnt = 0;
-reg  [7:0] vid_nres = 0;
-reg  [1:0] vid_int  = 0;
-integer hcnt;
-
-always @(posedge clk_vid) begin
-	integer vcnt;
-	reg old_vs= 0, old_de = 0, old_vmode = 0;
-	reg [3:0] resto = 0;
-	reg calch = 0;
-
-	if(ce_pix) begin
-		old_vs <= vs;
-		old_de <= de;
-
-		if(~vs & ~old_de & de) vcnt <= vcnt + 1;
-		if(calch & de) hcnt <= hcnt + 1;
-		if(old_de & ~de) calch <= 0;
-
-		if(old_vs & ~vs) begin
-			vid_int <= {vid_int[0],f1};
-			if(~f1) begin
-				if(hcnt && vcnt) begin
-					old_vmode <= new_vmode;
-
-					//report new resolution after timeout
-					if(resto) resto <= resto + 1'd1;
-					if(vid_hcnt != hcnt || vid_vcnt != vcnt || old_vmode != new_vmode) resto <= 1;
-					if(&resto) vid_nres <= vid_nres + 1'd1;
-					vid_hcnt <= hcnt;
-					vid_vcnt <= vcnt;
-				end
-				vcnt <= 0;
-				hcnt <= 0;
-				calch <= 1;
-			end
-		end
-	end
-end
-
-reg [31:0] vid_htime = 0;
-reg [31:0] vid_vtime = 0;
-reg [31:0] vid_pix = 0;
-
-always @(posedge clk_100) begin
-	integer vtime, htime, hcnt;
-	reg old_vs, old_hs, old_vs2, old_hs2, old_de, old_de2;
-	reg calch = 0;
-
-	old_vs <= vs;
-	old_hs <= hs;
-
-	old_vs2 <= old_vs;
-	old_hs2 <= old_hs;
-
-	vtime <= vtime + 1'd1;
-	htime <= htime + 1'd1;
-
-	if(~old_vs2 & old_vs) begin
-		vid_pix <= hcnt;
-		vid_vtime <= vtime;
-		vtime <= 0;
-		hcnt <= 0;
-	end
-
-	if(old_vs2 & ~old_vs) calch <= 1;
-
-	if(~old_hs2 & old_hs) begin
-		vid_htime <= htime;
-		htime <= 0;
-	end
-
-	old_de   <= de;
-	old_de2  <= old_de;
-
-	if(calch & old_de) hcnt <= hcnt + 1;
-	if(old_de2 & ~old_de) calch <= 0;
-end
-
-reg [31:0] vid_vtime_hdmi;
-always @(posedge clk_100) begin
-	integer vtime;
-	reg old_vs, old_vs2;
-
-	old_vs <= vs_hdmi;
-	old_vs2 <= old_vs;
-
-	vtime <= vtime + 1'd1;
-
-	if(~old_vs2 & old_vs) begin
-		vid_vtime_hdmi <= vtime;
-		vtime <= 0;
-	end
-end
-
+	.par_num(byte_cnt[3:0]),
+	.dout(vc_dout)
+);
 
 /////////////////////////////////////////////////////////
+
+assign     gamma_bus[20:0] = {clk_sys, gamma_en, gamma_wr, gamma_wr_addr, gamma_value};
+reg        gamma_en;
+reg        gamma_wr;
+reg  [9:0] gamma_wr_addr;
+reg  [7:0] gamma_value;
 
 reg [31:0] ps2_key_raw = 0;
 wire       pressed  = (ps2_key_raw[15:8] != 8'hf0);
 wire       extended = (~pressed ? (ps2_key_raw[23:16] == 8'he0) : (ps2_key_raw[15:8] == 8'he0));
 
+reg [MAX_W:0] byte_cnt;
+
 always@(posedge clk_sys) begin
 	reg [15:0] cmd;
-	reg  [9:0] byte_cnt;   // counts bytes
 	reg  [2:0] b_wr;
-	reg  [2:0] stick_idx;
+	reg  [3:0] stick_idx;
+	reg  [3:0] pdsp_idx;
 	reg        ps2skip = 0;
 	reg  [3:0] stflg = 0;
-	reg [31:0] status_req;
+	reg [63:0] status_req;
 	reg        old_status_set = 0;
+	reg        old_info = 0;
+	reg  [7:0] info_n = 0;
 
 	old_status_set <= status_set;
 	if(~old_status_set & status_set) begin
@@ -299,11 +252,16 @@ always@(posedge clk_sys) begin
 		status_req <= status_in;
 	end
 
+	old_info <= info_req;
+	if(~old_info & info_req) info_n <= info;
+
 	sd_buff_wr <= b_wr[0];
 	if(b_wr[2] && (~&sd_buff_addr)) sd_buff_addr <= sd_buff_addr + 1'b1;
 	b_wr <= (b_wr<<1);
 
 	if(PS2DIV) {kbd_rd,kbd_we,mouse_rd,mouse_we} <= 0;
+
+	gamma_wr <= 0;
 
 	if(~io_enable) begin
 		if(cmd == 4 && !ps2skip) ps2_mouse[24] <= ~ps2_mouse[24];
@@ -321,53 +279,56 @@ always@(posedge clk_sys) begin
 		sd_ack_conf <= 0;
 		io_dout <= 0;
 		ps2skip <= 0;
-	end else begin
-		if(io_strobe) begin
+		img_mounted <= 0;
+	end
+	else if(io_strobe) begin
 
-			io_dout <= 0;
-			if(~&byte_cnt) byte_cnt <= byte_cnt + 1'd1;
+		io_dout <= 0;
+		if(~&byte_cnt) byte_cnt <= byte_cnt + 1'd1;
 
-			if(byte_cnt == 0) begin
-				cmd <= io_din;
+		if(byte_cnt == 0) begin
+			cmd <= io_din;
 
-				case(io_din)
-					'h19: sd_ack_conf <= 1;
-					'h17,
-					'h18: sd_ack <= 1;
-					'h29: io_dout <= {4'hA, stflg};
-					'h2B: io_dout <= 1;
-					'h2F: io_dout <= 1;
-				endcase
+			case(io_din)
+				'h19: sd_ack_conf <= 1;
+				'h17,
+				'h18: sd_ack <= 1;
+				'h29: io_dout <= {4'hA, stflg};
+				'h2B: io_dout <= 1;
+				'h2F: io_dout <= 1;
+				'h32: io_dout <= gamma_bus[21];
+				'h36: begin io_dout <= info_n; info_n <= 0; end
+				'h39: io_dout <= 1;
+			endcase
 
-				sd_buff_addr <= 0;
-				img_mounted <= 0;
-				if(io_din == 5) ps2_key_raw <= 0;
-			end else begin
+			sd_buff_addr <= 0;
+			if(io_din == 5) ps2_key_raw <= 0;
+		end else begin
 
-				case(cmd)
-					// buttons and switches
-					'h01: cfg <= io_din[7:0];
-					'h02: if(byte_cnt==1) joystick_0[15:0] <= io_din; else joystick_0[31:16] <= io_din;
-					'h03: if(byte_cnt==1) joystick_1[15:0] <= io_din; else joystick_1[31:16] <= io_din;
-					'h10: if(byte_cnt==1) joystick_2[15:0] <= io_din; else joystick_2[31:16] <= io_din;
-					'h11: if(byte_cnt==1) joystick_3[15:0] <= io_din; else joystick_3[31:16] <= io_din;
-					'h12: if(byte_cnt==1) joystick_4[15:0] <= io_din; else joystick_4[31:16] <= io_din;
-					'h13: if(byte_cnt==1) joystick_5[15:0] <= io_din; else joystick_5[31:16] <= io_din;
+			case(cmd)
+				// buttons and switches
+				'h01: cfg <= io_din;
+				'h02: if(byte_cnt==1) joystick_0[15:0] <= io_din; else joystick_0[31:16] <= io_din;
+				'h03: if(byte_cnt==1) joystick_1[15:0] <= io_din; else joystick_1[31:16] <= io_din;
+				'h10: if(byte_cnt==1) joystick_2[15:0] <= io_din; else joystick_2[31:16] <= io_din;
+				'h11: if(byte_cnt==1) joystick_3[15:0] <= io_din; else joystick_3[31:16] <= io_din;
+				'h12: if(byte_cnt==1) joystick_4[15:0] <= io_din; else joystick_4[31:16] <= io_din;
+				'h13: if(byte_cnt==1) joystick_5[15:0] <= io_din; else joystick_5[31:16] <= io_din;
 
-					// store incoming ps2 mouse bytes
-					'h04: begin
+				// store incoming ps2 mouse bytes
+				'h04: begin
 							if(PS2DIV) begin
 								mouse_data <= io_din[7:0];
 								mouse_we   <= 1;
 							end
 							if(&io_din[15:8]) ps2skip <= 1;
-							if(~&io_din[15:8] & ~ps2skip) begin
-								case(byte_cnt)
+							if(~&io_din[15:8] && ~ps2skip && !byte_cnt[MAX_W:2]) begin
+								case(byte_cnt[1:0])
 									1: ps2_mouse[7:0]   <= io_din[7:0];
 									2: ps2_mouse[15:8]  <= io_din[7:0];
 									3: ps2_mouse[23:16] <= io_din[7:0];
 								endcase
-								case(byte_cnt)
+								case(byte_cnt[1:0])
 									1: ps2_mouse_ext[7:0]  <= {io_din[14], io_din[14:8]};
 									2: ps2_mouse_ext[11:8] <= io_din[11:8];
 									3: ps2_mouse_ext[15:12]<= io_din[11:8];
@@ -375,8 +336,8 @@ always@(posedge clk_sys) begin
 							end
 						end
 
-					// store incoming ps2 keyboard bytes
-					'h05: begin
+				// store incoming ps2 keyboard bytes
+				'h05: begin
 							if(&io_din[15:8]) ps2skip <= 1;
 							if(~&io_din[15:8] & ~ps2skip) ps2_key_raw[31:0] <= {ps2_key_raw[23:0], io_din[7:0]};
 							if(PS2DIV) begin
@@ -385,116 +346,137 @@ always@(posedge clk_sys) begin
 							end
 						end
 
-					// reading config string, returning a byte from string
-					'h14: if(byte_cnt < STRLEN + 1) io_dout[7:0] <= conf_str[(STRLEN - byte_cnt)<<3 +:8];
+				// reading config string, returning a byte from string
+				'h14: if(byte_cnt < STRLEN + 1) io_dout[7:0] <= conf_str[(STRLEN - byte_cnt)<<3 +:8];
 
-					// reading sd card status
-					'h16: case(byte_cnt)
+				// reading sd card status
+				'h16: if(!byte_cnt[MAX_W:3]) begin
+							case(byte_cnt[2:0])
 								1: io_dout <= sd_cmd;
 								2: io_dout <= sd_lba[15:0];
 								3: io_dout <= sd_lba[31:16];
 								4: io_dout <= sd_req_type;
 							endcase
+						end
 
-					// send SD config IO -> FPGA
-					// flag that download begins
-					// sd card knows data is config if sd_dout_strobe is asserted
-					// with sd_ack still being inactive (low)
-					'h19,
-					// send sector IO -> FPGA
-					// flag that download begins
-					'h17: begin
+				// send SD config IO -> FPGA
+				// flag that download begins
+				// sd card knows data is config if sd_dout_strobe is asserted
+				// with sd_ack still being inactive (low)
+				'h19,
+				// send sector IO -> FPGA
+				// flag that download begins
+				'h17: begin
 							sd_buff_dout <= io_din[DW:0];
 							b_wr <= 1;
 						end
 
-					// reading sd card write data
-					'h18: begin
+				// reading sd card write data
+				'h18: begin
 							if(~&sd_buff_addr) sd_buff_addr <= sd_buff_addr + 1'b1;
 							io_dout <= sd_buff_din;
 						end
 
-					// joystick analog
-					'h1a: case(byte_cnt)
-								1: stick_idx <= io_din[2:0]; // first byte is joystick index
+				// joystick analog
+				'h1a: if(!byte_cnt[MAX_W:2]) begin
+							case(byte_cnt[1:0])
+								1: {pdsp_idx,stick_idx} <= io_din[7:0]; // first byte is joystick index
 								2: case(stick_idx)
-										0: joystick_analog_0 <= io_din;
-										1: joystick_analog_1 <= io_din;
-										2: joystick_analog_2 <= io_din;
-										3: joystick_analog_3 <= io_din;
-										4: joystick_analog_4 <= io_din;
-										5: joystick_analog_5 <= io_din;
+										 0: joystick_analog_0 <= io_din;
+										 1: joystick_analog_1 <= io_din;
+										 2: joystick_analog_2 <= io_din;
+										 3: joystick_analog_3 <= io_din;
+										 4: joystick_analog_4 <= io_din;
+										 5: joystick_analog_5 <= io_din;
+										15: case(pdsp_idx)
+												 0: paddle_0 <= io_din[7:0];
+												 1: paddle_1 <= io_din[7:0];
+												 2: paddle_2 <= io_din[7:0];
+												 3: paddle_3 <= io_din[7:0];
+												 4: paddle_4 <= io_din[7:0];
+												 5: paddle_5 <= io_din[7:0];
+												 8: spinner_0 <= {~spinner_0[8],io_din[7:0]};
+												 9: spinner_1 <= {~spinner_1[8],io_din[7:0]};
+												10: spinner_2 <= {~spinner_2[8],io_din[7:0]};
+												11: spinner_3 <= {~spinner_3[8],io_din[7:0]};
+												12: spinner_4 <= {~spinner_4[8],io_din[7:0]};
+												13: spinner_5 <= {~spinner_5[8],io_din[7:0]};
+											endcase
 									endcase
 							endcase
+						end
 
-					// notify image selection
-					'h1c: begin
+				// notify image selection
+				'h1c: begin
 							img_mounted  <= io_din[VD:0] ? io_din[VD:0] : 1'b1;
 							img_readonly <= io_din[7];
 						end
 
-					// send image info
-					'h1d: if(byte_cnt<5) img_size[{byte_cnt-1'b1, 4'b0000} +:16] <= io_din;
+				// send image info
+				'h1d: if(byte_cnt<5) img_size[{byte_cnt-1'b1, 4'b0000} +:16] <= io_din;
 
-					// status, 32bit version
-					'h1e: if(byte_cnt==1) status[15:0] <= io_din;
-								else if(byte_cnt==2) status[31:16] <= io_din;
+				// status, 64bit version
+				'h1e: if(!byte_cnt[MAX_W:3]) begin
+							case(byte_cnt[2:0])
+								1: status[15:00] <= io_din;
+								2: status[31:16] <= io_din;
+								3: status[47:32] <= io_din;
+								4: status[63:48] <= io_din;
+							endcase
+						end
 
-					// reading keyboard LED status
-					'h1f: io_dout <= {|PS2WE, 2'b01, ps2_kbd_led_status[2], ps2_kbd_led_use[2], ps2_kbd_led_status[1], ps2_kbd_led_use[1], ps2_kbd_led_status[0], ps2_kbd_led_use[0]};
+				// reading keyboard LED status
+				'h1f: io_dout <= {|PS2WE, 2'b01, ps2_kbd_led_status[2], ps2_kbd_led_use[2], ps2_kbd_led_status[1], ps2_kbd_led_use[1], ps2_kbd_led_status[0], ps2_kbd_led_use[0]};
 
-					// reading ps2 keyboard/mouse control
-					'h21: if(PS2DIV) begin
-								if(byte_cnt == 1) begin
-									io_dout <= kbd_data_host;
-									kbd_rd <= 1;
-								end
-								else
-								if(byte_cnt == 2) begin
-									io_dout <= mouse_data_host;
-									mouse_rd <= 1;
-								end
+				// reading ps2 keyboard/mouse control
+				'h21: if(PS2DIV) begin
+							if(byte_cnt == 1) begin
+								io_dout <= kbd_data_host;
+								kbd_rd <= 1;
 							end
+							else
+							if(byte_cnt == 2) begin
+								io_dout <= mouse_data_host;
+								mouse_rd <= 1;
+							end
+						end
 
-					//RTC
-					'h22: RTC[(byte_cnt-6'd1)<<4 +:16] <= io_din;
+				//RTC
+				'h22: RTC[(byte_cnt-6'd1)<<4 +:16] <= io_din;
 
-					//Video res.
-					'h23: case(byte_cnt)
-								1: io_dout <= {|vid_int, vid_nres};
-								2: io_dout <= vid_hcnt[15:0];
-								3: io_dout <= vid_hcnt[31:16];
-								4: io_dout <= vid_vcnt[15:0];
-								5: io_dout <= vid_vcnt[31:16];
-								6: io_dout <= vid_htime[15:0];
-								7: io_dout <= vid_htime[31:16];
-								8: io_dout <= vid_vtime[15:0];
-								9: io_dout <= vid_vtime[31:16];
-							  10: io_dout <= vid_pix[15:0];
-							  11: io_dout <= vid_pix[31:16];
-							  12: io_dout <= vid_vtime_hdmi[15:0];
-							  13: io_dout <= vid_vtime_hdmi[31:16];
-							endcase
+				//Video res.
+				'h23: if(!byte_cnt[MAX_W:4]) io_dout <= vc_dout;
 
-					//RTC
-					'h24: TIMESTAMP[(byte_cnt-6'd1)<<4 +:16] <= io_din;
+				//RTC
+				'h24: TIMESTAMP[(byte_cnt-6'd1)<<4 +:16] <= io_din;
 
-					//UART flags
-					'h28: io_dout <= uart_mode;
+				//UART flags
+				'h28: io_dout <= uart_mode;
 
-					//status set
-					'h29: case(byte_cnt)
-								1: io_dout <= status_req[15:0];
+				//status set
+				'h29: if(!byte_cnt[MAX_W:3]) begin
+							case(byte_cnt[2:0])
+								1: io_dout <= status_req[15:00];
 								2: io_dout <= status_req[31:16];
+								3: io_dout <= status_req[47:32];
+								4: io_dout <= status_req[63:48];
 							endcase
-					
-					//menu mask
-					'h2E: if(byte_cnt == 1) io_dout <= status_menumask;
+						end
 
-					//sdram size set
-					'h31: if(byte_cnt == 1) sdram_sz <= io_din;
-				endcase
-			end
+				//menu mask
+				'h2E: if(byte_cnt == 1) io_dout <= status_menumask;
+				
+				//sdram size set
+				'h31: if(byte_cnt == 1) sdram_sz <= io_din;
+
+				// Gamma
+				'h32: gamma_en <= io_din[0];
+				'h33: begin
+							gamma_wr_addr <= {(byte_cnt[1:0]-1'b1),io_din[15:8]};
+							{gamma_wr, gamma_value} <= {1'b1,io_din[7:0]};
+							if (byte_cnt[1:0] == 3) byte_cnt <= 1;
+						end
+			endcase
 		end
 	end
 end
@@ -504,7 +486,7 @@ end
 generate
 	if(PS2DIV) begin
 		reg clk_ps2;
-		always @(negedge clk_sys) begin
+		always @(posedge clk_sys) begin
 			integer cnt;
 			cnt <= cnt + 1'd1;
 			if(cnt == PS2DIV) begin
@@ -580,11 +562,11 @@ always@(posedge clk_sys) begin
 	reg        has_cmd;
 	reg [26:0] addr;
 	reg        wr;
-
+	
 	ioctl_wr <= wr;
 	wr <= 0;
 
-	if(~io_enable) has_cmd <= 0;
+	if(~fp_enable) has_cmd <= 0;
 	else begin
 		if(io_strobe) begin
 
@@ -777,89 +759,138 @@ end
 
 endmodule
 
-//
-// Phase shift helper module for better 64MB/128MB modules support.
-//
-// Copyright (c) 2019 Alexey Melnikov
-//
 
-module phase_shift #(parameter M32MB=0, M64MB=0, M128MB=0)
+///////////////// calc video parameters //////////////////
+module video_calc
 (
-	input        reset,
+	input clk_100,
+	input clk_vid,
+	input clk_sys,
 
-	input        clk,
-	input        pll_locked,
+	input ce_pix,
+	input de,
+	input hs,
+	input vs,
+	input vs_hdmi,
+	input f1,
+	input new_vmode,
 
-	output reg   phase_en,
-	output reg   updn,
-	input        phase_done,
-
-	input [15:0] sdram_sz,
-	output reg   ready
+	input       [3:0] par_num,
+	output reg [15:0] dout
 );
 
-localparam ph32  = ($signed(M32MB ) >= 0) ? M32MB  : (0 - M32MB);
-localparam ph64  = ($signed(M64MB ) >= 0) ? M64MB  : (0 - M64MB);
-localparam ph128 = ($signed(M128MB) >= 0) ? M128MB : (0 - M128MB);
+always @(posedge clk_sys) begin
+	case(par_num)
+		1: dout <= {|vid_int, vid_nres};
+		2: dout <= vid_hcnt[15:0];
+		3: dout <= vid_hcnt[31:16];
+		4: dout <= vid_vcnt[15:0];
+		5: dout <= vid_vcnt[31:16];
+		6: dout <= vid_htime[15:0];
+		7: dout <= vid_htime[31:16];
+		8: dout <= vid_vtime[15:0];
+		9: dout <= vid_vtime[31:16];
+	  10: dout <= vid_pix[15:0];
+	  11: dout <= vid_pix[31:16];
+	  12: dout <= vid_vtime_hdmi[15:0];
+	  13: dout <= vid_vtime_hdmi[31:16];
+	  default dout <= 0;
+	endcase
+end
 
-localparam up32  = ($signed(M32MB ) >= 0) ? 1'b1 : 1'b0;
-localparam up64  = ($signed(M64MB ) >= 0) ? 1'b1 : 1'b0;
-localparam up128 = ($signed(M128MB) >= 0) ? 1'b1 : 1'b0;
+reg [31:0] vid_hcnt = 0;
+reg [31:0] vid_vcnt = 0;
+reg  [7:0] vid_nres = 0;
+reg  [1:0] vid_int  = 0;
 
-always @(posedge clk, posedge reset) begin
-	reg [2:0] state = 0;
-	reg [7:0] cnt;
-	reg [8:0] ph;
-	
-	if(reset) begin
-		state <= 0;
-		ready <= 0;
+always @(posedge clk_vid) begin
+	integer hcnt;
+	integer vcnt;
+	reg old_vs= 0, old_de = 0, old_vmode = 0;
+	reg [3:0] resto = 0;
+	reg calch = 0;
+
+	if(ce_pix) begin
+		old_vs <= vs;
+		old_de <= de;
+
+		if(~vs & ~old_de & de) vcnt <= vcnt + 1;
+		if(calch & de) hcnt <= hcnt + 1;
+		if(old_de & ~de) calch <= 0;
+
+		if(old_vs & ~vs) begin
+			vid_int <= {vid_int[0],f1};
+			if(~f1) begin
+				if(hcnt && vcnt) begin
+					old_vmode <= new_vmode;
+
+					//report new resolution after timeout
+					if(resto) resto <= resto + 1'd1;
+					if(vid_hcnt != hcnt || vid_vcnt != vcnt || old_vmode != new_vmode) resto <= 1;
+					if(&resto) vid_nres <= vid_nres + 1'd1;
+					vid_hcnt <= hcnt;
+					vid_vcnt <= vcnt;
+				end
+				vcnt <= 0;
+				hcnt <= 0;
+				calch <= 1;
+			end
+		end
 	end
-	else begin
-		case(state)
-			0: begin
-					ready <= 0;
-					if(pll_locked) state <= state + 1'd1;
-				end
-			1: if(sdram_sz[15]) begin
-					cnt <= 0;
-					if(sdram_sz[14]) ph <= sdram_sz[8:0];
-					else begin
-						case(sdram_sz[1:0])
-							0: ph <= 0;
-							1: ph <= {up32[0],ph32[7:0]};
-							2: ph <= {up64[0],ph64[7:0]};
-							3: ph <= {up128[0],ph128[7:0]};
-						endcase
-					end
-					state <= state + 1'd1;
-				end
-			2: if(ph[7:0]) begin
-					ph[7:0] <= ph[7:0] - 1'd1;
-					updn <= ph[8];
-					state <= state + 1'd1;
-				end
-				else begin
-					state <= 6;
-				end
-			3: begin
-					phase_en <= 1;
-					state <= state + 1'd1;
-				end
-			4: if(~phase_done) begin
-					phase_en <= 0;
-					state <= state + 1'd1;
-				end
-			5: if(phase_done) begin
-					cnt <= cnt + 1'd1;
-					if(cnt == ph[7:0]) state <= state + 1'd1;
-					else state <= 3;
-				end
-			6: begin
-					ready <= 1;
-					if(!sdram_sz[15]) state <= 0;
-				end
-		endcase
+end
+
+reg [31:0] vid_htime = 0;
+reg [31:0] vid_vtime = 0;
+reg [31:0] vid_pix = 0;
+
+always @(posedge clk_100) begin
+	integer vtime, htime, hcnt;
+	reg old_vs, old_hs, old_vs2, old_hs2, old_de, old_de2;
+	reg calch = 0;
+
+	old_vs <= vs;
+	old_hs <= hs;
+
+	old_vs2 <= old_vs;
+	old_hs2 <= old_hs;
+
+	vtime <= vtime + 1'd1;
+	htime <= htime + 1'd1;
+
+	if(~old_vs2 & old_vs) begin
+		vid_pix <= hcnt;
+		vid_vtime <= vtime;
+		vtime <= 0;
+		hcnt <= 0;
+	end
+
+	if(old_vs2 & ~old_vs) calch <= 1;
+
+	if(~old_hs2 & old_hs) begin
+		vid_htime <= htime;
+		htime <= 0;
+	end
+
+	old_de   <= de;
+	old_de2  <= old_de;
+
+	if(calch & old_de) hcnt <= hcnt + 1;
+	if(old_de2 & ~old_de) calch <= 0;
+end
+
+reg [31:0] vid_vtime_hdmi;
+always @(posedge clk_100) begin
+	integer vtime;
+	reg old_vs, old_vs2;
+
+	old_vs <= vs_hdmi;
+	old_vs2 <= old_vs;
+
+	vtime <= vtime + 1'd1;
+
+	if(~old_vs2 & old_vs) begin
+		vid_vtime_hdmi <= vtime;
+		vtime <= 0;
 	end
 end
 
