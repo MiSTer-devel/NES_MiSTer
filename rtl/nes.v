@@ -91,7 +91,7 @@ module NES(
 	input   [1:0] mask,
 
 	// Access signals for the SDRAM.
-	output [21:0] cpumem_addr,
+	output [24:0] cpumem_addr,
 	output        cpumem_read,
 	output        cpumem_write,
 	output  [7:0] cpumem_dout,
@@ -453,7 +453,8 @@ wire prg_read  = mr_int && cart_pre && !apu_cs && !ppu_cs;
 wire prg_write = mw_int && cart_pre && !apu_cs && !ppu_cs;
 
 wire prg_allow, prg_bus_write, prg_conflict, vram_a10, vram_ce, chr_allow;
-wire [21:0] prg_linaddr, chr_linaddr;
+wire [24:0] prg_linaddr;
+wire [21:0] chr_linaddr;
 wire [7:0] prg_dout_mapper, chr_from_ppu_mapper;
 wire has_chr_from_ppu_mapper;
 wire [15:0] sample_ext;
