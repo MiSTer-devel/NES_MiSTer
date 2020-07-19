@@ -708,3 +708,160 @@ assign vram_a10 = mirroring ? chr_ain[11] : chr_ain[10];
 assign vram_ce = chr_ain[13];
 
 endmodule
+
+// mapper 413 based on Nintendulator NRS source
+// mapper 413 uses MMC3 style interrupts
+module Mapper413 (
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	input [13:0] chr_ain_o,
+	output [2:0] prg_aoute    // Extended prg address out bits
+);
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? prg_dout : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire [7:0] prg_dout = 0;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire irq;
+reg [15:0] flags_out = 0;
+
+reg irq_enable, irq_reload;        // IRQ enabled, and IRQ reload requested
+reg [7:0] irq_latch, counter;      // IRQ latch value and current counter
+reg [4:0] irq_reg;
+assign irq = irq_reg[0];
+
+wire [7:0] new_counter = (counter == 0 || irq_reload) ? irq_latch : counter - 1'd1;
+reg [3:0] a12_ctr;
+
+reg misc_inc;
+reg old_misc_inc;
+reg misc_ctrl;
+reg [22:0] prg_amisc;
+wire prg_is_misc = (prg_ain[15:11] == 5'b0100_1) | (prg_ain[15:12] == 4'b1100); // $48xx or $Cxxx
+assign prg_aoute = prg_is_misc ? {2'b10,prg_amisc[22]} : 3'd0;
+
+reg [5:0] bank_reg[0:3];
+
+always @(posedge clk)
+if (~enable) begin
+	irq_reg <= 5'b00000;
+	{irq_enable, irq_reload} <= 0;
+	{irq_latch, counter} <= 0;
+	bank_reg[0] <= 0;
+	bank_reg[1] <= 0;
+	bank_reg[2] <= 0;
+	bank_reg[3] <= 0;
+	prg_amisc <= 0;
+	misc_ctrl <= 0;
+	misc_inc <= 0;
+	old_misc_inc <= 0;
+	a12_ctr <= 0;
+end else if (ce) begin
+	irq_reg[4:1] <= irq_reg[3:0]; // 4 cycle delay
+	if (prg_write && prg_ain[15]) begin
+		casez(prg_ain[14:12])
+			3'b000: irq_latch <= prg_din;                      // IRQ latch $8000-8FFF (mmc3=$C000-$DFFE, even)
+			3'b001: irq_reload <= 1;                           // IRQ reload $9000-9FFF (mmc3=$C001-$DFFF, odd)
+			3'b010: begin irq_enable <= 0; irq_reg[0] <= 0; end// IRQ disable $A000-AFFF (mmc3=$E000-$FFFE, even)
+			3'b011: irq_enable <= 1;                           // IRQ enable $B000-BFFF (mmc3=$E001-$FFFF, odd)
+			3'b100: prg_amisc <= {prg_amisc[21:0], prg_din[7]};// Misc Address (shift left 1, insert MSB)
+			3'b101: misc_ctrl <= prg_din[1];                   // Misc Control (& 0x2)
+			3'b11?: bank_reg[prg_din[7:6]] <= prg_din[5:0];    // Bank select din[7:6] ($E000-$EFFE)
+		endcase
+	end
+
+	misc_inc <= 0;
+	old_misc_inc <= misc_inc;
+	if (prg_read && prg_is_misc)
+		misc_inc <= 1;
+	if (old_misc_inc && !misc_inc && misc_ctrl)
+		prg_amisc <= prg_amisc + 23'd1;
+
+	// Trigger IRQ counter on rising edge of chr_ain[12]
+	// All MMC3C's and Sharp MMC3B's will generate an IRQ on each scanline while $C000 is $00.
+	// This is because this version of the MMC3 generates IRQs when the scanline counter is equal to 0.
+	// In the community, this is known as the "normal" or "new" behavior.
+
+	if (chr_ain_o[12] && (a12_ctr == 0)) begin
+		counter <= new_counter;
+
+		// MMC Scanline
+		if (new_counter == 0 && irq_enable) begin
+			irq_reg[0] <= 1;
+		end
+		irq_reload <= 0;
+	end
+
+	// nintendo mapper 'cools down' for 16 low cycles
+	a12_ctr <= chr_ain_o[12] ? 4'b1111 : (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
+end
+
+reg [5:0] prgsel;
+always @* begin
+	casez(prg_ain[15:11])
+		5'b00??_?: prgsel = 6'b000000;   // $0000 CPU - not used
+//		5'b0100_0: prgsel = 6'b000000;   // $4000 not used
+//		5'b0100_1: prgsel = 6'b000000;   // $4800 misc - not used
+		5'b010?_?: prgsel = 6'b000000;   // $5000 fixed to 0x1 (prg_ain[11]=1)
+		5'b011?_?: prgsel = bank_reg[0]; // $6000 =$E000, $00
+		5'b100?_?: prgsel = bank_reg[1]; // $8000 =$E000, $40
+		5'b101?_?: prgsel = bank_reg[2]; // $A000 =$E000, $80
+//		5'b1100_?: prgsel = 6'b000011;   // $C000 misc - not used 
+		5'b110?_?: prgsel = 6'b000011;   // $D000 fixed to 0x7 ({prgsel[5:0],prg_ain[11]} = 7)
+		5'b111?_?: prgsel = 6'b000100;   // $E000 fixed to 0x8-9
+	endcase
+end
+
+// The CHR bank to load. Each increment here is 1kb. So valid values are 0..255.
+reg [5:0] chrsel;
+always @* begin
+	case(chr_ain[12])
+		1'b0: chrsel = bank_reg[3]; // =$E000, $C0
+		1'b1: chrsel = 6'b11_1101;  // 0x3D
+	endcase
+end
+
+wire [21:0] prg_aout_tmp = {3'b00_0,  prgsel, prg_ain[12:0]};
+
+assign chr_allow = flags[15];
+assign chr_aout =  {4'b10_00, chrsel, chr_ain[11:0]};
+
+assign prg_allow = (prg_ain[15] || (prg_ain[14] && (prg_ain[13:11] != 3'b000))) && !prg_write;
+assign prg_aout = prg_is_misc ? prg_amisc[21:0] : prg_aout_tmp;
+assign vram_a10 = flags[14] ? chr_ain[10] : chr_ain[11];
+assign vram_ce = chr_ain[13];
+
+endmodule
+
