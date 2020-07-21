@@ -402,7 +402,7 @@ begin
           if Inc_S = '1' then
             S <= S + 1;
           end if;
-          if Dec_S = '1' and RstCycle = '0' then
+          if Dec_S = '1' and (RstCycle = '0' or Mode="00") then  -- 6502 only?
             S <= S - 1;
           end if;
 
