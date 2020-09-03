@@ -139,8 +139,8 @@ assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign BUTTONS [1] = 0;
 
-assign VIDEO_ARX = status[8] ? 8'd16 : (hide_overscan ? 8'd64 : 8'd128);
-assign VIDEO_ARY = status[8] ? 8'd9  : (hide_overscan ? 8'd49 : 8'd105);
+assign VIDEO_ARX = aspect_ratio[1] ? (hide_overscan ? 8'd8 : 8'd16) : (aspect_ratio[0] ? 8'd16 : (hide_overscan ? 8'd64 : 8'd128));
+assign VIDEO_ARY = aspect_ratio[1] ? (hide_overscan ? 8'd7 : 8'd15) : (aspect_ratio[0] ? 8'd9  : (hide_overscan ? 8'd49 : 8'd105));
 
 assign VGA_F1 = 0;
 //assign {UART_RTS, UART_TXD, UART_DTR} = 0;
@@ -176,7 +176,7 @@ parameter CONF_STR2 = {
 	"H5D0R7,Save Backup RAM;",
 	"-;",
 	"P1,Audio & Video;",
-		"P1O8,Aspect Ratio,4:3,16:9;",
+		"P1O89,Aspect Ratio,4:3,16:9,Square Pixels;",
 		"P1O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 		"P1O4,Hide Overscan,Off,On;",
 		"P1ORS,Mask Edges,Off,Left,Both,Auto;",
@@ -186,8 +186,8 @@ parameter CONF_STR2 = {
 		"P1-;",
 		"P1OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
 	"P2,Input Options;",
-		"P2O9,Swap Joysticks,No,Yes;",
-		"P2OA,Multitap,Disabled,Enabled;",
+		"P2OA,Swap Joysticks,No,Yes;",
+		"P2OB,Multitap,Disabled,Enabled;",
 		"P2OQ,Serial Mode,None,SNAC;",
 		"H4P2OT,SNAC Zapper,Off,On;",
 		"P2o02,Periphery,None,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2),Vaus,Vaus(A-Trigger),Powerpad,Family Trainer;",
@@ -214,9 +214,10 @@ wire [63:0] status;
 
 wire arm_reset = status[0];
 wire pal_video = |status[24:23];
+wire [1:0] aspect_ratio = status[9:8]; // 00 = 4:3 ; 01 = 16:9 ; 10 = 8:7
 wire hide_overscan = status[4] && ~pal_video;
 wire [3:0] palette2_osd = status[15:12];
-wire joy_swap = status[9] ^ (raw_serial || piano); // Controller on port 2 for Miracle Piano/SNAC
+wire joy_swap = status[10] ^ (raw_serial || piano); // Controller on port 2 for Miracle Piano/SNAC
 wire fds_swap_invert = status[16];
 wire ext_audio = ~status[30];
 wire int_audio = ~status[31];
@@ -608,8 +609,8 @@ always @(posedge clk) begin
 	end else begin
 		if (joypad_out[0]) begin
 			joypad_bits  <= piano ? {15'h0000, uart_data[8:0]}
-			               : {status[10] ? {8'h08, nes_joy_C} : 16'hFFFF, joy_swap ? nes_joy_B : nes_joy_A};
-			joypad_bits2 <= {status[10] ? {8'h04, nes_joy_D} : 16'hFFFF, joy_swap ? nes_joy_A : nes_joy_B};
+			               : {status[11] ? {8'h08, nes_joy_C} : 16'hFFFF, joy_swap ? nes_joy_B : nes_joy_A};
+			joypad_bits2 <= {status[11] ? {8'h04, nes_joy_D} : 16'hFFFF, joy_swap ? nes_joy_A : nes_joy_B};
 			joypad_d4 <= paddle_en ? paddle_nes : {4'b1111, powerpad[7], powerpad[11], powerpad[2], powerpad[3]};
 			joypad_d3 <= {powerpad[6], powerpad[10], powerpad[9], powerpad[5], powerpad[8], powerpad[4], powerpad[0], powerpad[1]};
 		end
