@@ -18,7 +18,7 @@ module video
 	input        pal_video,
 
 	input        load_color,
-	input [14:0] load_color_data,
+	input [23:0] load_color_data,
 	input  [5:0] load_color_index,
 
 	inout [21:0] gamma_bus,
@@ -43,177 +43,177 @@ always @(negedge clk) begin
 end
 
 // Smooth palette from FirebrandX
-wire [15:0] pal_smooth_lut[64] = '{
-	'h35AD, 'h4040, 'h4403, 'h3C07, 'h280A, 'h0C0B, 'h0049, 'h0067,
-	'h00C4, 'h00E0, 'h0100, 'h10E0, 'h28A0, 'h0000, 'h0000, 'h0000,
-	'h5EF7, 'h6143, 'h70C9, 'h688E, 'h5472, 'h2CB3, 'h00D3, 'h012F,
-	'h018B, 'h01C4, 'h01E0, 'h21C0, 'h45A0, 'h0000, 'h0000, 'h0000,
-	'h7FFF, 'h7E8D, 'h7E71, 'h7E16, 'h7DDB, 'h5DDC, 'h363C, 'h167A,
-	'h06B6, 'h0B0F, 'h232A, 'h4328, 'h6308, 'h2529, 'h0000, 'h0000,
-	'h7FFF, 'h7FB9, 'h7F7B, 'h7F7D, 'h7F5F, 'h7B5F, 'h677F, 'h5B9F,
-	'h57DE, 'h57FB, 'h5FF9, 'h6BF8, 'h7BD8, 'h5F17, 'h0000, 'h0000
+wire [23:0] pal_smooth_lut[64] = '{
+	'h6A6D6A, 'h001380, 'h1E008A, 'h39007A, 'h550056, 'h5A0018, 'h4F1000, 'h3D1C00,
+	'h253200, 'h003D00, 'h004000, 'h003924, 'h002E55, 'h000000, 'h000000, 'h000000,
+	'hB9BCB9, 'h1850C7, 'h4B30E3, 'h7322D6, 'h951FA9, 'h9D285C, 'h983700, 'h7F4C00,
+	'h5E6400, 'h227700, 'h027E02, 'h007645, 'h006E8A, 'h000000, 'h000000, 'h000000,
+	'hFFFFFF, 'h68A6FF, 'h8C9CFF, 'hB586FF, 'hD975FD, 'hE377B9, 'hE58D68, 'hD49D29,
+	'hB3AF0C, 'h7BC211, 'h55CA47, 'h46CB81, 'h47C1C5, 'h4A4D4A, 'h000000, 'h000000,
+	'hFFFFFF, 'hCCEAFF, 'hDDDEFF, 'hECDAFF, 'hF8D7FE, 'hFCD6F5, 'hFDDBCF, 'hF9E7B5,
+	'hF1F0AA, 'hDAFAA9, 'hC9FFBC, 'hC3FBD7, 'hC4F6F6, 'hBEC1BE, 'h000000, 'h000000
 };
 
 // NTSC UnsaturatedV6 palette
 //see: http://www.firebrandx.com/nespalette.html
-wire [15:0] pal_unsat_lut[64] = '{
-	'h35ad, 'h4060, 'h4823, 'h4027, 'h302b, 'h140b, 'h004a, 'h0068,
-	'h00c6, 'h0121, 'h0120, 'h0d00, 'h2ce0, 'h0000, 'h0000, 'h0000,
-	'h5ad6, 'h6943, 'h74c9, 'h748e, 'h5873, 'h3074, 'h0cb4, 'h0130,
-	'h01ac, 'h0205, 'h0220, 'h2200, 'h49e0, 'h0000, 'h0000, 'h0000,
-	'h7fff, 'h7eac, 'h7e32, 'h7dd7, 'h7ddc, 'h65be, 'h361e, 'h167b,
-	'h02f7, 'h0350, 'h1f6b, 'h3f49, 'h6729, 'h294a, 'h0000, 'h0000,
-	'h7fff, 'h7f98, 'h7f5a, 'h7f3c, 'h7f3f, 'h7b3f, 'h635f, 'h577e,
-	'h4fbd, 'h4fda, 'h5bd7, 'h67d6, 'h77d6, 'h5ef7, 'h0000, 'h0000
+wire [23:0] pal_unsat_lut[64] = '{
+	'h6B6B6B, 'h001E87, 'h1F0B96, 'h3B0C87, 'h590D61, 'h5E0528, 'h551100, 'h461B00,
+	'h303200, 'h0A4800, 'h004E00, 'h004619, 'h003A58, 'h000000, 'h000000, 'h000000,
+	'hB2B2B2, 'h1A53D1, 'h4835EE, 'h7123EC, 'h9A1EB7, 'hA51E62, 'hA52D19, 'h874B00,
+	'h676900, 'h298400, 'h038B00, 'h008240, 'h007891, 'h000000, 'h000000, 'h000000,
+	'hFFFFFF, 'h63ADFD, 'h908AFE, 'hB977FC, 'hE771FE, 'hF76FC9, 'hF5836A, 'hDD9C29,
+	'hBDB807, 'h84D107, 'h5BDC3B, 'h48D77D, 'h48CCCE, 'h555555, 'h000000, 'h000000,
+	'hFFFFFF, 'hC4E3FE, 'hD7D5FE, 'hE6CDFE, 'hF9CAFE, 'hFEC9F0, 'hFED1C7, 'hF7DCAC,
+	'hE8E89C, 'hD1F29D, 'hBFF4B1, 'hB7F5CD, 'hB7F0EE, 'hBEBEBE, 'h000000, 'h000000
 };
 
 // FCEUX palette
-wire [15:0] pal_fcelut[64] = '{
-	'h39ce, 'h4464, 'h5400, 'h4c08, 'h3811, 'h0815, 'h0014, 'h002f,
-	'h00a8, 'h0100, 'h0140, 'h08e0, 'h2ce3, 'h0000, 'h0000, 'h0000,
-	'h5ef7, 'h75c0, 'h74e4, 'h7810, 'h5c17, 'h2c1c, 'h00bb, 'h0539,
-	'h01d1, 'h0240, 'h02a0, 'h1e40, 'h4600, 'h0000, 'h0000, 'h0000,
-	'h7fff, 'h7ee7, 'h7e4b, 'h7e28, 'h7dfe, 'h59df, 'h31df, 'h1e7f,
-	'h1efe, 'h0b50, 'h2769, 'h4feb, 'h6fa0, 'h3def, 'h0000, 'h0000,
-	'h7fff, 'h7f95, 'h7f58, 'h7f3a, 'h7f1f, 'h6f1f, 'h5aff, 'h577f,
-	'h539f, 'h53fc, 'h5fd5, 'h67f6, 'h7bf3, 'h6318, 'h0000, 'h0000
+wire [23:0] pal_fcelut[64] = '{
+	'h747474, 'h24188C, 'h0000A8, 'h44009C, 'h8C0074, 'hA80010, 'hA40000, 'h7C0800,
+	'h402C00, 'h004400, 'h005000, 'h003C14, 'h183C5C, 'h000000, 'h000000, 'h000000,
+	'hBCBCBC, 'h0070EC, 'h2038EC, 'h8000F0, 'hBC00BC, 'hE40058, 'hD82800, 'hC84C0C,
+	'h887000, 'h009400, 'h00A800, 'h009038, 'h008088, 'h000000, 'h000000, 'h000000,
+	'hFCFCFC, 'h3CBCFC, 'h5C94FC, 'hCC88FC, 'hF478FC, 'hFC74B4, 'hFC7460, 'hFC9838,
+	'hF0BC3C, 'h80D010, 'h4CDC48, 'h58F898, 'h00E8D8, 'h787878, 'h000000, 'h000000,
+	'hFCFCFC, 'hA8E4FC, 'hC4D4FC, 'hD4C8FC, 'hFCC4FC, 'hFCC4D8, 'hFCBCB0, 'hFCD8A8,
+	'hFCE4A0, 'hE0FCA0, 'hA8F0BC, 'hB0FCCC, 'h9CFCF0, 'hC4C4C4, 'h000000, 'h000000
 };
 
 // NES Classic by FirebrandX
-wire [15:0] pal_nes_classic_lut[64] = '{
-	'h318C, 'h4400, 'h4C23, 'h3C46, 'h304A, 'h080B, 'h002A, 'h0487,
-	'h04C4, 'h0501, 'h0902, 'h0CE0, 'h28A0, 'h0000, 'h0000, 'h0000,
-	'h56B5, 'h6121, 'h6C89, 'h644D, 'h5452, 'h2473, 'h00D2, 'h014E,
-	'h09AB, 'h09E2, 'h0602, 'h25C2, 'h4983, 'h0000, 'h0000, 'h0000,
-	'h7FFF, 'h7E6C, 'h7DF1, 'h7DB6, 'h79BB, 'h55DC, 'h2E1C, 'h1279,
-	'h02D5, 'h030E, 'h272B, 'h4706, 'h66E9, 'h2108, 'h0000, 'h0000,
-	'h7FFF, 'h7F57, 'h7F39, 'h7F1B, 'h7F1D, 'h731F, 'h633E, 'h533C,
-	'h4F7B, 'h4F99, 'h5F97, 'h67B6, 'h7796, 'h56B5, 'h0000, 'h0000
+wire [23:0] pal_nes_classic_lut[64] = '{
+	'h616161, 'h000088, 'h1F0D99, 'h371379, 'h561260, 'h5D0010, 'h520E00, 'h3A2308,
+	'h21350C, 'h0D410E, 'h174417, 'h003A1F, 'h002F57, 'h000000, 'h000000, 'h000000,
+	'hAAAAAA, 'h0D4DC4, 'h4B24DE, 'h6912CF, 'h9014AD, 'h9D1C48, 'h923404, 'h735005,
+	'h5D6913, 'h167A11, 'h138008, 'h127649, 'h1C6691, 'h000000, 'h000000, 'h000000,
+	'hFCFCFC, 'h639AFC, 'h8A7EFC, 'hB06AFC, 'hDD6DF2, 'hE771AB, 'hE38658, 'hCC9E22,
+	'hA8B100, 'h72C100, 'h5ACD4E, 'h34C28E, 'h4FBECE, 'h424242, 'h000000, 'h000000,
+	'hFCFCFC, 'hBED4FC, 'hCACAFC, 'hD9C4FC, 'hECC1FC, 'hFAC3E7, 'hF7CEC3, 'hE2CDA7,
+	'hDADB9C, 'hC8E39E, 'hBFE5B8, 'hB2EBC8, 'hB7E5EB, 'hACACAC, 'h000000, 'h000000
 };
 
 // Composite Direct by FirebrandX
-wire [15:0] pal_composite_direct_lut[64] = '{
-	'h318C, 'h3C40, 'h4403, 'h4006, 'h2C0A, 'h0C0B, 'h0009, 'h0067,
-	'h00C3, 'h00E0, 'h0100, 'h08E0, 'h28A0, 'h0000, 'h0000, 'h0000,
-	'h56B5, 'h6523, 'h70A8, 'h686D, 'h5472, 'h2C73, 'h00D3, 'h012F,
-	'h018B, 'h01E4, 'h0200, 'h1DE0, 'h45A0, 'h0000, 'h0000, 'h0000,
-	'h7FFF, 'h7EAC, 'h7E31, 'h7DD6, 'h7DBC, 'h61BD, 'h361E, 'h167B,
-	'h06D7, 'h0730, 'h1F4B, 'h3F49, 'h6709, 'h2529, 'h0000, 'h0000,
-	'h7FFF, 'h7F98, 'h7F7B, 'h7F5D, 'h7F3F, 'h7B3F, 'h675F, 'h5B7F,
-	'h53BD, 'h53DA, 'h5FF8, 'h6BD7, 'h7BD7, 'h5EF7, 'h0000, 'h0000
+wire [23:0] pal_composite_direct_lut[64] = '{
+	'h656565, 'h00127D, 'h18008E, 'h360082, 'h56005D, 'h5A0018, 'h4F0500, 'h381900,
+	'h1D3100, 'h003D00, 'h004100, 'h003B17, 'h002E55, 'h000000, 'h000000, 'h000000,
+	'hAFAFAF, 'h194EC8, 'h472FE3, 'h6B1FD7, 'h931BAE, 'h9E1A5E, 'h993200, 'h7B4B00,
+	'h5B6700, 'h267A00, 'h008200, 'h007A3E, 'h006E8A, 'h000000, 'h000000, 'h000000,
+	'hFFFFFF, 'h64A9FF, 'h8E89FF, 'hB676FF, 'hE06FFF, 'hEF6CC4, 'hF0806A, 'hD8982C,
+	'hB9B40A, 'h83CB0C, 'h5BD63F, 'h4AD17E, 'h4DC7CB, 'h4C4C4C, 'h000000, 'h000000,
+	'hFFFFFF, 'hC7E5FF, 'hD9D9FF, 'hE9D1FF, 'hF9CEFF, 'hFFCCF1, 'hFFD4CB, 'hF8DFB1,
+	'hEDEAA4, 'hD6F4A4, 'hC5F8B8, 'hBEF6D3, 'hBFF1F1, 'hB9B9B9, 'h000000, 'h000000
 };
 
 // PC-10 by FirebrandX
-wire [15:0] pal_pc10_lut[64] = '{
-	'h35AD, 'h4880, 'h6C00, 'h6D2D, 'h3412, 'h3416, 'h0096, 'h0132,
-	'h012D, 'h0124, 'h11A0, 'h0240, 'h2520, 'h0000, 'h0000, 'h0000,
-	'h5AD6, 'h6DA0, 'h7D20, 'h7C12, 'h7C16, 'h481F, 'h001F, 'h01BB,
-	'h01B2, 'h0244, 'h0240, 'h36C0, 'h4A40, 'h1084, 'h0000, 'h0000,
-	'h7FFF, 'h7ECD, 'h7E52, 'h7DBB, 'h7C1F, 'h7DBF, 'h025F, 'h02DF,
-	'h037B, 'h036D, 'h03E0, 'h6FE9, 'h7FE0, 'h2529, 'h0000, 'h0000,
-	'h7FFF, 'h7F76, 'h7EDB, 'h7EDF, 'h7E5F, 'h5ADF, 'h4B7F, 'h27FF,
-	'h37FF, 'h27F6, 'h37F2, 'h6FE9, 'h7F72, 'h4A52, 'h0000, 'h0000
+wire [23:0] pal_pc10_lut[64] = '{
+	'h6D6D6D, 'h002492, 'h0000DB, 'h6D49DB, 'h92006D, 'hB6006D, 'hB62400, 'h924900,
+	'h6D4900, 'h244900, 'h006D24, 'h009200, 'h004949, 'h000000, 'h000000, 'h000000,
+	'hB6B6B6, 'h006DDB, 'h0049FF, 'h9200FF, 'hB600FF, 'hFF0092, 'hFF0000, 'hDB6D00,
+	'h926D00, 'h249200, 'h009200, 'h00B66D, 'h009292, 'h242424, 'h000000, 'h000000,
+	'hFFFFFF, 'h6DB6FF, 'h9292FF, 'hDB6DFF, 'hFF00FF, 'hFF6DFF, 'hFF9200, 'hFFB600,
+	'hDBDB00, 'h6DDB00, 'h00FF00, 'h49FFDB, 'h00FFFF, 'h494949, 'h000000, 'h000000,
+	'hFFFFFF, 'hB6DBFF, 'hDBB6FF, 'hFFB6FF, 'hFF92FF, 'hFFB6B6, 'hFFDB92, 'hFFFF49,
+	'hFFFF6D, 'hB6FF49, 'h92FF6D, 'h49FFDB, 'h92DBFF, 'h929292, 'h000000, 'h000000
 };
 
 // PVM by FirebrandX
-wire [15:0] pal_pvm_lut[64] = '{
-	'h31AD, 'h3840, 'h4003, 'h3806, 'h280A, 'h080B, 'h006A, 'h0087,
-	'h00C4, 'h00E0, 'h00E0, 'h0CE0, 'h24C0, 'h0000, 'h0000, 'h0000,
-	'h5AF7, 'h5D42, 'h6CA9, 'h6C6C, 'h4C73, 'h2093, 'h00F4, 'h0151,
-	'h01AC, 'h01E5, 'h0200, 'h21E0, 'h45E0, 'h0000, 'h0000, 'h0000,
-	'h7FFF, 'h7EAD, 'h7E52, 'h7E36, 'h7DFD, 'h61FE, 'h2E3E, 'h12BC,
-	'h033A, 'h0372, 'h1F8C, 'h3F88, 'h6F49, 'h2549, 'h0000, 'h0000,
-	'h7FFF, 'h7FBA, 'h7F9C, 'h7F7D, 'h7F5E, 'h777F, 'h5F7F, 'h4FBF,
-	'h47DE, 'h4BFA, 'h57F7, 'h67F5, 'h7BD9, 'h5F17, 'h0000, 'h0000
+wire [23:0] pal_pvm_lut[64] = '{
+	'h696E69, 'h001774, 'h1E0087, 'h340073, 'h560057, 'h5E0013, 'h531A00, 'h3B2400,
+	'h243000, 'h063A00, 'h003F00, 'h003B1E, 'h003050, 'h000000, 'h000000, 'h000000,
+	'hB9BEB9, 'h1453B9, 'h4D2CDA, 'h671EDE, 'h98189C, 'h9D2344, 'hA03E00, 'h8D5500,
+	'h656D00, 'h2C7900, 'h008100, 'h007D42, 'h00788A, 'h000000, 'h000000, 'h000000,
+	'hFFFFFF, 'h69A8FF, 'h9691FF, 'hB28AFA, 'hEA7DFA, 'hF37BC7, 'hF18F6C, 'hE6AD27,
+	'hD7C805, 'h90DF07, 'h64E53C, 'h45E27D, 'h48D5D9, 'h4B504B, 'h000000, 'h000000,
+	'hFFFFFF, 'hD2EAFF, 'hE2E2FF, 'hE9D8FF, 'hF5D2FF, 'hF8D9EA, 'hFADEB9, 'hF9E89B,
+	'hF3F28C, 'hD3FA91, 'hB8FCA8, 'hAEFACA, 'hCAF3F3, 'hBEC3BE, 'h000000, 'h000000
 };
 
-// Wavebeam by FirebrandX
-wire [15:0] pal_wavebeam_lut[64] = '{
-	'h35AD, 'h4460, 'h4C04, 'h4408, 'h300C, 'h0C0C, 'h002B, 'h0049,
-	'h00C5, 'h0100, 'h0520, 'h0D00, 'h2CC0, 'h0000, 'h0000, 'h0000,
-	'h5AD6, 'h6942, 'h74C8, 'h6C8E, 'h5C73, 'h3035, 'h00B5, 'h0131,
-	'h01AC, 'h0204, 'h0220, 'h2200, 'h49C0, 'h0000, 'h0000, 'h0000,
-	'h7FFF, 'h7ECC, 'h7E6F, 'h7DF8, 'h7DDD, 'h65DE, 'h363E, 'h169B,
-	'h06F7, 'h0751, 'h1F6B, 'h4369, 'h6B29, 'h294A, 'h0000, 'h0000,
-	'h7FFF, 'h7F77, 'h7F5A, 'h7F3C, 'h7F1D, 'h731F, 'h633F, 'h577E,
-	'h539D, 'h53BA, 'h5BD7, 'h67D6, 'h7BB6, 'h5EF7, 'h0000, 'h0000
+// Wavebeam by NakedArthur
+wire [23:0] pal_wavebeam_lut[64] = '{
+	'h6B6B6B, 'h001B88, 'h21009A, 'h40008C, 'h600067, 'h64001E, 'h590800, 'h481600,
+	'h283600, 'h004500, 'h004908, 'h00421D, 'h003659, 'h000000, 'h000000, 'h000000,
+	'hB4B4B4, 'h1555D3, 'h4337EF, 'h7425DF, 'h9C19B9, 'hAC0F64, 'hAA2C00, 'h8A4B00,
+	'h666B00, 'h218300, 'h008A00, 'h008144, 'h007691, 'h000000, 'h000000, 'h000000,
+	'hFFFFFF, 'h63B2FF, 'h7C9CFF, 'hC07DFE, 'hE977FF, 'hF572CD, 'hF4886B, 'hDDA029,
+	'hBDBD0A, 'h89D20E, 'h5CDE3E, 'h4BD886, 'h4DCFD2, 'h525252, 'h000000, 'h000000,
+	'hFFFFFF, 'hBCDFFF, 'hD2D2FF, 'hE1C8FF, 'hEFC7FF, 'hFFC3E1, 'hFFCAC6, 'hF2DAAD,
+	'hEBE3A0, 'hD2EDA2, 'hBCF4B4, 'hB5F1CE, 'hB6ECF1, 'hBFBFBF, 'h000000, 'h000000
 };
 
-// Real by Squire
-wire [15:0] pal_real_lut[64] = '{
-	'h35AD, 'h4480, 'h5400, 'h4808, 'h380E, 'h200F, 'h000E, 'h004C,
-	'h0088, 'h00C6, 'h0140, 'h2100, 'h3100, 'h0000, 'h0842, 'h0842,
-	'h5EF7, 'h6D64, 'h7CE7, 'h7890, 'h6018, 'h385A, 'h109A, 'h0915,
-	'h014F, 'h018B, 'h0220, 'h35C0, 'h4DC0, 'h1084, 'h0842, 'h0842,
-	'h7FFF, 'h7E89, 'h7E31, 'h7DB8, 'h7D5F, 'h5D9F, 'h3DFF, 'h1E5F,
-	'h02BB, 'h1334, 'h2769, 'h5325, 'h7703, 'h2D6B, 'h0842, 'h0842,
-	'h7FFF, 'h7F56, 'h7F18, 'h7EFD, 'h7EDF, 'h76FF, 'h631F, 'h575F,
-	'h4BBF, 'h53DE, 'h63F8, 'h7BD5, 'h7FB4, 'h6318, 'h1084, 'h0842
+// Reality C by Squire
+wire [23:0] pal_real_lut[64] = '{
+	'h6C6C6C, 'h00268E, 'h0000A8, 'h400094, 'h700070, 'h780040, 'h700000, 'h621600,
+	'h442400, 'h343400, 'h005000, 'h004444, 'h004060, 'h000000, 'h101010, 'h101010,
+	'hBABABA, 'h205CDC, 'h3838FF, 'h8020F0, 'hC000C0, 'hD01474, 'hD02020, 'hAC4014,
+	'h7C5400, 'h586400, 'h008800, 'h007468, 'h00749C, 'h202020, 'h101010, 'h101010,
+	'hFFFFFF, 'h4CA0FF, 'h8888FF, 'hC06CFF, 'hFF50FF, 'hFF64B8, 'hFF7878, 'hFF9638,
+	'hDBAB00, 'hA2CA20, 'h4ADC4A, 'h2CCCA4, 'h1CC2EA, 'h585858, 'h101010, 'h101010,
+	'hFFFFFF, 'hB0D4FF, 'hC4C4FF, 'hE8B8FF, 'hFFB0FF, 'hFFB8E8, 'hFFC4C4, 'hFFD4A8,
+	'hFFE890, 'hF0F4A4, 'hC0FFC0, 'hACF4F0, 'hA0E8FF, 'hC2C2C2, 'h202020, 'h101010
 };
 
 // Sony CXA by FirebrandX
-wire [15:0] pal_sonycxa_lut[64] = '{
-	'h2D6B, 'h4480, 'h4C40, 'h4005, 'h280B, 'h080F, 'h002F, 'h006B,
-	'h00A6, 'h00E1, 'h00E0, 'h10E0, 'h2CC0, 'h0000, 'h0000, 'h0000,
-	'h5294, 'h7540, 'h7CE2, 'h70AC, 'h4C75, 'h207A, 'h00BA, 'h0115,
-	'h016D, 'h01C5, 'h01E0, 'h29E0, 'h55A0, 'h0000, 'h0000, 'h0000,
-	'h7FFF, 'h7E83, 'h7E2B, 'h7DD6, 'h799F, 'h499F, 'h1DDF, 'h065F,
-	'h02D8, 'h0B2F, 'h2747, 'h5342, 'h7EE0, 'h2108, 'h0000, 'h0000,
-	'h7FFF, 'h7F74, 'h7F37, 'h7F1C, 'h7EFF, 'h6AFF, 'h571F, 'h475F,
-	'h437D, 'h4BB8, 'h5BB5, 'h6FB2, 'h7F92, 'h56B5, 'h0000, 'h0000
+wire [23:0] pal_sonycxa_lut[64] = '{
+	'h585858, 'h00238C, 'h00139B, 'h2D0585, 'h5D0052, 'h7A0017, 'h7A0800, 'h5F1800,
+	'h352A00, 'h093900, 'h003F00, 'h003C22, 'h00325D, 'h000000, 'h000000, 'h000000,
+	'hA1A1A1, 'h0053EE, 'h153CFE, 'h6028E4, 'hA91D98, 'hD41E41, 'hD22C00, 'hAA4400,
+	'h6C5E00, 'h2D7300, 'h007D06, 'h007852, 'h0069A9, 'h000000, 'h000000, 'h000000,
+	'hFFFFFF, 'h1FA5FE, 'h5E89FE, 'hB572FE, 'hFE65F6, 'hFE6790, 'hFE773C, 'hFE9308,
+	'hC4B200, 'h79CA10, 'h3AD54A, 'h11D1A4, 'h06BFFE, 'h424242, 'h000000, 'h000000,
+	'hFFFFFF, 'hA0D9FE, 'hBDCCFE, 'hE1C2FE, 'hFEBCFB, 'hFEBDD0, 'hFEC5A9, 'hFED18E,
+	'hE9DE86, 'hC7E992, 'hA8EEB0, 'h95ECD9, 'h91E4FE, 'hACACAC, 'h000000, 'h000000
 };
 
 // YUV from Nestopia
-wire [15:0] pal_yuv_lut[64] = '{
-	'h318C, 'h44A0, 'h5042, 'h5007, 'h3C0B, 'h200D, 'h000D, 'h006A,
-	'h00C6, 'h0121, 'h0140, 'h0520, 'h2500, 'h0000, 'h0000, 'h0000,
-	'h56B5, 'h6D62, 'h7D08, 'h7C8E, 'h6474, 'h3C76, 'h10D6, 'h0133,
-	'h01AD, 'h0207, 'h0241, 'h1A20, 'h45E0, 'h0000, 'h0000, 'h0000,
-	'h7FFF, 'h7ECC, 'h7E52, 'h7DD8, 'h7DBE, 'h65BF, 'h3A1F, 'h127D,
-	'h02F7, 'h0371, 'h1B8B, 'h4388, 'h6F29, 'h2529, 'h0000, 'h0000,
-	'h7FFF, 'h7F78, 'h7F5A, 'h7F3D, 'h7F1F, 'h771F, 'h633F, 'h537E,
-	'h4B9C, 'h4BB9, 'h57D7, 'h67D6, 'h7BB6, 'h5EF7, 'h0000, 'h0000
+wire [23:0] pal_yuv_lut[64] = '{
+	'h666666, 'h002A88, 'h1412A7, 'h3B00A4, 'h5C007E, 'h6E0040, 'h6C0700, 'h561D00,
+	'h333500, 'h0C4800, 'h005200, 'h004F08, 'h00404D, 'h000000, 'h000000, 'h000000,
+	'hADADAD, 'h155FD9, 'h4240FF, 'h7527FE, 'hA01ACC, 'hB71E7B, 'hB53120, 'h994E00,
+	'h6B6D00, 'h388700, 'h0D9300, 'h008F32, 'h007C8D, 'h000000, 'h000000, 'h000000,
+	'hFFFFFF, 'h64B0FF, 'h9290FF, 'hC676FF, 'hF26AFF, 'hFF6ECC, 'hFF8170, 'hEA9E22,
+	'hBCBE00, 'h88D800, 'h5CE430, 'h45E082, 'h48CDDE, 'h4F4F4F, 'h000000, 'h000000,
+	'hFFFFFF, 'hC0DFFF, 'hD3D2FF, 'hE8C8FF, 'hFAC2FF, 'hFFC4EA, 'hFFCCC5, 'hF7D8A5,
+	'hE4E594, 'hCFEF96, 'hBDF4AB, 'hB3F3CC, 'hB5EBF2, 'hB8B8B8, 'h000000, 'h000000
 };
 
 // Greyscale
-wire [15:0] pal_greyscale_lut[64] = '{
-	'h39CE, 'h1CE7, 'h18C6, 'h14A5, 'h1CE7, 'h18C6, 'h18C6, 'h0842,
-	'h0C63, 'h1CE7, 'h2108, 'h1CE7, 'h1CE7, 'h0000, 'h0421, 'h0421,
-	'h5AD6, 'h3DEF, 'h35AD, 'h318C, 'h39CE, 'h35AD, 'h35AD, 'h318C,
-	'h39CE, 'h3DEF, 'h4631, 'h4210, 'h3DEF, 'h18C6, 'h0421, 'h0421,
-	'h7BDE, 'h5EF7, 'h5294, 'h4A52, 'h5294, 'h4E73, 'h5294, 'h56B5,
-	'h5AD6, 'h5EF7, 'h6739, 'h6318, 'h6318, 'h318C, 'h0421, 'h0421,
-	'h7BDE, 'h77BD, 'h6F7B, 'h6739, 'h6739, 'h6739, 'h6739, 'h6B5A,
-	'h6F7B, 'h6F7B, 'h6F7B, 'h6F7B, 'h6F7B, 'h5EF7, 'h0421, 'h0421
+wire [23:0] pal_greyscale_lut[64] = '{
+	'h747474, 'h3E3E3E, 'h343434, 'h2E2E2E, 'h393939, 'h353535, 'h303030, 'h161616,
+	'h1F1F1F, 'h3E3E3E, 'h444444, 'h3E3E3E, 'h383838, 'h000000, 'h0A0A0A, 'h0A0A0A,
+	'hB2B2B2, 'h7B7B7B, 'h696969, 'h636363, 'h707070, 'h6D6D6D, 'h6B6B6B, 'h666666,
+	'h727272, 'h7D7D7D, 'h898989, 'h838383, 'h7E7E7E, 'h353535, 'h0A0A0A, 'h0A0A0A,
+	'hF1F1F1, 'hBEBEBE, 'hA1A1A1, 'h959595, 'hA1A1A1, 'h9E9E9E, 'hA2A2A2, 'hAAAAAA,
+	'hB5B5B5, 'hBDBDBD, 'hC8C8C8, 'hC6C6C6, 'hC4C4C4, 'h606060, 'h0A0A0A, 'h0A0A0A,
+	'hF1F1F1, 'hE9E9E9, 'hD9D9D9, 'hCCCCCC, 'hCFCFCF, 'hCDCDCD, 'hCFCFCF, 'hD3D3D3,
+	'hD9D9D9, 'hDBDBDB, 'hDEDEDE, 'hDDDDDD, 'hDDDDDD, 'hBABABA, 'h0A0A0A, 'h0A0A0A
 };
 
 // Rockman9 Palette
-wire [15:0] pal_rockman9_lut[64] = '{
-	'h39CE, 'h5400, 'h4464, 'h4C08, 'h3811, 'h0815, 'h0014, 'h002F,
-	'h00A8, 'h0100, 'h0140, 'h08E0, 'h2CE3, 'h0000, 'h0000, 'h0000,
-	'h5EF7, 'h75C0, 'h74E4, 'h7810, 'h5C17, 'h2C1C, 'h00BB, 'h0539,
-	'h01D1, 'h0240, 'h02A0, 'h1E40, 'h4600, 'h0000, 'h0000, 'h0000,
-	'h7FFF, 'h7EE7, 'h7E4B, 'h7E34, 'h7DFE, 'h59DF, 'h31DF, 'h1E7F,
-	'h1EFE, 'h0B50, 'h2769, 'h4FEB, 'h6FA0, 'h294A, 'h0000, 'h0000,
-	'h7FFF, 'h7F95, 'h7F58, 'h7F3A, 'h7F1F, 'h6F1F, 'h5AFF, 'h577F,
-	'h539F, 'h53FC, 'h5FD5, 'h67F6, 'h7BF3, 'h4E73, 'h0000, 'h0000
+wire [23:0] pal_rockman9_lut[64] = '{
+	'h707070, 'h0000A8, 'h201888, 'h400098, 'h880070, 'hA80010, 'hA00000, 'h780800,
+	'h402800, 'h004000, 'h005000, 'h003810, 'h183858, 'h000000, 'h000000, 'h000000,
+	'hB8B8B8, 'h0070E8, 'h2038E8, 'h8000F0, 'hB800B8, 'hE00058, 'hD82800, 'hC84808,
+	'h887000, 'h009000, 'h00A800, 'h009038, 'h008088, 'h000000, 'h000000, 'h000000,
+	'hF8F8F8, 'h38B8F8, 'h5890F8, 'hA088F8, 'hF078F8, 'hF870B0, 'hF87060, 'hF89838,
+	'hF0B838, 'h80D010, 'h48D848, 'h58F898, 'h00E8D8, 'h505050, 'h000000, 'h000000,
+	'hF8F8F8, 'hA8E0F8, 'hC0D0F8, 'hD0C8F8, 'hF8C0F8, 'hF8C0D8, 'hF8B8B0, 'hF8D8A8,
+	'hF8E0A0, 'hE0F8A0, 'hA8F0B8, 'hB0F8C8, 'h98F8F0, 'h989898, 'h000000, 'h000000
 };
 
 // Nintendulator NTSC
-wire [15:0] pal_nintendulator_lut[64] = '{
-	'h318C, 'h4CA0, 'h6022, 'h5C07, 'h440C, 'h200F, 'h000F, 'h006C,
-	'h00E6, 'h0121, 'h0160, 'h0140, 'h2900, 'h0000, 'h0000, 'h0000,
-	'h56B5, 'h7980, 'h7CE7, 'h7C6F, 'h7035, 'h4059, 'h08B9, 'h0134,
-	'h01CD, 'h0246, 'h0260, 'h1660, 'h4E00, 'h0000, 'h0000, 'h0000,
-	'h7FFF, 'h7ECA, 'h7E31, 'h7DB9, 'h7D7F, 'h699F, 'h31FF, 'h027F,
-	'h0318, 'h0390, 'h0BC9, 'h3FA6, 'h7746, 'h2529, 'h0000, 'h0000,
-	'h7FFF, 'h7F77, 'h7F5A, 'h7F1D, 'h7EFF, 'h76FF, 'h633F, 'h4F5F,
-	'h439C, 'h43D9, 'h53F6, 'h67F5, 'h7BB5, 'h5AD6, 'h0000, 'h0000
+wire [23:0] pal_nintendulator_lut[64] = '{
+	'h656565, 'h002B9B, 'h110EC0, 'h3F00BC, 'h66008F, 'h7B0045, 'h790100, 'h601C00,
+	'h363800, 'h084F00, 'h005A00, 'h005702, 'h004555, 'h000000, 'h000000, 'h000000,
+	'hAEAEAE, 'h0761F5, 'h3E3BFF, 'h7C1DFF, 'hAF0EE5, 'hCB1383, 'hC82A15, 'hA74D00,
+	'h6F7200, 'h379100, 'h009F00, 'h009B2A, 'h008498, 'h000000, 'h000000, 'h000000,
+	'hFFFFFF, 'h56B1FF, 'h8E8BFF, 'hCC6CFF, 'hFF5DFF, 'hFF62D4, 'hFF7964, 'hF89D06,
+	'hC0C300, 'h81E200, 'h4DF116, 'h30EC7A, 'h34D5EA, 'h4E4E4E, 'h000000, 'h000000,
+	'hFFFFFF, 'hBADFFF, 'hD1D0FF, 'hEBC3FF, 'hFFBDFF, 'hFFBFEE, 'hFFC8C0, 'hFCD799,
+	'hEFE784, 'hCCF387, 'hB6F9A0, 'hAAF8C9, 'hACEEF7, 'hB7B7B7, 'h000000, 'h000000
 };
 
-wire [14:0] mem_data;
+wire [23:0] mem_data;
 
-spram #(.addr_width(6), .data_width(15), .mem_name("pal"), .mem_init_file("rtl/tao.mif")) pal_ram
+spram #(.addr_width(6), .data_width(24), .mem_name("pal"), .mem_init_file("rtl/tao.mif")) pal_ram
 (
 	.clock(clk),
 	.address(load_color ? load_color_index : color_ef),
@@ -222,29 +222,29 @@ spram #(.addr_width(6), .data_width(15), .mem_name("pal"), .mem_init_file("rtl/t
 	.q(mem_data)
 );
 
-reg [14:0] pixel;
+reg [23:0] pixel;
 reg HBlank_r, VBlank_r;
 
 always @(posedge clk) begin
 	
 	if(pix_ce_n) begin
 		case (palette)
-			0: pixel <= pal_smooth_lut[color_ef][14:0];
-			1: pixel <= pal_unsat_lut[color_ef][14:0];
-			2: pixel <= pal_fcelut[color_ef][14:0];
-			3: pixel <= pal_nes_classic_lut[color_ef][14:0];
-			4: pixel <= pal_composite_direct_lut[color_ef][14:0];
-			5: pixel <= pal_pc10_lut[color_ef][14:0];
-			6: pixel <= pal_pvm_lut[color_ef][14:0];
-			7: pixel <= pal_wavebeam_lut[color_ef][14:0];
-			8: pixel <= pal_real_lut[color_ef][14:0];
-			9: pixel <= pal_sonycxa_lut[color_ef][14:0];
-			10: pixel <= pal_yuv_lut[color_ef][14:0];
-			11: pixel <= pal_greyscale_lut[color_ef][14:0];
-			12: pixel <= pal_rockman9_lut[color_ef][14:0];
-			13: pixel <= pal_nintendulator_lut[color_ef][14:0];
+			0: pixel <= pal_smooth_lut[color_ef][23:0];
+			1: pixel <= pal_unsat_lut[color_ef][23:0];
+			2: pixel <= pal_fcelut[color_ef][23:0];
+			3: pixel <= pal_nes_classic_lut[color_ef][23:0];
+			4: pixel <= pal_composite_direct_lut[color_ef][23:0];
+			5: pixel <= pal_pc10_lut[color_ef][23:0];
+			6: pixel <= pal_pvm_lut[color_ef][23:0];
+			7: pixel <= pal_wavebeam_lut[color_ef][23:0];
+			8: pixel <= pal_real_lut[color_ef][23:0];
+			9: pixel <= pal_sonycxa_lut[color_ef][23:0];
+			10: pixel <= pal_yuv_lut[color_ef][23:0];
+			11: pixel <= pal_greyscale_lut[color_ef][23:0];
+			12: pixel <= pal_rockman9_lut[color_ef][23:0];
+			13: pixel <= pal_nintendulator_lut[color_ef][23:0];
 			14: pixel <= mem_data;
-			default:pixel <= pal_smooth_lut[color_ef][14:0];
+			default:pixel <= pal_smooth_lut[color_ef][23:0];
 		endcase
 	
 		HBlank_r <= HBlank;
@@ -339,9 +339,9 @@ always @(posedge clk) if (pix_ce_n) begin
 	end
 end
 
-wire  [4:0] vga_r = dark_r ? pixel[4:1] + pixel[4:2] : pixel[4:0];
-wire  [4:0] vga_g = dark_g ? pixel[9:6] + pixel[9:7] : pixel[9:5];
-wire  [4:0] vga_b = dark_b ? pixel[14:11] + pixel[14:12] : pixel[14:10];
+wire  [7:0] vga_r = dark_r ? pixel[23:17] + pixel[23:18] : pixel[23:16];
+wire  [7:0] vga_g = dark_g ? pixel[15:9] + pixel[15:10] : pixel[15:8];
+wire  [7:0] vga_b = dark_b ? pixel[7:1] + pixel[7:2] : pixel[7:0];
 
 video_mixer #(260, 0, 1) video_mixer
 (
@@ -358,9 +358,9 @@ video_mixer #(260, 0, 1) video_mixer
 	.scandoubler(scale || forced_scandoubler),
 	.mono(0),
 
-	.R({vga_r, vga_r[4:2]}),
-	.G({vga_g, vga_g[4:2]}),
-	.B({vga_b, vga_b[4:2]})
+	.R(vga_r),
+	.G(vga_g),
+	.B(vga_b)
 );
 
 endmodule
