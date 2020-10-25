@@ -277,12 +277,14 @@ wire mapper191 = (flags[7:0] == 191);   // Has 2KB CHR RAM
 wire mapper192 = (flags[7:0] == 192);   // Has 4KB CHR RAM
 wire mapper194 = (flags[7:0] == 194);   // Has 2KB CHR RAM
 wire mapper195 = (flags[7:0] == 195);   // Has 4KB CHR RAM
+wire mapper189 = (flags[7:0] == 189);
 wire MMC6 = ((flags[7:0] == 4) && (flags[24:21] == 1)); // mapper 4, submapper 1 = MMC6
 wire acclaim = ((flags[7:0] == 4) && (flags[24:21] == 3)); // Acclaim mapper
 
 wire four_screen_mirroring = flags[16];// | DxROM; // not all DxROM are 4-screen
 reg mapper47_multicart;
 reg [2:0] mapper37_multicart;
+reg [3:0] mapper189_prgsel;
 wire [7:0] new_counter = (counter == 0 || irq_reload) ? irq_latch : counter - 1'd1;
 reg [3:0] a12_ctr;
 wire irq_support = !DxROM && !mapper33 && !mapper95 && !mapper88 && !mapper154 && !mapper76
@@ -413,6 +415,11 @@ end else if (ce) begin
 	if (prg_write && prg_is_ram)
 		mapper37_multicart <= prg_din[2:0];
 
+	// Mapper 189
+	// $4120-7FFF:  [AAAA BBBB] A,B:  PRG Reg
+	if (prg_write && prg_ain[15:14] == 2'b01 && prg_ain[8])
+		mapper189_prgsel <= (prg_din[7:4] | prg_din[3:0]); // Select 32 KB PRG ROM bank at $8000-$FFFF
+
 	// Trigger IRQ counter on rising edge of chr_ain[12]
 	// All MMC3A's and non-Sharp MMC3B's will generate only a single IRQ when $C000 is $00.
 	// This is because this version of the MMC3 generates IRQs when the scanline counter is decremented to 0.
@@ -464,6 +471,8 @@ always @* begin
 		else if (mapper37_multicart[2] == 1'b0)
 			prgsel[3] = 1'b0;
 	end
+
+	if (mapper189) prgsel = {mapper189_prgsel,prg_ain[14:13]};
 end
 
 // The CHR bank to load. Each increment here is 1kb. So valid values are 0..255.
