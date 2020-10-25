@@ -2042,3 +2042,137 @@ assign chr_allow = flags[15];
 assign vram_ce = chr_ain[13];
 
 endmodule
+
+module Mapper91(
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b,  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	input [13:0] chr_ain_o
+);
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire [15:0] flags_out = 0;
+
+reg [7:0] chr_bank_0, chr_bank_1, chr_bank_2, chr_bank_3;
+reg [3:0] prg_bank_0, prg_bank_1;
+reg outer_chr_bank;
+reg [1:0] outer_prg_bank;
+reg irq_enabled;
+reg irq;
+reg [5:0] irq_count, last_irq_count;
+reg last_a12;
+
+always @(posedge clk)
+	if (~enable) begin
+		irq_enabled <= 0;
+		irq_count <= 0;
+		irq <= 0;
+		last_irq_count <= 0;
+		outer_prg_bank <= 0;
+		outer_chr_bank <= 0;
+		last_a12 <= 0;
+	end else if (ce) begin
+		if (prg_write) begin
+			if(prg_ain[15:13] == 3'b011) begin
+				case({prg_ain[12],prg_ain[1:0]}) // $6000, $7000
+					3'b0_00: chr_bank_0 <= prg_din; // Select 2 KiB CHR-ROM bank at PPU $0000-$07FF
+					3'b0_01: chr_bank_1 <= prg_din; // Select 2 KiB CHR-ROM bank at PPU $0800-$0FFF
+					3'b0_10: chr_bank_2 <= prg_din; // Select 2 KiB CHR-ROM bank at PPU $1000-$17FF
+					3'b0_11: chr_bank_3 <= prg_din; // Select 2 KiB CHR-ROM bank at PPU $1800-$1FFF
+					3'b1_00: prg_bank_0 <= prg_din[3:0]; // Select 8 KiB PRG-ROM bank at CPU $8000-$9FFF
+					3'b1_01: prg_bank_1 <= prg_din[3:0]; // Select 8 KiB PRG-ROM bank at CPU $A000-$BFFF
+					3'b1_10: begin // IRQ Stop/Acknowledge
+						irq_enabled <= 0;
+						irq <= 0;
+					end
+					3'b1_11: begin // IRQ start/reset
+						irq_enabled <= 1'b1;
+						irq_count <= 0;
+						last_irq_count <= 0;
+					end
+				endcase
+			end else if (prg_ain[15:13] == 3'b100) begin // $8000-$9FFF
+				outer_chr_bank <= prg_din[0]; // Select outer 512 KiB CHR-ROM bank (CHR A19)
+				outer_prg_bank <= prg_din[2:1]; // Select outer 128 KiB PRG-ROM bank (PRG A17-A18)
+			end
+		end
+
+		// IRQ counts 64 rises of PPU A12
+		last_a12 <= chr_ain_o[12];
+		last_irq_count <= irq_count;
+		if (irq_enabled) begin
+			if (!last_a12 && chr_ain_o[12]) begin
+				irq_count <= irq_count + 1'b1;
+			end
+			if (&last_irq_count && irq_count == 6'd00) begin
+				irq <= 1'b1;
+			end
+		end
+
+	end
+
+// The PRG bank to load. Each increment here is 8KB. So valid values are 0..15.
+reg [3:0] prgsel;
+always @* begin
+	case(prg_ain[14:13])
+		2'b00: prgsel = prg_bank_0;
+		2'b01: prgsel = prg_bank_1;
+		2'b10: prgsel = 4'b1110; //$C000-$FFFF: 8+8 KiB PRG-ROM bank, hard-wired to last bank
+		2'b11: prgsel = 4'b1111;
+	endcase
+end
+
+// The CHR bank to load. Each increment here is 2 KB. So valid values are 0..255.
+reg [7:0] chrsel;
+always @* begin
+	case(chr_ain[12:11])
+		2'b00: chrsel = chr_bank_0;
+		2'b01: chrsel = chr_bank_1;
+		2'b10: chrsel = chr_bank_2;
+		2'b11: chrsel = chr_bank_3;
+	endcase
+end
+
+assign chr_aout = {2'b10, outer_chr_bank, chrsel, chr_ain[10:0]};
+assign chr_allow = flags[15];
+
+assign vram_a10 = flags[14] ? chr_ain[10] : chr_ain[11];
+assign vram_ce = chr_ain[13];
+
+assign prg_allow = prg_ain[15] && !prg_write;
+assign prg_aout = {3'b000, outer_prg_bank, prgsel, prg_ain[12:0]};
+
+endmodule
