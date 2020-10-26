@@ -923,7 +923,7 @@ end
 
 ///////////////////////////////////////////////////
 // palette loader
-reg [14:0] pal_color;
+reg [23:0] pal_color;
 reg [5:0] pal_index;
 reg [1:0] pal_count;
 
@@ -934,17 +934,17 @@ always @(posedge clk) begin
 		pal_count <= pal_count == 2 ? 2'd0 : pal_count + 2'd1;
 		case (pal_count)
 			0: begin
-				pal_color[4:0] <= file_input[7:3];
+				pal_color[23:16] <= file_input;
 				//pal_write <= 0;
 				pal_index <= ioctl_addr > 0 ? pal_index + 1'd1 : pal_index;
 			end
 
 			1: begin
-				pal_color[9:5] <= file_input[7:3];
+				pal_color[15:8] <= file_input;
 			end
 
 			2: begin
-				pal_color[14:10] <= file_input[7:3];
+				pal_color[7:0] <= file_input;
 				//pal_write <= 1;
 			end
 		endcase
