@@ -23,8 +23,8 @@ module emu
 	output        CE_PIXEL,
 
 	//Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
-	output  [7:0] VIDEO_ARX,
-	output  [7:0] VIDEO_ARY,
+	output [11:0] VIDEO_ARX,
+	output [11:0] VIDEO_ARY,
 
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
@@ -139,8 +139,8 @@ assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign BUTTONS [1] = 0;
 
-assign VIDEO_ARX = status[8] ? 8'd16 : (hide_overscan ? 8'd64 : 8'd128);
-assign VIDEO_ARY = status[8] ? 8'd9  : (hide_overscan ? 8'd49 : 8'd105);
+assign VIDEO_ARX = (!status[19:18]) ? (hide_overscan ? 12'd64 : 12'd128) : (status[19:18] - 1'd1);
+assign VIDEO_ARY = (!status[19:18]) ? (hide_overscan ? 12'd49 : 12'd105) : 12'd0;
 
 assign VGA_F1 = 0;
 //assign {UART_RTS, UART_TXD, UART_DTR} = 0;
@@ -152,7 +152,7 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXX XXXXX XXXXXX  XXXXXXXXXXXX XXX
+// XXXXX XX XX XXXXXXXXXXXXXXXXXXXX XXX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -163,6 +163,7 @@ parameter CONF_STR = {
 	"ONO,System Type,NTSC,PAL,Dendy;",
 	"OG,Disk Swap ("
 	};
+
 parameter CONF_STR2 = {
 	"),Auto,FDS button;",
 	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Ninten.,Custom;",
@@ -175,25 +176,28 @@ parameter CONF_STR2 = {
 	"H5D0R6,Load Backup RAM;",
 	"H5D0R7,Save Backup RAM;",
 	"-;",
-	"P1,Audio & Video;",
-		"P1O8,Aspect Ratio,4:3,16:9;",
-		"P1O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-		"P1O4,Hide Overscan,Off,On;",
-		"P1ORS,Mask Edges,Off,Left,Both,Auto;",
-		"P1OP,Extra Sprites,Off,On;",
-		"P1-;",
 
-		"P1-;",
-		"P1OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
+	"P1,Audio & Video;",
+	"P1-;",
+	"P1OIJ,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+	"P1O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+	"P1O4,Hide Overscan,Off,On;",
+	"P1ORS,Mask Edges,Off,Left,Both,Auto;",
+	"P1OP,Extra Sprites,Off,On;",
+	"P1-;",
+	"P1OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
+
 	"P2,Input Options;",
-		"P2O9,Swap Joysticks,No,Yes;",
-		"P2OA,Multitap,Disabled,Enabled;",
-		"P2OQ,Serial Mode,None,SNAC;",
-		"H4P2OT,SNAC Zapper,Off,On;",
-		"P2o02,Periphery,None,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2),Vaus,Vaus(A-Trigger),Powerpad,Family Trainer;",
-		"P2-;",
-		"P2OL,Zapper Trigger,Mouse,Joystick;",
-		"P2OM,Crosshairs,On,Off;",
+	"P2-;",
+	"P2O9,Swap Joysticks,No,Yes;",
+	"P2OA,Multitap,Disabled,Enabled;",
+	"P2OQ,Serial Mode,None,SNAC;",
+	"H4P2OT,SNAC Zapper,Off,On;",
+	"P2o02,Periphery,None,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2),Vaus,Vaus(A-Trigger),Powerpad,Family Trainer;",
+	"P2-;",
+	"P2OL,Zapper Trigger,Mouse,Joystick;",
+	"P2OM,Crosshairs,On,Off;",
+
 	"-;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP/Mat 1,PP/Mat 2,PP/Mat 3,PP/Mat 4,PP/Mat 5,PP/Mat 6,PP/Mat 7,PP/Mat 8,PP/Mat 9,PP/Mat 10,PP/Mat 11,PP/Mat 12;",
