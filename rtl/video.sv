@@ -328,14 +328,10 @@ reg dark_r, dark_g, dark_b;
 always @(posedge clk) if (pix_ce_n) begin
 	{dark_r, dark_g, dark_b} <= 3'b000;
 
-	if ((color_ef[3:0] < 4'hE) && |emphasis) begin
-		if (~&emphasis) begin
-			dark_r <= ~emphasis[0];
-			dark_g <= ~emphasis[1];
-			dark_b <= ~emphasis[2];
-		end else begin
-			{dark_r, dark_g, dark_b} <= 3'b111;
-		end
+	if (~&color_ef[3:1]) begin // Only applies in draw range
+		dark_r <= emphasis[1] | emphasis[2];
+		dark_g <= emphasis[0] | emphasis[2];
+		dark_b <= emphasis[0] | emphasis[1];
 	end
 end
 

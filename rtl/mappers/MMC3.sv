@@ -73,7 +73,13 @@ wire a12_edge = (chr_ain_o[12] && a12_ctr == 0) || old_a12_edge;
 reg reload_extra = 0;
 always @(posedge clk) begin
 	old_a12_edge <= a12_edge && !ce;
-	a12_ctr <= chr_ain_o[12] ? 5'd16 : (a12_ctr != 0 && ce) ? a12_ctr - 2'b01 : a12_ctr;
+	if (ce) begin
+		if (chr_ain_o[12]) begin
+			a12_ctr <= 5'd16;
+		end else if (a12_ctr > 0) begin
+			a12_ctr <= a12_ctr - 1'd1;
+		end
+	end
 end
 
 always @(posedge clk)
@@ -94,31 +100,30 @@ if (~enable) begin
 	next_irq_cycle_mode <= 0;
 	cycle_counter <= 0;
 	irq <= 0;
+	irq_delay <= 0;
 end else if (ce) begin
 	// Process these before writes so irq_reload and cycle_counter register writes take precedence.
 	cycle_counter <= cycle_counter + 1'd1;
-	irq_delay <= {1'b0, irq_delay[1]};
-	if ((cycle_counter == 3) || (!irq_cycle_mode))
-		irq_cycle_mode <= next_irq_cycle_mode;
+	irq_cycle_mode <= next_irq_cycle_mode;
 
 	if (irq_cycle_mode ? (cycle_counter == 3) : a12_edge) begin
 		if (counter == 8'h00) begin
 			counter <= irq_latch + ((irq_reload && reload_extra) ? 1'd1 : 1'd0);
-			irq_reload <= 0;
-			if (~|(irq_latch | ((irq_reload && reload_extra) ? 1'd1 : 1'd0)) && irq_reload && irq_enable) begin
-				irq_delay <= irq_cycle_mode ? 2'b01 : 2'b10;
+			if (~|({irq_latch, ((irq_reload && reload_extra) ? 1'd1 : 1'd0)}) && irq_reload && irq_enable) begin
+				irq_delay <= 1;
 			end
 		end else begin
 			counter <= counter - 1'd1;
 			if (counter == 8'h01 && irq_enable) begin
-				irq_delay <= irq_cycle_mode ? 2'b01 : 2'b10;
+				irq_delay <= 1;
 			end
 		end
+		irq_reload <= 0;
 	end
 
-	if (irq_delay[0]) begin
+	if (irq_delay) begin
 		irq <= 1;
-		irq_delay <= 2'b00;
+		irq_delay <= 0;
 	end
 
 	if (prg_write && prg_ain[15]) begin

@@ -776,6 +776,7 @@ endmodule  // SpriteAddressGen
 module BgPainter(
 	input clk,
 	input ce,
+	input clear,
 	input enable,             // Shift registers activated
 	input [2:0] cycle,
 	input [2:0] fine_x_scroll,
@@ -805,19 +806,18 @@ initial begin
 end
 
 always @(posedge clk) if (ce) begin
-	case (cycle[2:0])
-		1: current_name_table <= vram_data;
-		3: current_attribute_table <=
-			(!loopy[1] && !loopy[6]) ? vram_data[1:0] :
-			( loopy[1] && !loopy[6]) ? vram_data[3:2] :
-			(!loopy[1] &&  loopy[6]) ? vram_data[5:4] :
-			vram_data[7:6];
-
-		5: bg0 <= vram_data; // Pattern table bitmap #0
-		//7: bg1 <= vram_data; // Pattern table bitmap #1
-	endcase
-
 	if (enable) begin
+		case (cycle[2:0])
+			1: current_name_table <= vram_data;
+			3: current_attribute_table <=
+				(!loopy[1] && !loopy[6]) ? vram_data[1:0] :
+				( loopy[1] && !loopy[6]) ? vram_data[3:2] :
+				(!loopy[1] &&  loopy[6]) ? vram_data[5:4] :
+				vram_data[7:6];
+
+			5: bg0 <= vram_data; // Pattern table bitmap #0
+			//7: bg1 <= vram_data; // Pattern table bitmap #1
+		endcase
 		playfield_pipe_1[14:0] <= playfield_pipe_1[15:1];
 		playfield_pipe_2[14:0] <= playfield_pipe_2[15:1];
 		playfield_pipe_3[7:0] <= playfield_pipe_3[8:1];
@@ -830,6 +830,17 @@ always @(posedge clk) if (ce) begin
 			playfield_pipe_4[8] <= current_attribute_table[1];
 		end
 	end
+
+	if (clear) begin
+		playfield_pipe_1 <= 0;
+		playfield_pipe_2 <= 0;
+		playfield_pipe_3 <= 0;
+		playfield_pipe_4 <= 0;
+		current_name_table <= 0;
+		current_attribute_table <= 0;
+		bg0 <= 0;
+	end
+
 end
 
 assign name_table = current_name_table;
@@ -1018,10 +1029,13 @@ wire is_pal_address = (loopy[13:8] == 6'b111111);
 wire [7:0] bg_name_table;
 wire [3:0] bg_pixel_noblank;
 
+wire bgp_en = (!cycle[8] || (cycle >= 320 && !at_last_cycle_group)) && is_rendering;
+
 BgPainter bg_painter(
 	.clk           (clk),
 	.ce            (ce),
-	.enable        (!at_last_cycle_group),
+	.clear         (cycle == 319),
+	.enable        (bgp_en),
 	.cycle         (cycle[2:0]),
 	.fine_x_scroll (fine_x_scroll),
 	.loopy         (loopy),
@@ -1030,7 +1044,7 @@ BgPainter bg_painter(
 	.pixel         (bg_pixel_noblank)
 );
 
-// Blank out BG in the leftmost 8 pixels?
+// Blank out BG in the leftmost 8 pixels
 wire show_bg_on_pixel = (playfield_clip || (cycle[7:3] != 0)) && enable_playfield;
 wire [3:0] bg_pixel = {bg_pixel_noblank[3:2], show_bg_on_pixel ? bg_pixel_noblank[1:0] : 2'b00};
 
