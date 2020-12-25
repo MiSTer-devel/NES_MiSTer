@@ -55,7 +55,6 @@ reg mirroring;                     // 0 = vertical, 1 = horizontal
 reg irq_enable, irq_reload;        // IRQ enabled, and IRQ reload requested
 reg [7:0] irq_latch, counter;      // IRQ latch value and current counter
 reg [1:0] irq_delay;
-wire irq_imm;
 reg [7:0] chr_bank_0, chr_bank_1;  // Selected CHR banks
 reg [7:0] chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5;
 reg [7:0] chr_bank_8, chr_bank_9;
@@ -69,12 +68,18 @@ wire mapper158 = (flags[7:0] == 158);
 
 // This code detects rising edges on a12.
 reg old_a12_edge;
-reg [1:0] a12_ctr;
+reg [4:0] a12_ctr;
 wire a12_edge = (chr_ain_o[12] && a12_ctr == 0) || old_a12_edge;
-
+reg reload_extra = 0;
 always @(posedge clk) begin
 	old_a12_edge <= a12_edge && !ce;
-	a12_ctr <= chr_ain_o[12] ? 2'b11 : (a12_ctr != 0 && ce) ? a12_ctr - 2'b01 : a12_ctr;
+	if (ce) begin
+		if (chr_ain_o[12]) begin
+			a12_ctr <= 5'd16;
+		end else if (a12_ctr > 0) begin
+			a12_ctr <= a12_ctr - 1'd1;
+		end
+	end
 end
 
 always @(posedge clk)
@@ -83,6 +88,7 @@ if (~enable) begin
 	prg_rom_bank_mode <= 0;
 	chr_K <= 0;
 	chr_a12_invert <= 0;
+	reload_extra <= 0;
 	mirroring <= 0;
 	{irq_enable, irq_reload} <= 0;
 	{irq_latch, counter} <= 0;
@@ -94,29 +100,30 @@ if (~enable) begin
 	next_irq_cycle_mode <= 0;
 	cycle_counter <= 0;
 	irq <= 0;
+	irq_delay <= 0;
 end else if (ce) begin
 	// Process these before writes so irq_reload and cycle_counter register writes take precedence.
 	cycle_counter <= cycle_counter + 1'd1;
-	irq_delay <= {1'b0, irq_delay[1]};
-	if ((cycle_counter == 3) || (!irq_cycle_mode))
-		irq_cycle_mode <= next_irq_cycle_mode;
+	irq_cycle_mode <= next_irq_cycle_mode;
 
-	irq_imm = 1'b0;
 	if (irq_cycle_mode ? (cycle_counter == 3) : a12_edge) begin
-		if (irq_reload || counter == 8'h00) begin
-			counter <= irq_latch + ((irq_reload && (|irq_latch[7:1])) ? 1'd1 : 1'd0);
-			irq_imm = irq_latch == 0;
+		if (counter == 8'h00) begin
+			counter <= irq_latch + ((irq_reload && reload_extra) ? 1'd1 : 1'd0);
+			if (~|({irq_latch, ((irq_reload && reload_extra) ? 1'd1 : 1'd0)}) && irq_reload && irq_enable) begin
+				irq_delay <= 1;
+			end
 		end else begin
 			counter <= counter - 1'd1;
+			if (counter == 8'h01 && irq_enable) begin
+				irq_delay <= 1;
+			end
 		end
-
-		if (((counter == 1) || (irq_imm)) && irq_enable)
-			irq_delay <= irq_cycle_mode ? 2'b01 : 2'b10;
 		irq_reload <= 0;
 	end
-	if (irq_delay[0]) begin
+
+	if (irq_delay) begin
 		irq <= 1;
-		irq_delay <= 2'b00;
+		irq_delay <= 0;
 	end
 
 	if (prg_write && prg_ain[15]) begin
@@ -142,8 +149,10 @@ end else if (ce) begin
 			3'b01_1: begin end
 			3'b10_0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
 			3'b10_1: begin
+						reload_extra <= |a12_ctr ? 1'd0 : 1'd1;
 						{irq_reload, next_irq_cycle_mode} <= {1'b1, prg_din[0]}; // IRQ reload ($C001-$DFFF, odd)
 						cycle_counter <= 0;
+						counter <= 0;
 					end
 			3'b11_0: {irq_enable, irq} <= 2'b00;                 // IRQ disable ($E000-$FFFE, even)
 			3'b11_1: {irq_enable, irq} <= 2'b10;                 // IRQ enable ($E001-$FFFF, odd)
