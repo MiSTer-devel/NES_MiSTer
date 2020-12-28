@@ -21,7 +21,7 @@ module cart_top (
 	input             ppu_ce,
 	input             reset,
 	input      [19:0] ppuflags,       // Misc flags from PPU for MMC5 cheating
-	input      [31:0] flags,          // Misc flags from ines header {prg_size(3), chr_size(3), mapper(8)}
+	input      [63:0] flags,          // Misc flags from ines header {prg_size(3), chr_size(3), mapper(8)}
 	input      [15:0] prg_ain,        // Better known as "CPU Address in"
 	output reg [24:0] prg_aout,       // PRG Input / Output Address Lines ([25:22] extended Lines [Misc ROM])
 	input             prg_read,       // PRG Read / write signals

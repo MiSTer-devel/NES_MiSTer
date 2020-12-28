@@ -5,7 +5,7 @@ module MMC1(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk
 	input        enable,      // Mapper enabled
-	input [31:0] flags,       // Cart flags
+	input [63:0] flags,       // Cart flags
 	input [15:0] prg_ain,     // prg address
 	inout [21:0] prg_aout_b,  // prg address out
 	input        prg_read,    // prg read
@@ -74,7 +74,9 @@ reg [4:0] prg_bank;
 
 reg delay_ctrl;	// used to prevent fast-write to the control register
 
-wire [2:0] prg_size = flags[10:8];
+wire [3:0] prg_ram_size = flags[29:26];
+wire [3:0] prg_nvram_size = flags[34:31];
+wire [2:0] chr_size = flags[13:11];
 
 // Update shift register
 always @(posedge clk) 
@@ -133,8 +135,9 @@ always @* begin
 end
 
 assign chr_aout = {5'b100_00, chrsel, chr_ain[11:0]};
-wire [21:0] prg_aout_tmp = prg_size == 5 ? {3'b000, chrsel[4], prgsel, prg_ain[13:0]} // for large PRG ROM, CHR A16 selects the 256KB PRG bank
-	: {4'b00_00, prgsel, prg_ain[13:0]};
+
+// for large PRG ROM, CHR A16 selects the 256KB PRG bank. ROM <= 256KB is not affected because of the mask in cart.sv
+wire [21:0] prg_aout_tmp = {3'b000, chrsel[4], prgsel, prg_ain[13:0]};
 
 // The a10 VRAM address line. (Used for mirroring)
 reg vram_a10_t;
@@ -147,12 +150,27 @@ always @* begin
 	endcase
 end
 
+// PRG RAM banking
+reg [1:0] prg_ram_a14_13;
+always @* begin
+	// SOROM & SZROM: The battery backed RAM chip is selected when the chrsel bit is high
+	// We only save the first 8KB so the battery RAM needs to be first.
+	if (prg_ram_size == 4'd7 && prg_nvram_size == 4'd7) begin
+		// CHR ROM 16-64KB = SZROM. Other is SOROM
+		prg_ram_a14_13 = {1'b0, (chr_size >= 3'd1) ? ~chrsel[4] : ~chrsel[3]}; // 8+8KB
+	end else if (prg_nvram_size == 4'd9) begin
+		prg_ram_a14_13 = {chrsel[3],chrsel[2]}; // SXROM 32KB
+	end else begin
+		prg_ram_a14_13 = 2'b00; // 8KB, no banking
+	end
+end
+
 assign vram_a10 = vram_a10_t;
 assign vram_ce = chr_ain[13];
 
 wire prg_is_ram = prg_ain >= 'h6000 && prg_ain < 'h8000;
 assign prg_allow = prg_ain[15] && !prg_write || prg_is_ram;
-wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]};
+wire [21:0] prg_ram = {7'b11_1100_0, prg_ram_a14_13, prg_ain[12:0]};
 
 assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
 assign chr_allow = flags[15];
