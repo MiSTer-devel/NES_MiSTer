@@ -75,7 +75,7 @@ module NES(
 	input         cold_reset,
 	input   [1:0] sys_type,
 	output  [1:0] nes_div,
-	input  [31:0] mapper_flags,
+	input  [63:0] mapper_flags,
 	output [15:0] sample,         // sample generated from APU
 	output  [5:0] color,          // pixel generated from PPU
 	output  [1:0] joypad_clock,   // Set to 1 for each joypad to clock it.

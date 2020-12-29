@@ -637,11 +637,12 @@ wire [24:0] loader_addr;
 wire [7:0] loader_write_data;
 reg loader_reset;
 wire loader_write;
-wire [31:0] loader_flags;
-reg  [31:0] mapper_flags;
+wire [63:0] loader_flags;
+reg  [63:0] mapper_flags;
 wire fds = (mapper_flags[7:0] == 8'h14);
 wire nsf = (loader_flags[7:0] == 8'h1F);
 wire piano = (mapper_flags[30]);
+wire [3:0] prg_nvram = mapper_flags[34:31];
 wire loader_busy, loader_done, loader_fail;
 wire [20:0] prg_mask;
 wire [19:0] chr_mask;
@@ -719,7 +720,7 @@ NES nes (
 	.cold_reset      (downloading & (type_fds | type_nes)),
 	.sys_type        (status[24:23]),
 	.nes_div         (nes_ce),
-	.mapper_flags    (downloading ? 32'd0 : mapper_flags),
+	.mapper_flags    (downloading ? 64'd0 : mapper_flags),
 	.gg              (status[20]),
 	.gg_code         (gg_code),
 	.gg_reset        (gg_reset && loader_clk && !ioctl_addr),
@@ -1066,7 +1067,7 @@ reg  fds_busy;
 reg  old_fds_btn;
 reg [2:0] swap_delay;
 reg [1:0] diskside_btn;
-wire [8:0] save_sz = fds ? rom_sz[17:9] : bram_en ? 9'd3 : 9'd63;
+wire [8:0] save_sz = fds ? rom_sz[17:9] : bram_en ? 9'd3 : (prg_nvram == 4'd7) ? 9'd15 : 9'd63;
 wire [1:0] diskside_req_use = fds_swap_invert ? diskside_btn : diskside_req;
 wire [1:0] next_btn_diskside = (last_diskside == diskside_btn) ? 2'd0 : diskside_btn + 2'd1;
 
@@ -1149,7 +1150,7 @@ module GameLoader
 	output reg [24:0] mem_addr,
 	output [7:0]  mem_data,
 	output        mem_write,
-	output [31:0] mapper_flags,
+	output [63:0] mapper_flags,
 	output [20:0] prg_mask,
 	output [19:0] chr_mask,
 	output reg    busy,
@@ -1185,6 +1186,7 @@ wire is_nes20_chr = (is_nes20 && (ines[9][7:4] == 4'hF));
 // NES 2.0 PRG & CHR sizes
 reg [21:0] prg_size2, chr_size2, prg_mask_a, chr_mask_a;
 reg [21:0] chr_ram_size;
+
 always @(posedge clk) begin
 	// PRG
 	// ines[4][1:0]: Multiplier, actual value is MM*2+1 (1,3,5,7)
@@ -1231,14 +1233,22 @@ wire is_dirty = !is_nes20 && ((ines[9][7:1] != 0)
 wire [7:0] mapper = {is_dirty ? 4'b0000 : ines[7][7:4], ines[6][7:4]};
 wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
 wire [3:0] prgram = {is_nes20 ? ines[10][3:0] : 4'h0};
+wire [3:0] prg_nvram = (is_nes20 ? ines[10][7:4] : 4'h0);
 wire       piano = is_nes20 && (ines[15][5:0] == 6'h19);
 wire has_saves = ines[6][1];
 
-// ines[6][0] is mirroring
-// ines[6][3] is 4 screen mode
-// ines[8][7:4] is NES 2.0 submapper
-// ines[10][3:0] is NES 2.0 PRG RAM shift size (64 << size)
-assign mapper_flags = {1'b0, piano, prgram, has_saves, ines2mapper, ines[6][3], has_chr_ram, ines[6][0], chr_size, prg_size, mapper};
+assign mapper_flags[63:35] = 'd0;
+assign mapper_flags[34:31] = prg_nvram; //NES 2.0 Save RAM shift size (64 << size)
+assign mapper_flags[30]    = piano;
+assign mapper_flags[29:26] = prgram; //NES 2.0 PRG RAM shift size (64 << size)
+assign mapper_flags[25]    = has_saves;
+assign mapper_flags[24:17] = ines2mapper; //NES 2.0 submapper
+assign mapper_flags[16]    = ines[6][3]; // 4 screen mode
+assign mapper_flags[15]    = has_chr_ram;
+assign mapper_flags[14]    = ines[6][0]; // mirroring
+assign mapper_flags[13:11] = chr_size;
+assign mapper_flags[10:8]  = prg_size;
+assign mapper_flags[7:0]   = mapper;
 
 reg [3:0] clearclk; //Wait for SDRAM
 reg copybios;
