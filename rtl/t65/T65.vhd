@@ -276,6 +276,7 @@ begin
     port map(
 --inputs
       Mode        => Mode_r,
+      BCD_en      => BCD_en_r,
       IR          => IR,
       MCycle      => MCycle,
       P           => P,
