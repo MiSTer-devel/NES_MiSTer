@@ -58,6 +58,7 @@ use work.T65_Pack.all;
 entity T65_MCode is
   port(
     Mode                    : in  std_logic_vector(1 downto 0);      -- "00" => 6502, "01" => 65C02, "10" => 65816
+    BCD_en                  : in  std_logic;
     IR                      : in  std_logic_vector(7 downto 0);
     MCycle                  : in  T_Lcycle;
     P                       : in  std_logic_vector(7 downto 0);
@@ -556,7 +557,11 @@ begin
               Set_BusA_To<=Set_BusA_To_AAX;
               LDX <= '1';
             when "101" =>--OAL
-              Set_BusA_To<=Set_BusA_To_DAO;
+              if (BCD_en = '1') then
+                Set_BusA_To<=Set_BusA_To_DAO;
+              else
+                Set_BusA_To<=Set_BusA_To_DI;
+              end if;              
               LDA <= '1';
             when others=>
               LDA <= '1';

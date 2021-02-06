@@ -21,7 +21,7 @@ module cart_top (
 	input             ppu_ce,
 	input             reset,
 	input      [19:0] ppuflags,       // Misc flags from PPU for MMC5 cheating
-	input      [31:0] flags,          // Misc flags from ines header {prg_size(3), chr_size(3), mapper(8)}
+	input      [63:0] flags,          // Misc flags from ines header {prg_size(3), chr_size(3), mapper(8)}
 	input      [15:0] prg_ain,        // Better known as "CPU Address in"
 	output reg [24:0] prg_aout,       // PRG Input / Output Address Lines ([25:22] extended Lines [Misc ROM])
 	input             prg_read,       // PRG Read / write signals
@@ -257,15 +257,15 @@ MMC2 mmc2(
 
 //*****************************************************************************//
 // Name   : MMC3                                                               //
-// Mappers: 4, 33, 37, 47, 48, 74, 76, 80, 82, 88, 95, 112, 118, 119, 154, 191,//
-//          192, 194, 195, 206, 207                                            //
+// Mappers: 4, 33, 37, 47, 48, 74, 76, 80, 82, 88, 95, 112, 118, 119, 154, 189,//
+//          191, 192, 194, 195, 206, 207                                       //
 // Status : Working -- Blaarg IRQ timing test fails, but may be submapper      //
 // Notes  : While currently working well, this mapper could use a full review. //
 // Games  : Crystalis, Battletoads                                             //
 //*****************************************************************************//
 wire mmc3_en = me[118] | me[119] | me[47] | me[206] | me[112] | me[88] | me[154] | me[95]
 	| me[76] | me[80] | me[82] | me[207] | me[48] | me[33] | me[37] | me[74] | me[191]
-	| me[192] | me[194] | me[195] | me[4];
+	| me[192] | me[194] | me[195] | me[4] | me[189];
 
 MMC3 mmc3 (
 	.clk        (clk),
@@ -1631,6 +1631,40 @@ JYCompany jycompany(
 	.audio_b    (audio_out_b),
 	// Special ports
 	.ppu_ce     (ppu_ce),
+	.chr_ain_o  (chr_ain_orig)
+);
+
+//*****************************************************************************//
+// Name   : Mapper 91                                                          //
+// Mappers: 91                                                                 //
+// Status : Working (Needs testing)                                            //
+// Notes  :                                                                    //
+// Games  : Street Fighter 3, Mortal Kombat II, Dragon Ball Z 2,               //
+//          Mario & Sonic 2,  Mario Rider,                                     //
+//          1995 Super HIK 4-in-1 (JY-016), 1995 Super HiK 4-in-1 (JY-017)     //
+//*****************************************************************************//
+Mapper91 map91(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[91]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b),
 	.chr_ain_o  (chr_ain_orig)
 );
 

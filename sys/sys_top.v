@@ -287,7 +287,7 @@ cyclonev_hps_interface_mpu_general_purpose h2f_gp
 reg [15:0] cfg;
 
 reg        cfg_set      = 0;
-wire       vga_fb       = cfg[12];
+wire       vga_fb       = cfg[12] | vga_force_scaler;
 wire [1:0] hdmi_limited = {cfg[11],cfg[8]};
 
 `ifdef DEBUG_NOHDMI
@@ -303,7 +303,7 @@ wire       ypbpr_en     = cfg[5];
 wire       io_osd_vga   = io_ss1 & ~io_ss2;
 `ifndef DUAL_SDRAM
 	wire    sog          = cfg[9];
-	wire    vga_scaler   = cfg[2];
+	wire    vga_scaler   = cfg[2] | vga_force_scaler;
 `endif
 
 reg        cfg_custom_t = 0;
@@ -316,7 +316,7 @@ reg  [6:0] coef_addr;
 reg  [8:0] coef_data;
 reg        coef_wr = 0;
 
-wire [7:0] ARX, ARY;
+wire[11:0] ARX, ARY;
 reg [11:0] VSET = 0, HSET = 0;
 reg        FREESCALE = 0;
 reg  [2:0] scaler_flt;
@@ -337,6 +337,10 @@ reg [23:0] acy0 = -24'd6216759;
 reg [23:0] acy1 =  24'd6143386;
 reg [23:0] acy2 = -24'd2023767;
 reg        areset = 0;
+reg [11:0] arc1x = 0;
+reg [11:0] arc1y = 0;
+reg [11:0] arc2x = 0;
+reg [11:0] arc2y = 0;
 
 always@(posedge clk_sys) begin
 	reg  [7:0] cmd;
@@ -455,6 +459,15 @@ always@(posedge clk_sys) begin
 					14: acy2[23:16]      <= io_din[7:0];
 				endcase
 			end
+			if(cmd == 'h3A) begin
+				cnt <= cnt + 1'd1;
+				case(cnt[3:0])
+					 0: arc1x <= io_din[11:0];
+					 1: arc1y <= io_din[11:0];
+					 2: arc2x <= io_din[11:0];
+					 3: arc2y <= io_din[11:0];
+				endcase
+			end
 		end
 	end
 
@@ -518,12 +531,11 @@ always @(posedge FPGA_CLK2_50) begin
 	resetd2 <= resetd;
 end
 
-wire clk_100m;
-wire clk_pal   = FPGA_CLK3_50;
-
 ////////////////////  SYSTEM MEMORY & SCALER  /////////////////////////
 
 wire reset;
+wire clk_100m;
+
 sysmem_lite sysmem
 (
 	//Reset/Clock
@@ -613,6 +625,8 @@ ddr_svc ddr_svc
 	.ch1_ready(pal_wr)
 );
 
+wire clk_pal = clk_audio;
+
 
 wire  [27:0] vbuf_address;
 wire   [7:0] vbuf_burstcount;
@@ -633,6 +647,9 @@ wire clk_hdmi  = hdmi_clk_out;
 ascal 
 #(
 	.RAMBASE(32'h20000000),
+`ifndef USE_FB	
+	.PALETTE2("false"),
+`endif
 	.N_DW(128),
 	.N_AW(28)
 )
@@ -686,10 +703,19 @@ ascal
 	.poly_dw  (coef_data),
 	.poly_wr  (coef_wr),
 
-	.pal_clk  (clk_pal),
-	.pal_dw   (pal_d),
-	.pal_a    (pal_a),
-	.pal_wr   (pal_wr),
+	.pal1_clk (clk_pal),
+	.pal1_dw  (pal_d),
+	.pal1_a   (pal_a),
+	.pal1_wr  (pal_wr),
+
+`ifdef USE_FB	
+	.pal2_clk (fb_pal_clk),
+	.pal2_dw  (fb_pal_d),
+	.pal2_dr  (fb_pal_q),
+	.pal2_a   (fb_pal_a),
+	.pal2_wr  (fb_pal_wr),
+	.pal_n    (fb_en),
+`endif
 
 	.o_fb_ena         (FB_EN),
 	.o_fb_hsize       (FB_WIDTH),
@@ -765,9 +791,30 @@ always @(posedge clk_vid) begin
 	reg [11:0] videoh;
 	reg [11:0] height;
 	reg [11:0] width;
+	reg [11:0] arx;
+	reg [11:0] ary;
 
 	height <= (VSET && (VSET < HEIGHT)) ? VSET : HEIGHT;
 	width  <= (HSET && (HSET < WIDTH))  ? HSET : WIDTH;
+	
+	if(!ARY) begin
+		if(ARX == 1) begin
+			arx <= arc1x;
+			ary <= arc1y;
+		end
+		else if(ARX == 2) begin
+			arx <= arc2x;
+			ary <= arc2y;
+		end
+		else begin
+			arx <= 0;
+			ary <= 0;
+		end
+	end
+	else begin
+		arx <= ARX;
+		ary <= ARY;
+	end
 
 	state <= state + 1'd1;
 	case(state)
@@ -778,18 +825,20 @@ always @(posedge clk_vid) begin
 				vmax <= LFB_VMAX;
 				state<= 0;
 			end
-			else if(ARX && ARY && !FREESCALE) begin
-				wcalc <= (height*ARX)/ARY;
-				hcalc <= (width*ARY)/ARX;
-			end
-			else begin
+			else if(FREESCALE || !arx || !ary) begin
 				wcalc <= width;
 				hcalc <= height;
 			end
+			else begin
+				wcalc <= (height*arx)/ary;
+				hcalc <= (width*ary)/arx;
+			end
+
 		6: begin
 				videow <= (wcalc > width)  ? width  : wcalc[11:0];
 				videoh <= (hcalc > height) ? height : hcalc[11:0];
 			end
+
 		7: begin
 				hmin <= ((WIDTH  - videow)>>1);
 				hmax <= ((WIDTH  - videow)>>1) + videow - 1'd1;
@@ -830,12 +879,14 @@ wire        pal_wr;
 reg  [28:0] pal_addr;
 reg         pal_req = 0;
 always @(posedge clk_pal) begin
-	reg old_vs;
+	reg old_vs1, old_vs2;
 
-	pal_addr <= FB_BASE[31:3] - 29'd512;
+	pal_addr <= LFB_BASE[31:3] - 29'd512;
 
-	old_vs <= hdmi_vs;
-	if(~old_vs & hdmi_vs & ~FB_FMT[2] & FB_FMT[1] & FB_FMT[0] & FB_EN) pal_req <= ~pal_req;
+	old_vs1 <= hdmi_vs;
+	old_vs2 <= old_vs1;
+	
+	if(~old_vs2 & old_vs1 & ~FB_FMT[2] & FB_FMT[1] & FB_FMT[0] & FB_EN) pal_req <= ~pal_req;
 end
 
 
@@ -952,12 +1003,24 @@ hdmi_config hdmi_config
 `ifndef DEBUG_NOHDMI
 wire [23:0] hdmi_data_sl;
 wire        hdmi_de_sl, hdmi_vs_sl, hdmi_hs_sl;
+
+`ifdef USE_FB
+reg dis_output;
+always @(posedge clk_hdmi) begin
+	reg dis;
+	dis <= fb_force_blank;
+	dis_output <= dis;
+end
+`else
+wire dis_output = 0;
+`endif
+
 scanlines #(1) HDMI_scanlines
 (
 	.clk(clk_hdmi),
 
 	.scanlines(scanlines),
-	.din(hdmi_data),
+	.din(dis_output ? 24'd0 : hdmi_data),
 	.hs_in(hdmi_hs),
 	.vs_in(hdmi_vs),
 	.de_in(hdmi_de),
@@ -1308,6 +1371,7 @@ wire  [7:0] r_out, g_out, b_out, hr_out, hg_out, hb_out;
 wire        vs_fix, hs_fix, de_emu, vs_emu, hs_emu, f1;
 wire        hvs_fix, hhs_fix, hde_emu;
 wire        clk_vid, ce_pix, clk_ihdmi, ce_hpix;
+wire        vga_force_scaler;
 
 `ifdef USE_DDRAM
 	wire        ram_clk;
@@ -1366,7 +1430,14 @@ wire [11:0] fb_height;
 wire [31:0] fb_base;
 wire [13:0] fb_stride;
 
-`ifndef USE_FB
+`ifdef USE_FB
+	wire        fb_pal_clk;
+	wire  [7:0] fb_pal_a;
+	wire [23:0] fb_pal_d;
+	wire [23:0] fb_pal_q;
+	wire        fb_pal_wr;
+	wire        fb_force_blank;
+`else
 	assign fb_en = 0;
 	assign fb_fmt = 0;
 	assign fb_width = 0;
@@ -1388,6 +1459,7 @@ emu emu
 	.VGA_VS(vs_emu),
 	.VGA_DE(de_emu),
 	.VGA_F1(f1),
+	.VGA_SCALER(vga_force_scaler),
 
 	.CLK_VIDEO(clk_vid),
 	.CE_PIXEL(ce_pix),
@@ -1404,6 +1476,13 @@ emu emu
 	.FB_STRIDE(fb_stride),
 	.FB_VBL(fb_vbl),
 	.FB_LL(lowlat),
+	.FB_FORCE_BLANK(fb_force_blank),
+
+	.FB_PAL_CLK (fb_pal_clk),
+	.FB_PAL_ADDR(fb_pal_a),
+	.FB_PAL_DOUT(fb_pal_d),
+	.FB_PAL_DIN (fb_pal_q),
+	.FB_PAL_WR  (fb_pal_wr),
 `endif
 
 	.LED_USER(led_user),
