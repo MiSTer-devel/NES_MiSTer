@@ -159,7 +159,7 @@ module emu
 assign ADC_BUS  = 'Z;
 
 assign AUDIO_S   = 0;
-assign AUDIO_L   = |mute_cnt ? 16'd0 : sample[15:0];
+assign AUDIO_L   = sample[15:0];
 assign AUDIO_R   = AUDIO_L;
 assign AUDIO_MIX = 0;
 
@@ -332,16 +332,6 @@ always @(posedge clk) begin : osd_block
 end
 
 wire apu_ce;
-
-reg [20:0] mute_cnt = 21'h1FFFFF;
-
-// Pause audio to avoid loud "POP"
-always_ff @(posedge clk) begin
-	if (reset_nes)
-		mute_cnt <= 21'h1FFFFF;
-	else if (|mute_cnt)
-		mute_cnt <= mute_cnt - 1'b1;
-end
 
 reg  [31:0] sd_lba;
 reg         sd_rd = 0;
