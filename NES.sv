@@ -1014,6 +1014,8 @@ assign VGA_SL = sl[1:0];
 wire [1:0] reticle;
 wire hold_reset;
 wire ce_pix;
+wire HSync,VSync,HBlank,VBlank;
+wire [7:0] R,G,B;
 
 video video
 (
@@ -1024,8 +1026,6 @@ video video
 	.hold_reset(hold_reset),
 	.count_v(scanline),
 	.count_h(cycle),
-	.forced_scandoubler(forced_scandoubler),
-	.scale(scale),
 	.hide_overscan(hide_overscan),
 	.palette(palette2_osd),
 	.load_color(pal_write && ioctl_download),
@@ -1033,21 +1033,16 @@ video video
 	.load_color_index(pal_index),
 	.emphasis(emphasis),
 	.reticle(~status[22] ? reticle : 2'b00),
-	.pal_video(pal_video),
-	.VGA_DE(vga_de),
-	.ce_pix(ce_pix)
+	.pal_video(pal_video)
 );
 
-reg ce_out;
-always @(posedge CLK_VIDEO) begin : video_align
-	reg div = 0;
-
-	div <= ~div;
-	ce_out <= 0;
-	if (div & ce_pix) ce_out <= 1;
-end
-
-assign CE_PIXEL = ce_out;
+video_mixer #(260, 0, 1) video_mixer
+(
+	.*,
+	.VGA_DE(vga_de),
+	.hq2x(scale==1),
+	.scandoubler(scale || forced_scandoubler)
+);
 
 ////////////////////////////  CODES  ///////////////////////////////////
 
