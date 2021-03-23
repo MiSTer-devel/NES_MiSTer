@@ -216,7 +216,7 @@ parameter CONF_STR = {
 parameter CONF_STR2 = {
 	"),Auto,FDS button;",
 	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Ninten.,Custom;",
-	"H3F3,PAL,Custom Palette;",
+	"H3FC3,PAL,Custom Palette;",
 	"-;",
 	"C,Cheats;",
 	"H2OK,Cheats Enabled,On,Off;",
