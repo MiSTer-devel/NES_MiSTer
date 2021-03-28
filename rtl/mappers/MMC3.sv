@@ -260,8 +260,8 @@ reg [7:0] chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5;
 reg [5:0] prg_bank_0, prg_bank_1, prg_bank_2;  // Selected PRG banks
 reg last_a12;
 wire prg_is_ram;
-reg [4:0] irq_reg;
-assign irq = mapper48 ? irq_reg[4] : irq_reg[0];
+reg [6:0] irq_reg;
+assign irq = mapper48 ? irq_reg[6] & irq_enable : irq_reg[0];
 
 // The alternative behavior has slightly different IRQ counter semantics.
 wire mmc3_alt_behavior = acclaim;
@@ -305,7 +305,7 @@ wire internal_128 = mapper80 || mapper207;
 
 always @(posedge clk)
 if (~enable) begin
-	irq_reg <= 5'b00000;
+	irq_reg <= 7'b0000000;
 	bank_select <= 0;
 	prg_rom_bank_mode <= 0;
 	chr_a12_invert <= 0;
@@ -322,7 +322,7 @@ if (~enable) begin
 	last_a12 <= 0;
 	mapper37_multicart <= 3'b000;
 end else if (ce) begin
-	irq_reg[4:1] <= irq_reg[3:0]; // 4 cycle delay
+	irq_reg[6:1] <= irq_reg[5:0]; // 6 cycle delay
 	if (!regs_7e && prg_write && prg_ain[15]) begin
 		if (!mapper33 && !mapper48 && !mapper112) begin
 			casez({prg_ain[14:13], prg_ain[1:0]})
@@ -343,7 +343,7 @@ end else if (ce) begin
 				4'b01_?1: {ram_enable, ram_protect, ram6_enable, ram6_protect} <= {{4{prg_din[7]}},{4{prg_din[6]}}, prg_din[5:4]}; // PRG RAM protect ($A001-$BFFF, odd)
 				4'b10_?0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
 				4'b10_?1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFF, odd)
-				4'b11_?0: begin irq_enable <= 0; irq_reg[0] <= 0; end// IRQ disable ($E000-$FFFE, even)
+				4'b11_?0: {irq_enable, irq_reg[0]} <= 2'b00;         // IRQ disable ($E000-$FFFE, even)
 				4'b11_?1: irq_enable <= 1;                           // IRQ enable ($E001-$FFFF, odd)
 			endcase
 		end else if (!mapper112) begin
@@ -359,9 +359,9 @@ end else if (ce) begin
 				5'b01_11_?: chr_bank_5 <= prg_din;  // Select 1 KB CHR bank at PPU $1C00-$1FFF
 
 				5'b10_00_1: irq_latch <= prg_din ^ 8'hFF;              // IRQ latch ($C000-$DFFC)
-				5'b10_01_1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFD)
+				5'b10_01_1: {irq_reload, irq_reg} <= 8'b10000000;      // IRQ reload ($C001-$DFFD)
 				5'b10_10_1: irq_enable <= 1;                           // IRQ enable ($C002-$DFFE)
-				5'b10_11_1: {irq_enable, irq_reg[0]} <= 2'b00;         // IRQ disable ($C003-$DFFF)
+				5'b10_11_1: irq_enable <= 0;                           // IRQ disable ($C003-$DFFF)
 
 				5'b11_00_1: mirroring <= !prg_din[6];  // Mirroring
 			endcase
