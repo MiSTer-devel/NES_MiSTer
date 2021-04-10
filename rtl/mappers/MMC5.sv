@@ -21,14 +21,28 @@ module MMC5(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 	// Special ports
 	input  [7:0] audio_dout,
 	input  [7:0] chr_din,     // CHR Data in
 	input        chr_write,   // CHR Write
 	inout  [7:0] chr_dout_b,  // chr data (non standard)
 	input        ppu_ce,
-	input [19:0] ppuflags
+	input [19:0] ppuflags,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout,
+	
+	input         Savestate_MAPRAMactive, 
+	input  [9:0]  Savestate_MAPRAMAddr,     
+	input         Savestate_MAPRAMRdEn,    
+	input         Savestate_MAPRAMWrEn,    
+	input  [7:0]  Savestate_MAPRAMWriteData,
+	output [7:0]  Savestate_MAPRAMReadData
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -50,7 +64,7 @@ wire chr_allow;
 wire vram_a10;
 reg [7:0] chr_dout, prg_dout;
 wire vram_ce;
-wire [15:0] flags_out = {14'h0, prg_bus_write, has_chr_dout};
+wire [15:0] flags_out = {12'h0, 1'b1, 1'b0, prg_bus_write, has_chr_dout};
 wire irq;
 wire prg_bus_write, has_chr_dout;
 wire [15:0] audio = audio_in;
@@ -82,8 +96,6 @@ reg [7:0] multiplier_1;
 reg [7:0] multiplier_2;
 wire [15:0] multiply_result = multiplier_1 * multiplier_2;
 
-reg [7:0] expansion_ram[0:1023]; // Block RAM, otherwise we need to time multiplex..
-reg [7:0] last_read_ram;
 reg [7:0] last_read_exattr;
 reg [7:0] last_read_vram;
 reg last_chr_read;
@@ -98,8 +110,37 @@ wire ppu_sprite16 = ppuflags[1];
 wire [8:0] ppu_cycle = ppuflags[10:2];
 wire [8:0] ppu_scanline = ppuflags[19:11];
 
+// Block RAM, otherwise we need to time multiplex..
+reg [9:0] ram_addrA;
+reg       ram_wrenA;
+reg [7:0] ram_dataA;
+
+wire [9:0] ram_addrB = Savestate_MAPRAMactive ? Savestate_MAPRAMAddr      : exram_read_addr;
+wire       ram_wrenB = Savestate_MAPRAMactive ? Savestate_MAPRAMWrEn      : 1'b0;
+wire [7:0] ram_dataB = Savestate_MAPRAMactive ? Savestate_MAPRAMWriteData : 8'b0;
+wire [7:0] last_read_ram;
+
+
+dpram #(.widthad_a(10)) expansion_ram
+(
+	.clock_a   (clk),
+	.address_a (ram_addrA),
+	.wren_a    (ram_wrenA),
+	.byteena_a (1),
+	.data_a    (ram_dataA),
+
+	.clock_b   (clk),
+	.address_b (ram_addrB),
+	.wren_b    (ram_wrenB),
+	.byteena_b (1),
+	.data_b    (ram_dataB),
+	.q_b       (last_read_ram)
+);
+
+
 // Handle IO register writes
 always @(posedge clk) begin
+	ram_wrenA <= 1'b0;
 	if (ce) begin
 	if (prg_write && prg_ain[15:10] == 6'b010100) begin // $5000-$53FF
 		//if (prg_ain <= 16'h5113) $write("%X <= %X (%d)\n", prg_ain, prg_din, ppu_scanline);
@@ -164,17 +205,108 @@ always @(posedge clk) begin
 	// Mode 2 - Readable and writable
 	// Mode 3 - Read-only
 	if (extended_ram_mode != 3) begin
-		if (ppu_ce && !ppu_in_frame && !extended_ram_mode[1] && chr_write && (mirrbits == 2) && chr_ain[13])
-			expansion_ram[chr_ain[9:0]] <= chr_din;
-		else if (ce && prg_write && prg_ain[15:10] == 6'b010111) // $5C00-$5FFF
-			expansion_ram[prg_ain[9:0]] <= (extended_ram_mode[1] || ppu_in_frame) ? prg_din : 8'd0;
+		if (ppu_ce && !ppu_in_frame && !extended_ram_mode[1] && chr_write && (mirrbits == 2) && chr_ain[13]) begin
+			ram_addrA <= chr_ain[9:0];
+			ram_dataA <= chr_din;
+			ram_wrenA <= 1'b1;
+		end else if (ce && prg_write && prg_ain[15:10] == 6'b010111) begin // $5C00-$5FFF
+			ram_addrA <= prg_ain[9:0];
+			ram_dataA <= (extended_ram_mode[1] || ppu_in_frame) ? prg_din : 8'd0;
+			ram_wrenA <= 1'b1;
+		end
 	end
 
 	if (~enable) begin
 		prg_bank_3 <= 7'h7F;
 		prg_mode <= 3;
 	end
+	
+	if (SaveStateBus_load) begin
+		prg_mode            <= SS_MAP1[ 1: 0];
+		chr_mode            <= SS_MAP1[ 3: 2];
+		prg_protect_1       <= SS_MAP1[    4];
+		prg_protect_2       <= SS_MAP1[    5];
+		extended_ram_mode   <= SS_MAP1[ 7: 6];
+		mirroring           <= SS_MAP1[15: 8];
+		fill_tile           <= SS_MAP1[23:16];
+		fill_attr           <= SS_MAP1[25:24];
+		prg_ram_bank        <= SS_MAP1[28:26];
+		prg_bank_0          <= SS_MAP1[36:29];
+		prg_bank_1          <= SS_MAP1[44:37];
+		prg_bank_2          <= SS_MAP1[52:45];
+		prg_bank_3          <= SS_MAP1[59:53];
+		chr_bank_0          <= SS_MAP2[ 9: 0];
+		chr_bank_1          <= SS_MAP2[19:10];
+		chr_bank_2          <= SS_MAP2[29:20];
+		chr_bank_3          <= SS_MAP2[39:30];
+		chr_bank_4          <= SS_MAP2[49:40];
+		chr_bank_5          <= SS_MAP2[59:50];
+		chr_bank_6          <= SS_MAP3[ 9: 0];
+		chr_bank_7          <= SS_MAP3[19:10];
+		chr_bank_8          <= SS_MAP3[29:20];
+		chr_bank_9          <= SS_MAP3[39:30];
+		chr_bank_a          <= SS_MAP3[49:40];
+		chr_bank_b          <= SS_MAP3[59:50];
+		upper_chr_bank_bits <= SS_MAP4[ 1: 0];
+		vsplit_enable       <= SS_MAP4[    2];
+		vsplit_side         <= SS_MAP4[    3];
+		vsplit_startstop    <= SS_MAP4[ 8: 4];
+		vsplit_scroll       <= SS_MAP4[16: 9];
+		vsplit_bank         <= SS_MAP4[24:17];
+		irq_scanline        <= SS_MAP4[32:25];
+		irq_enable          <= SS_MAP4[   33];
+		multiplier_1        <= SS_MAP4[41:34];
+		multiplier_2        <= SS_MAP4[49:42];
+		chr_last            <= SS_MAP4[   50];
+		old_ppu_sprite16    <= SS_MAP4[   51];
+	end
 end
+
+assign SS_MAP1_BACK[ 1: 0] = prg_mode;
+assign SS_MAP1_BACK[ 3: 2] = chr_mode;
+assign SS_MAP1_BACK[    4] = prg_protect_1;
+assign SS_MAP1_BACK[    5] = prg_protect_2;
+assign SS_MAP1_BACK[ 7: 6] = extended_ram_mode;
+assign SS_MAP1_BACK[15: 8] = mirroring;
+assign SS_MAP1_BACK[23:16] = fill_tile;
+assign SS_MAP1_BACK[25:24] = fill_attr;
+assign SS_MAP1_BACK[28:26] = prg_ram_bank;
+assign SS_MAP1_BACK[36:29] = prg_bank_0;
+assign SS_MAP1_BACK[44:37] = prg_bank_1;
+assign SS_MAP1_BACK[52:45] = prg_bank_2;
+assign SS_MAP1_BACK[59:53] = prg_bank_3;
+assign SS_MAP1_BACK[63:60] = 4'b0; // free to be used
+
+assign SS_MAP2_BACK[ 9: 0] = chr_bank_0;
+assign SS_MAP2_BACK[19:10] = chr_bank_1;
+assign SS_MAP2_BACK[29:20] = chr_bank_2;
+assign SS_MAP2_BACK[39:30] = chr_bank_3;
+assign SS_MAP2_BACK[49:40] = chr_bank_4;
+assign SS_MAP2_BACK[59:50] = chr_bank_5;
+assign SS_MAP2_BACK[63:60] = 4'b0; // free to be used
+				  
+assign SS_MAP3_BACK[ 9: 0] = chr_bank_6;
+assign SS_MAP3_BACK[19:10] = chr_bank_7;
+assign SS_MAP3_BACK[29:20] = chr_bank_8;
+assign SS_MAP3_BACK[39:30] = chr_bank_9;
+assign SS_MAP3_BACK[49:40] = chr_bank_a;
+assign SS_MAP3_BACK[59:50] = chr_bank_b;
+assign SS_MAP3_BACK[63:60] = 4'b0; // free to be used
+				  
+assign SS_MAP4_BACK[ 1: 0] = upper_chr_bank_bits;
+assign SS_MAP4_BACK[    2] = vsplit_enable;
+assign SS_MAP4_BACK[    3] = vsplit_side;
+assign SS_MAP4_BACK[ 8: 4] = vsplit_startstop;
+assign SS_MAP4_BACK[16: 9] = vsplit_scroll;
+assign SS_MAP4_BACK[24:17] = vsplit_bank;
+assign SS_MAP4_BACK[32:25] = irq_scanline;
+assign SS_MAP4_BACK[   33] = irq_enable;
+assign SS_MAP4_BACK[41:34] = multiplier_1;
+assign SS_MAP4_BACK[49:42] = multiplier_2;
+assign SS_MAP4_BACK[   50] = chr_last;
+assign SS_MAP4_BACK[   51] = old_ppu_sprite16;
+assign SS_MAP4_BACK[63:52] = 12'b0; // free to be used
+
 
 // Read from MMC5
 always @* begin
@@ -199,13 +331,19 @@ end
 // Determine IRQ handling
 reg last_scanline;
 wire irq_trig = (irq_scanline != 0 && irq_scanline < 240 && ppu_scanline == {1'b0, irq_scanline});
-always @(posedge clk) if (ce || ppu_ce) begin
-	last_scanline <= ppu_scanline[0];
-
-	if ((ce && prg_read && prg_ain == 16'h5204) || ~ppu_in_frame)
-		irq_pending <= 0;
-	else if (ppu_scanline[0] != last_scanline && irq_trig)
-		irq_pending <= 1;
+always @(posedge clk) begin
+	if (SaveStateBus_load) begin
+		last_scanline <= SS_MAP5[    0];
+		irq_pending   <= SS_MAP5[    1];
+	end else if (ce || ppu_ce) begin
+		last_scanline <= ppu_scanline[0];
+	
+		if ((ce && prg_read && prg_ain == 16'h5204) || ~ppu_in_frame)
+			irq_pending <= 0;
+		else if (ppu_scanline[0] != last_scanline && irq_trig)
+			irq_pending <= 1;
+			
+	end
 end
 
 assign irq = irq_pending && irq_enable;
@@ -230,17 +368,26 @@ always @* begin
 	end
 end
 
-always @(posedge clk) if (ppu_ce) begin
-	last_in_split_area <= in_split_area;
-	if (ppu_cycle[2:0] == 0 && ppu_cycle < 336)
-		cur_tile <= new_cur_tile;
+always @(posedge clk) begin
+	if (SaveStateBus_load) begin
+		last_in_split_area <= SS_MAP5[    2];
+		cur_tile           <= SS_MAP5[ 8: 3];
+	end else if (ppu_ce) begin
+		last_in_split_area <= in_split_area;
+		if (ppu_cycle[2:0] == 0 && ppu_cycle < 336)
+			cur_tile <= new_cur_tile;
+	end
 end
 
 // Keep track of scroll
-always @(posedge clk) if (ppu_ce) begin
-	if (ppu_cycle == 319)
-		vscroll <= ppu_scanline[8] ? vsplit_scroll :
-		(vscroll == 239) ? 8'b0 : vscroll + 8'b1;
+always @(posedge clk) begin
+	if (SaveStateBus_load) begin
+		vscroll <= SS_MAP5[16: 9];
+	end else if (ppu_ce) begin
+		if (ppu_cycle == 319)
+			vscroll <= ppu_scanline[8] ? vsplit_scroll :
+			(vscroll == 239) ? 8'b0 : vscroll + 8'b1;
+	end
 end
 
 // Mirroring bits
@@ -305,17 +452,32 @@ end
 wire [9:0] exram_read_addr = extended_ram_mode[1] ? prg_ain[9:0] : insplit ? split_addr : chr_ain[9:0];
 
 always @(posedge clk) begin
-	last_read_ram <= expansion_ram[exram_read_addr];
-
-	if ((ppu_cycle[2] == 0) && (ppu_cycle[1] == 0) && ppu_in_frame) begin
-		last_read_exattr <= last_read_ram;
+	if (SaveStateBus_load) begin
+		last_read_exattr <= SS_MAP5[24:17];
+		last_read_vram   <= SS_MAP5[32:25];
+		last_chr_read    <= SS_MAP5[   33];
+	end else begin
+		if ((ppu_cycle[2] == 0) && (ppu_cycle[1] == 0) && ppu_in_frame) begin
+			last_read_exattr <= last_read_ram;
+		end
+	
+		last_chr_read <= chr_read;
+	
+		if (!chr_read && last_chr_read)
+			last_read_vram <= extended_ram_mode[1] ? 8'b0 : last_read_ram;
 	end
-
-	last_chr_read <= chr_read;
-
-	if (!chr_read && last_chr_read)
-		last_read_vram <= extended_ram_mode[1] ? 8'b0 : last_read_ram;
 end
+
+assign SS_MAP5_BACK[    0] = last_scanline;
+assign SS_MAP5_BACK[    1] = irq_pending;
+assign SS_MAP5_BACK[    2] = last_in_split_area;
+assign SS_MAP5_BACK[ 8: 3] = cur_tile;
+assign SS_MAP5_BACK[16: 9] = vscroll;
+assign SS_MAP5_BACK[24:17] = last_read_exattr;
+assign SS_MAP5_BACK[32:25] = last_read_vram;
+assign SS_MAP5_BACK[   33] = last_chr_read;
+assign SS_MAP5_BACK[63:34] = 30'b0; // free to be used
+
 
 // Compute PRG address to read from.
 reg [7:0] prgsel;
@@ -413,6 +575,31 @@ assign prg_allow = (prg_ain >= 16'h6000) && (!prg_write || ((!prgsel[7]) && prg_
 // MMC5 boards typically have no CHR RAM.
 assign chr_allow = flags[15];
 
+// savestate
+always@(posedge clk) begin
+	if (enable) begin
+		if (Savestate_MAPRAMRdEn) begin
+			Savestate_MAPRAMReadData <= last_read_ram;
+		end
+	end else begin
+		Savestate_MAPRAMReadData <= 8'd0;
+	end
+end
+
+localparam SAVESTATE_MODULES    = 5;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+wire [63:0] SS_MAP1, SS_MAP2, SS_MAP3, SS_MAP4, SS_MAP5;
+wire [63:0] SS_MAP1_BACK, SS_MAP2_BACK, SS_MAP3_BACK, SS_MAP4_BACK, SS_MAP5_BACK;	
+wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1] | SaveStateBus_wired_or[2] | SaveStateBus_wired_or[3] | SaveStateBus_wired_or[4];
+	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
+eReg_SavestateV #(SSREG_INDEX_MAP2, 64'h0000000000000000) iREG_SAVESTATE_MAP2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_MAP2_BACK, SS_MAP2);  
+eReg_SavestateV #(SSREG_INDEX_MAP3, 64'h0000000000000000) iREG_SAVESTATE_MAP3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[2], SS_MAP3_BACK, SS_MAP3);  
+eReg_SavestateV #(SSREG_INDEX_MAP4, 64'h0000000000000000) iREG_SAVESTATE_MAP4 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[3], SS_MAP4_BACK, SS_MAP4);  
+eReg_SavestateV #(SSREG_INDEX_MAP5, 64'h0000000000000000) iREG_SAVESTATE_MAP5 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[4], SS_MAP5_BACK, SS_MAP5);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
+
 endmodule
 
 module mmc5_mixed (
@@ -425,7 +612,14 @@ module mmc5_mixed (
 	input   [7:0] data_in,
 	output  [7:0] data_out,
 	input  [15:0] audio_in,    // Inverted audio from APU
-	output [15:0] audio_out
+	output [15:0] audio_out,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 // NOTE: The apu volume is 100% of MMC5 and the polarity is reversed.
@@ -446,7 +640,14 @@ always @(posedge clk) begin
 		odd_or_even <= 0;
 	else if (ce)
 		odd_or_even <= ~odd_or_even;
+		
+	if (SaveStateBus_load) begin
+		odd_or_even <= SS_MAP1[0];
+	end
 end
+
+assign SS_MAP1_BACK[    0] = odd_or_even;
+assign SS_MAP1_BACK[63: 1] = 63'b0; // free to be used
 
 APU mmc5apu(
 	.MMC5           (1),
@@ -454,7 +655,7 @@ APU mmc5apu(
 	.ce             (ce),
 	.PHI2           (phi2),
 	.CS             (apu_cs),
-	.reset          (~enable),
+	.reset          (~enable | SaveStateBus_load),
 	.ADDR           (addr_in[4:0]),
 	.DIN            (data_in),
 	.DOUT           (data_out),
@@ -466,7 +667,29 @@ APU mmc5apu(
 	.DmaAddr        (DmaAddr),
 	.DmaData        (0),
 	.odd_or_even    (odd_or_even),
-	.IRQ            (apu_irq)
+	.IRQ            (apu_irq),
+	// savestates
+	.SaveStateBus_Din  (SaveStateBus_Din ), 
+	.SaveStateBus_Adr  (SaveStateBus_Adr ),
+	.SaveStateBus_wren (SaveStateBus_wren),
+	.SaveStateBus_rst  (SaveStateBus_rst ),
+	.SaveStateBus_load (SaveStateBus_load ),
+	.SaveStateBus_Dout (SaveStateBus_wired_or[1])
 );
+defparam mmc5apu.SSREG_INDEX_TOP  = SSREG_INDEX_SNDMAP1;
+defparam mmc5apu.SSREG_INDEX_DMC1 = SSREG_INDEX_SNDMAP2;
+defparam mmc5apu.SSREG_INDEX_DMC2 = SSREG_INDEX_SNDMAP3;
+defparam mmc5apu.SSREG_INDEX_FCT  = SSREG_INDEX_SNDMAP4;
+
+// savestates
+localparam SAVESTATE_MODULES    = 2;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1];
+	
+eReg_SavestateV #(SSREG_INDEX_SNDMAP5, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule

@@ -642,6 +642,8 @@ wire         vbuf_write;
 wire  [23:0] hdmi_data;
 wire         hdmi_vs, hdmi_hs, hdmi_de, hdmi_vbl;
 
+wire         freeze_image;
+
 `ifndef DEBUG_NOHDMI
 wire clk_hdmi  = hdmi_clk_out;
 
@@ -658,7 +660,7 @@ ascal
 (
 	.reset_na (~reset_req),
 	.run      (1),
-	.freeze   (0),
+	.freeze   (freeze_image),
 
 	.i_clk    (clk_ihdmi),
 	.i_ce     (ce_hpix),
@@ -1556,6 +1558,7 @@ emu emu
 	.VGA_SL(scanlines),
 	.VIDEO_ARX(ARX),
 	.VIDEO_ARY(ARY),
+   .FREEZE_IMAGE(freeze_image),
 
 `ifdef USE_FB
 	.FB_EN(fb_en),

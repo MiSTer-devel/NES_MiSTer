@@ -15,7 +15,15 @@ module EEPROM_24C0x
    output [7:0] ram_addr,     // RAM Address
    output reg ram_read,       // RAM read
    output reg ram_write,      // RAM write
-   input ram_done);           // RAM access done
+   input ram_done,            // RAM access done
+   // savestates              
+   input       [63:0]  SaveStateBus_Din,
+   input       [ 9:0]  SaveStateBus_Adr,
+   input               SaveStateBus_wren,
+   input               SaveStateBus_rst,
+   input               SaveStateBus_load,
+   output      [63:0]  SaveStateBus_Dout
+);           
 
 typedef enum bit [2:0] { STATE_STANDBY, STATE_TEST, STATE_ADDRESS, STATE_WRITE, STATE_READ } mystate;
 mystate state;
@@ -37,6 +45,22 @@ mystate state;
 	 SDA_out <= 1;  //NoAck
     ram_read <= 0;
     ram_write <= 0;
+  end else if (SaveStateBus_load) begin
+	 case (SS_MAP1[ 2: 0])
+		 0: state <= STATE_STANDBY;
+		 1: state <= STATE_TEST;
+		 2: state <= STATE_ADDRESS;
+		 3: state <= STATE_WRITE;
+		 4: state <= STATE_READ;
+	 endcase
+	 command   <= SS_MAP1[12: 3];
+	 last_SCL  <= SS_MAP1[   13];
+	 last_SDA  <= SS_MAP1[   14];
+	 SDA_out   <= SS_MAP1[   15];
+	 ram_read  <= SS_MAP1[   16];
+	 ram_write <= SS_MAP1[   17];
+	 data      <= SS_MAP1[26:18];
+	 address   <= SS_MAP1[34:27];
   end else if (ce) begin
 	 last_SCL <= SCL;
 	 last_SDA <= SDA_in;
@@ -115,6 +139,26 @@ mystate state;
 
   assign ram_addr = (type_24C01==1) ? {1'b0, address[6:0]} : address;
   assign data_to_ram = data[8:1];
+  
+  // savestate
+  assign SS_MAP1_BACK[ 2: 0] = (state == STATE_STANDBY)  ? 3'd0 :
+										 (state == STATE_TEST)     ? 3'd1 :
+										 (state == STATE_ADDRESS)  ? 3'd2 :
+										 (state == STATE_WRITE)    ? 3'd3 :
+																		     3'd4;
+  assign SS_MAP1_BACK[12: 3] = command;
+  assign SS_MAP1_BACK[   13] = last_SCL;
+  assign SS_MAP1_BACK[   14] = last_SDA;
+  assign SS_MAP1_BACK[   15] = SDA_out;
+  assign SS_MAP1_BACK[   16] = ram_read;
+  assign SS_MAP1_BACK[   17] = ram_write;
+  assign SS_MAP1_BACK[26:18] = data;
+  assign SS_MAP1_BACK[34:27] = address;
+  assign SS_MAP1_BACK[63:35] = 29'b0; // free to be used
+  
+  wire [63:0] SS_MAP1;
+  wire [63:0] SS_MAP1_BACK;	
+  eReg_SavestateV #(SSREG_INDEX_L2MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_MAP1_BACK, SS_MAP1);  
 
 endmodule
 

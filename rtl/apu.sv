@@ -482,7 +482,7 @@ module NoiseChan (
 	end
 endmodule
 
-module DmcChan (
+module DmcChan #(parameter [9:0] SSREG_INDEX_DMC1, parameter [9:0] SSREG_INDEX_DMC2)  (
 	input  logic        MMC5,
 	input  logic        clk,
 	input  logic        aclk1,
@@ -499,8 +499,28 @@ module DmcChan (
 	output logic        irq,
 	output logic  [6:0] Sample,
 	output logic        dma_req,      // 1 when DMC wants DMA
-	output logic        enable
+	output logic        enable,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
+
+	// Savestates
+	localparam SAVESTATE_MODULES    = 2;
+	wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+	assign SaveStateBus_Dout = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1];
+
+	wire [63:0] SS_DMC1;
+	wire [63:0] SS_DMC1_BACK;	
+	wire [63:0] SS_DMC2;
+	wire [63:0] SS_DMC2_BACK;
+	eReg_SavestateV #(SSREG_INDEX_DMC1, SSREG_DEFAULT_APU_DMC1) iREG_SAVESTATE_APU_DMC1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_DMC1_BACK, SS_DMC1);  
+	eReg_SavestateV #(SSREG_INDEX_DMC2, SSREG_DEFAULT_APU_DMC2) iREG_SAVESTATE_APU_DMC2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_DMC2_BACK, SS_DMC2);  
+
 	logic irq_enable;
 	logic loop;                 // Looping enabled
 	logic [3:0] frequency;           // Current value of frequency register
@@ -630,21 +650,32 @@ module DmcChan (
 			end
 		end
 
-		if (reset) begin
-			irq <= 0;
-			dmc_volume <= {7'h0, dmc_volume[0]};
-			dmc_volume_next <= {7'h0, dmc_volume[0]};
-			sample_shift <= 8'h0;
-			if (|dmc_lsfr) dmc_lsfr <= (PAL ? pal_pitch_lut[0] : ntsc_pitch_lut[0]);
-			bytes_remaining <= 0;
-			dmc_bits <= 0;
-			sample_buffer <= 0;
-			have_buffer <= 0;
-			enable <= 0;
-			enable_1 <= 0;
-			enable_2 <= 0;
-			enable_3 <= 0;
-			dma_address[14:0] <= 15'h0000;
+	   if (reset) begin
+			irq                     <= SS_DMC1[    0]; // 0;
+			dmc_volume              <= SS_DMC1[ 8: 1]; // {7'h0, dmc_volume[0]};
+			dmc_volume_next         <= SS_DMC1[16: 9]; // {7'h0, dmc_volume[0]};
+			sample_shift            <= SS_DMC1[24:17]; // 8'h0;
+			bytes_remaining         <= SS_DMC1[36:25]; // 0;
+			dmc_bits                <= SS_DMC1[39:37]; // 0;
+			sample_buffer           <= SS_DMC1[47:40]; // 0;
+			have_buffer             <= SS_DMC1[   48]; // 0;
+			enable                  <= SS_DMC1[   49]; // 0;
+			enable_1                <= SS_DMC1[   50]; // 0;
+			enable_2                <= SS_DMC1[   51]; // 0;
+			enable_3                <= SS_DMC1[   52]; // 0;
+			dma_address[14:0]       <= SS_DMC2[14: 0]; // 15'h0000;
+			if (SaveStateBus_load) begin
+				dmc_lsfr       <= SS_DMC2[23:15]; // reset value handled seperate below
+				loop           <= SS_DMC2[   24];
+				frequency      <= SS_DMC2[28:25];
+				irq_enable     <= SS_DMC2[   29];
+				sample_address <= SS_DMC2[37:30];
+				sample_length  <= SS_DMC2[45:38];
+				dmc_clock      <= SS_DMC2[   46];
+				dmc_silence    <= SS_DMC2[   47];
+			end else begin
+				if (|dmc_lsfr) dmc_lsfr <= (PAL ? pal_pitch_lut[0] : ntsc_pitch_lut[0]);
+			end
 		end
 
 		if (cold_reset) begin
@@ -659,10 +690,35 @@ module DmcChan (
 		end
 
 	end
-
+	
+	assign SS_DMC1_BACK[    0] = irq;            
+	assign SS_DMC1_BACK[ 8: 1] = dmc_volume;     
+	assign SS_DMC1_BACK[16: 9] = dmc_volume_next;
+	assign SS_DMC1_BACK[24:17] = sample_shift;   
+	assign SS_DMC1_BACK[36:25] = bytes_remaining;
+	assign SS_DMC1_BACK[39:37] = dmc_bits;       
+	assign SS_DMC1_BACK[47:40] = sample_buffer;  
+	assign SS_DMC1_BACK[   48] = have_buffer;    
+	assign SS_DMC1_BACK[   49] = enable;         
+	assign SS_DMC1_BACK[   50] = enable_1;       
+	assign SS_DMC1_BACK[   51] = enable_2;       
+	assign SS_DMC1_BACK[   52] = enable_3;       
+	assign SS_DMC1_BACK[63:53] = 11'b0; // free to be used
+	
+	assign SS_DMC2_BACK[14: 0] = dma_address[14:0];
+	assign SS_DMC2_BACK[23:15] = dmc_lsfr;
+	assign SS_DMC2_BACK[   24] = loop;
+	assign SS_DMC2_BACK[28:25] = frequency;
+	assign SS_DMC2_BACK[   29] = irq_enable;
+	assign SS_DMC2_BACK[37:30] = sample_address;
+	assign SS_DMC2_BACK[45:38] = sample_length;
+	assign SS_DMC2_BACK[   46] = dmc_clock;
+	assign SS_DMC2_BACK[   47] = dmc_silence;
+	assign SS_DMC2_BACK[63:48] = 16'b0; // free to be used
+	
 endmodule
 
-module FrameCtr (
+module FrameCtr #(parameter [9:0] SSREG_INDEX_FCT) (
 	input  logic clk,
 	input  logic aclk1,
 	input  logic aclk2,
@@ -678,8 +734,20 @@ module FrameCtr (
 	output logic irq,
 	output logic irq_flag,
 	output logic frame_half,
-	output logic frame_quarter
+	output logic frame_quarter,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
+
+	// Savestates
+	wire [63:0] SS_FCT;
+	wire [63:0] SS_FCT_BACK;	
+	eReg_SavestateV #(SSREG_INDEX_FCT, SSREG_DEFAULT_APU_FCT) iREG_SAVESTATE_APU_FCT (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_FCT_BACK, SS_FCT);  
 
 	// NTSC -- Confirmed
 	// Binary Frame Value         Decimal  Cycle
@@ -766,19 +834,39 @@ module FrameCtr (
 		end
 
 		if (reset) begin
-			FrameInterrupt <= 0;
-			frame_interrupt_buffer <= 0;
-			w4017_1 <= 0;
-			w4017_2 <= 0;
-			DisableFrameInterrupt <= 0;
-			if (cold_reset) FrameSeqMode <= 0; // Don't reset this on warm reset
-			frame <= 15'h7FFF;
+			frame                  <= SS_FCT[14:0]; // 15'h7FFF;
+			FrameInterrupt         <= SS_FCT[  15]; // 0;
+			frame_interrupt_buffer <= SS_FCT[  16]; // 0;
+			w4017_1                <= SS_FCT[  17]; // 0;
+			w4017_2                <= SS_FCT[  18]; // 0;
+			DisableFrameInterrupt  <= SS_FCT[  19]; // 0;
+			if (SaveStateBus_load) begin
+				FrameSeqMode <= SS_FCT[20];
+			end
+			FrameSeqMode_2         <= SS_FCT[  21]; // 0;
+			frame_reset_2          <= SS_FCT[  22]; // 0;
+
+			if (cold_reset) begin
+				FrameSeqMode <= 0; // Don't reset this on warm reset
+			end
 		end
 	end
+	
+	assign SS_FCT_BACK[14: 0] = frame;                 
+	assign SS_FCT_BACK[   15] = FrameInterrupt;        
+	assign SS_FCT_BACK[   16] = frame_interrupt_buffer;
+	assign SS_FCT_BACK[   17] = w4017_1;               
+	assign SS_FCT_BACK[   18] = w4017_2;               
+	assign SS_FCT_BACK[   19] = DisableFrameInterrupt;
+	assign SS_FCT_BACK[   20] = FrameSeqMode;
+	assign SS_FCT_BACK[   21] = FrameSeqMode_2;
+	assign SS_FCT_BACK[   22] = frame_reset_2;
+	assign SS_FCT_BACK[63:23] = 41'b0; // free to be used
 
 endmodule
 
-module APU (
+module APU #(parameter [9:0] SSREG_INDEX_TOP, parameter [9:0] SSREG_INDEX_DMC1, parameter [9:0] SSREG_INDEX_DMC2, parameter [9:0] SSREG_INDEX_FCT)
+(
 	input  logic        MMC5,
 	input  logic        clk,
 	input  logic        PHI2,
@@ -799,8 +887,26 @@ module APU (
 	output logic [15:0] Sample,
 	output logic        DmaReq,         // 1 when DMC wants DMA
 	output logic [15:0] DmaAddr,        // Address DMC wants to read
-	output logic        IRQ             // IRQ asserted high == asserted
+	output logic        IRQ,            // IRQ asserted high == asserted
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
+
+
+	// Savestates
+	localparam SAVESTATE_MODULES    = 3;
+	wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+	assign SaveStateBus_Dout = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1] | SaveStateBus_wired_or[2];
+	
+	wire [63:0] SS_APU;
+	wire [63:0] SS_APU_BACK;
+	eReg_SavestateV #(SSREG_INDEX_TOP, SSREG_DEFAULT_APU_TOP) iREG_SAVESTATE_APU_TOP (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_APU_BACK, SS_APU);  
+
 
 	logic [7:0] len_counter_lut[32];
 	assign len_counter_lut = '{
@@ -862,6 +968,11 @@ module APU (
 	logic [4:0] enabled_buffer, enabled_buffer_1;
 	assign Enabled = aclk1 ? enabled_buffer : enabled_buffer_1;
 
+	assign SS_APU_BACK[ 4: 0]    = enabled_buffer;
+	assign SS_APU_BACK[ 9: 5]    = enabled_buffer_1;
+	assign SS_APU_BACK[   10]    = phi2_old;
+	assign SS_APU_BACK[63:11]     = 53'b0; // free to be used
+
 	always_ff @(posedge clk) begin
 		phi2_old <= PHI2;
 
@@ -874,8 +985,9 @@ module APU (
 		end
 
 		if (reset) begin
-			enabled_buffer <= 0;
-			enabled_buffer_1 <= 0;
+			enabled_buffer   <= SS_APU[ 4: 0]; // 0;
+			enabled_buffer_1 <= SS_APU[ 9: 5]; // 0;
+			phi2_old         <= SS_APU[   10]; // 0;
 		end
 	end
 
@@ -988,8 +1100,17 @@ module APU (
 		.irq         (DmcIrq),
 		.Sample      (DmcSample),
 		.dma_req     (DmaReq),
-		.enable      (IsDmcActive)
+		.enable      (IsDmcActive),
+		// savestates
+		.SaveStateBus_Din  (SaveStateBus_Din ), 
+		.SaveStateBus_Adr  (SaveStateBus_Adr ),
+		.SaveStateBus_wren (SaveStateBus_wren),
+		.SaveStateBus_rst  (SaveStateBus_rst ),
+		.SaveStateBus_load (SaveStateBus_load ),
+		.SaveStateBus_Dout (SaveStateBus_wired_or[1])
 	);
+	defparam Dmc.SSREG_INDEX_DMC1 = SSREG_INDEX_DMC1;
+	defparam Dmc.SSREG_INDEX_DMC2 = SSREG_INDEX_DMC2;
 
 	APUMixer mixer (
 		.square1      (Sq1Sample),
@@ -1016,8 +1137,16 @@ module APU (
 		.irq          (frame_irq),
 		.irq_flag     (irq_flag),
 		.frame_half   (frame_half),
-		.frame_quarter(frame_quarter)
+		.frame_quarter(frame_quarter),
+		// savestates
+		.SaveStateBus_Din  (SaveStateBus_Din ), 
+		.SaveStateBus_Adr  (SaveStateBus_Adr ),
+		.SaveStateBus_wren (SaveStateBus_wren),
+		.SaveStateBus_rst  (SaveStateBus_rst ),
+		.SaveStateBus_load (SaveStateBus_load ),
+		.SaveStateBus_Dout (SaveStateBus_wired_or[2])
 	);
+	defparam frame_counter.SSREG_INDEX_FCT = SSREG_INDEX_FCT;
 
 endmodule
 
