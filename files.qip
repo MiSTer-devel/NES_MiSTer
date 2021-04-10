@@ -12,6 +12,11 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/cart.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/video.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/ppu.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/apu.sv
+set_global_assignment -name VHDL_FILE rtl/bus_savestates.vhd
+set_global_assignment -name VHDL_FILE rtl/statemanager.vhd
+set_global_assignment -name VHDL_FILE rtl/savestates.vhd
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/regs_savestates.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/savestate_ui.sv
 set_global_assignment -name VERILOG_FILE rtl/nes.v
 set_global_assignment -name VERILOG_FILE rtl/dsp.v
 set_global_assignment -name VERILOG_FILE rtl/compat.v

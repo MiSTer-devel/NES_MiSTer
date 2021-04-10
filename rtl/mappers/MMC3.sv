@@ -267,8 +267,8 @@ reg [7:0] chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5;
 reg [5:0] prg_bank_0, prg_bank_1, prg_bank_2;  // Selected PRG banks
 reg last_a12;
 wire prg_is_ram;
-reg [4:0] irq_reg;
-assign irq = mapper48 ? irq_reg[4] : irq_reg[0];
+reg [6:0] irq_reg;
+assign irq = mapper48 ? irq_reg[6] & irq_enable : irq_reg[0];
 
 // The alternative behavior has slightly different IRQ counter semantics.
 wire mmc3_alt_behavior = acclaim;
@@ -312,7 +312,7 @@ wire internal_128 = mapper80 || mapper207;
 
 always @(posedge clk)
 if (~enable) begin
-	irq_reg <= 5'b00000;
+	irq_reg <= 7'b0000000;
 	bank_select <= 0;
 	prg_rom_bank_mode <= 0;
 	chr_a12_invert <= 0;
@@ -329,20 +329,20 @@ if (~enable) begin
 	last_a12 <= 0;
 	mapper37_multicart <= 3'b000;
 end else if (SaveStateBus_load) begin
-	irq_reg            <= SS_MAP1[ 4: 0];
-	bank_select        <= SS_MAP1[ 7: 5];
-	prg_rom_bank_mode  <= SS_MAP1[    8];
-	chr_a12_invert     <= SS_MAP1[    9];
-	mirroring          <= SS_MAP1[   10];
-	irq_enable         <= SS_MAP1[   11];
-	irq_reload         <= SS_MAP1[   12];
-	irq_latch          <= SS_MAP1[20:13];
-	counter            <= SS_MAP1[28:21];
-	ram_enable         <= SS_MAP1[32:29];
-	ram_protect        <= SS_MAP1[36:33];
-	chr_bank_0         <= SS_MAP1[44:37];
-	chr_bank_1         <= SS_MAP1[52:45];
-	chr_bank_2         <= SS_MAP1[60:53];
+	irq_reg            <= SS_MAP1[ 6: 0];
+	bank_select        <= SS_MAP1[ 9: 7];
+	prg_rom_bank_mode  <= SS_MAP1[   10];
+	chr_a12_invert     <= SS_MAP1[   11];
+	mirroring          <= SS_MAP1[   12];
+	irq_enable         <= SS_MAP1[   13];
+	irq_reload         <= SS_MAP1[   14];
+	irq_latch          <= SS_MAP1[22:15];
+	counter            <= SS_MAP1[30:23];
+	ram_enable         <= SS_MAP1[34:31];
+	ram_protect        <= SS_MAP1[38:35];
+	chr_bank_0         <= SS_MAP1[46:39];
+	chr_bank_1         <= SS_MAP1[54:47];
+	chr_bank_2         <= SS_MAP1[62:55];
 	chr_bank_3         <= SS_MAP2[ 7: 0];
 	chr_bank_4         <= SS_MAP2[15: 8];
 	chr_bank_5         <= SS_MAP2[23:16];
@@ -358,7 +358,7 @@ end else if (SaveStateBus_load) begin
 	ram6_enable        <= SS_MAP2[   56];
 	ram6_protect       <= SS_MAP2[   57];
 end else if (ce) begin
-	irq_reg[4:1] <= irq_reg[3:0]; // 4 cycle delay
+	irq_reg[6:1] <= irq_reg[5:0]; // 6 cycle delay
 	if (!regs_7e && prg_write && prg_ain[15]) begin
 		if (!mapper33 && !mapper48 && !mapper112) begin
 			casez({prg_ain[14:13], prg_ain[1:0]})
@@ -379,7 +379,7 @@ end else if (ce) begin
 				4'b01_?1: {ram_enable, ram_protect, ram6_enable, ram6_protect} <= {{4{prg_din[7]}},{4{prg_din[6]}}, prg_din[5:4]}; // PRG RAM protect ($A001-$BFFF, odd)
 				4'b10_?0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
 				4'b10_?1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFF, odd)
-				4'b11_?0: begin irq_enable <= 0; irq_reg[0] <= 0; end// IRQ disable ($E000-$FFFE, even)
+				4'b11_?0: {irq_enable, irq_reg[0]} <= 2'b00;         // IRQ disable ($E000-$FFFE, even)
 				4'b11_?1: irq_enable <= 1;                           // IRQ enable ($E001-$FFFF, odd)
 			endcase
 		end else if (!mapper112) begin
@@ -395,9 +395,9 @@ end else if (ce) begin
 				5'b01_11_?: chr_bank_5 <= prg_din;  // Select 1 KB CHR bank at PPU $1C00-$1FFF
 
 				5'b10_00_1: irq_latch <= prg_din ^ 8'hFF;              // IRQ latch ($C000-$DFFC)
-				5'b10_01_1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFD)
+				5'b10_01_1: {irq_reload, irq_reg} <= 8'b10000000;      // IRQ reload ($C001-$DFFD)
 				5'b10_10_1: irq_enable <= 1;                           // IRQ enable ($C002-$DFFE)
-				5'b10_11_1: {irq_enable, irq_reg[0]} <= 2'b00;         // IRQ disable ($C003-$DFFF)
+				5'b10_11_1: irq_enable <= 0;                           // IRQ disable ($C003-$DFFF)
 
 				5'b11_00_1: mirroring <= !prg_din[6];  // Mirroring
 			endcase
@@ -495,21 +495,21 @@ end else if (ce) begin
 	end
 end
 
-assign SS_MAP1_BACK[ 4: 0] = irq_reg;
-assign SS_MAP1_BACK[ 7: 5] = bank_select;
-assign SS_MAP1_BACK[    8] = prg_rom_bank_mode;
-assign SS_MAP1_BACK[    9] = chr_a12_invert;
-assign SS_MAP1_BACK[   10] = mirroring;
-assign SS_MAP1_BACK[   11] = irq_enable;
-assign SS_MAP1_BACK[   12] = irq_reload;
-assign SS_MAP1_BACK[20:13] = irq_latch;
-assign SS_MAP1_BACK[28:21] = counter;
-assign SS_MAP1_BACK[32:29] = ram_enable;
-assign SS_MAP1_BACK[36:33] = ram_protect;
-assign SS_MAP1_BACK[44:37] = chr_bank_0;
-assign SS_MAP1_BACK[52:45] = chr_bank_1;
-assign SS_MAP1_BACK[60:53] = chr_bank_2;
-assign SS_MAP1_BACK[63:61] = 3'b0; // free to be used
+assign SS_MAP1_BACK[ 6: 0] = irq_reg;
+assign SS_MAP1_BACK[ 9: 7] = bank_select;
+assign SS_MAP1_BACK[   10] = prg_rom_bank_mode;
+assign SS_MAP1_BACK[   11] = chr_a12_invert;
+assign SS_MAP1_BACK[   12] = mirroring;
+assign SS_MAP1_BACK[   13] = irq_enable;
+assign SS_MAP1_BACK[   14] = irq_reload;
+assign SS_MAP1_BACK[22:15] = irq_latch;
+assign SS_MAP1_BACK[30:23] = counter;
+assign SS_MAP1_BACK[34:31] = ram_enable;
+assign SS_MAP1_BACK[38:35] = ram_protect;
+assign SS_MAP1_BACK[46:39] = chr_bank_0;
+assign SS_MAP1_BACK[54:47] = chr_bank_1;
+assign SS_MAP1_BACK[62:55] = chr_bank_2;
+assign SS_MAP1_BACK[   63] = 1'b0; // free to be used
 
 assign SS_MAP2_BACK[ 7: 0] = chr_bank_3;
 assign SS_MAP2_BACK[15: 8] = chr_bank_4;
