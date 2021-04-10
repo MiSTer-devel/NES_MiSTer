@@ -22,7 +22,14 @@ module MMC1(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -42,7 +49,7 @@ wire chr_allow;
 wire vram_a10;
 wire vram_ce;
 wire mapper171 = (flags[7:0] == 171); //Mapper 171 has hardwired mirroring
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 reg [4:0] shift;
 
@@ -87,6 +94,13 @@ always @(posedge clk)
 		chr_bank_1 <= 0;
 		prg_bank <= 5'b00000;
 		delay_ctrl <= 0;
+	end else if (SaveStateBus_load) begin
+		shift      <= SS_MAP1[ 4: 0];
+		control    <= SS_MAP1[ 9: 5];
+		chr_bank_0 <= SS_MAP1[14:10];
+		chr_bank_1 <= SS_MAP1[19:15];
+		prg_bank   <= SS_MAP1[24:20];
+		delay_ctrl <= SS_MAP1[   25];
 	end else if (ce) begin
 		if (!prg_write)
 			delay_ctrl <= 1'b0;
@@ -110,6 +124,14 @@ always @(posedge clk)
 			end
 		end
 	end
+
+assign SS_MAP1_BACK[ 4: 0]	= shift;   
+assign SS_MAP1_BACK[ 9: 5] = control;   
+assign SS_MAP1_BACK[14:10] = chr_bank_0;
+assign SS_MAP1_BACK[19:15] = chr_bank_1;
+assign SS_MAP1_BACK[24:20] = prg_bank;  
+assign SS_MAP1_BACK[   25] = delay_ctrl;
+assign SS_MAP1_BACK[63:26] = 38'b0; // free to be used
 
 // The PRG bank to load. Each increment here is 16kb. So valid values are 0..15.
 // prg_ain[14] selects bank0 ($8000) or bank1 ($C000)
@@ -175,6 +197,14 @@ wire [21:0] prg_ram = {7'b11_1100_0, prg_ram_a14_13, prg_ain[12:0]};
 assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
 assign chr_allow = flags[15];
 
+// savestate
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+wire [63:0] SaveStateBus_Dout_active;	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout_active, SS_MAP1_BACK, SS_MAP1);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
+
 endmodule
 
 
@@ -200,7 +230,7 @@ module NesEvent(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;

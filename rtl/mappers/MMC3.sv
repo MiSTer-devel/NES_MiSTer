@@ -22,7 +22,7 @@ module Rambo1(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 	input [13:0] chr_ain_o
 );
 
@@ -223,8 +223,15 @@ module MMC3 (
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
-	input [13:0] chr_ain_o
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	input [13:0] chr_ain_o,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -245,7 +252,7 @@ wire chr_allow;
 wire vram_a10;
 wire vram_ce;
 wire irq;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 reg [2:0] bank_select;             // Register to write to next
 reg prg_rom_bank_mode;             // Mode for PRG banking
@@ -260,8 +267,8 @@ reg [7:0] chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5;
 reg [5:0] prg_bank_0, prg_bank_1, prg_bank_2;  // Selected PRG banks
 reg last_a12;
 wire prg_is_ram;
-reg [6:0] irq_reg;
-assign irq = mapper48 ? irq_reg[6] & irq_enable : irq_reg[0];
+reg [4:0] irq_reg;
+assign irq = mapper48 ? irq_reg[4] : irq_reg[0];
 
 // The alternative behavior has slightly different IRQ counter semantics.
 wire mmc3_alt_behavior = acclaim;
@@ -305,7 +312,7 @@ wire internal_128 = mapper80 || mapper207;
 
 always @(posedge clk)
 if (~enable) begin
-	irq_reg <= 7'b0000000;
+	irq_reg <= 5'b00000;
 	bank_select <= 0;
 	prg_rom_bank_mode <= 0;
 	chr_a12_invert <= 0;
@@ -321,8 +328,37 @@ if (~enable) begin
 	a12_ctr <= 0;
 	last_a12 <= 0;
 	mapper37_multicart <= 3'b000;
+end else if (SaveStateBus_load) begin
+	irq_reg            <= SS_MAP1[ 4: 0];
+	bank_select        <= SS_MAP1[ 7: 5];
+	prg_rom_bank_mode  <= SS_MAP1[    8];
+	chr_a12_invert     <= SS_MAP1[    9];
+	mirroring          <= SS_MAP1[   10];
+	irq_enable         <= SS_MAP1[   11];
+	irq_reload         <= SS_MAP1[   12];
+	irq_latch          <= SS_MAP1[20:13];
+	counter            <= SS_MAP1[28:21];
+	ram_enable         <= SS_MAP1[32:29];
+	ram_protect        <= SS_MAP1[36:33];
+	chr_bank_0         <= SS_MAP1[44:37];
+	chr_bank_1         <= SS_MAP1[52:45];
+	chr_bank_2         <= SS_MAP1[60:53];
+	chr_bank_3         <= SS_MAP2[ 7: 0];
+	chr_bank_4         <= SS_MAP2[15: 8];
+	chr_bank_5         <= SS_MAP2[23:16];
+	prg_bank_0         <= SS_MAP2[29:24];
+	prg_bank_1         <= SS_MAP2[35:30];
+	prg_bank_2         <= SS_MAP2[41:36];
+	a12_ctr            <= SS_MAP2[45:42];
+	last_a12           <= SS_MAP2[   46];
+	mapper37_multicart <= SS_MAP2[49:47];
+	mapper47_multicart <= SS_MAP2[   50];
+	mapper189_prgsel   <= SS_MAP2[54:51];
+	ram6_enabled       <= SS_MAP2[   55];
+	ram6_enable        <= SS_MAP2[   56];
+	ram6_protect       <= SS_MAP2[   57];
 end else if (ce) begin
-	irq_reg[6:1] <= irq_reg[5:0]; // 6 cycle delay
+	irq_reg[4:1] <= irq_reg[3:0]; // 4 cycle delay
 	if (!regs_7e && prg_write && prg_ain[15]) begin
 		if (!mapper33 && !mapper48 && !mapper112) begin
 			casez({prg_ain[14:13], prg_ain[1:0]})
@@ -343,7 +379,7 @@ end else if (ce) begin
 				4'b01_?1: {ram_enable, ram_protect, ram6_enable, ram6_protect} <= {{4{prg_din[7]}},{4{prg_din[6]}}, prg_din[5:4]}; // PRG RAM protect ($A001-$BFFF, odd)
 				4'b10_?0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
 				4'b10_?1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFF, odd)
-				4'b11_?0: {irq_enable, irq_reg[0]} <= 2'b00;         // IRQ disable ($E000-$FFFE, even)
+				4'b11_?0: begin irq_enable <= 0; irq_reg[0] <= 0; end// IRQ disable ($E000-$FFFE, even)
 				4'b11_?1: irq_enable <= 1;                           // IRQ enable ($E001-$FFFF, odd)
 			endcase
 		end else if (!mapper112) begin
@@ -359,9 +395,9 @@ end else if (ce) begin
 				5'b01_11_?: chr_bank_5 <= prg_din;  // Select 1 KB CHR bank at PPU $1C00-$1FFF
 
 				5'b10_00_1: irq_latch <= prg_din ^ 8'hFF;              // IRQ latch ($C000-$DFFC)
-				5'b10_01_1: {irq_reload, irq_reg} <= 8'b10000000;      // IRQ reload ($C001-$DFFD)
+				5'b10_01_1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFD)
 				5'b10_10_1: irq_enable <= 1;                           // IRQ enable ($C002-$DFFE)
-				5'b10_11_1: irq_enable <= 0;                           // IRQ disable ($C003-$DFFF)
+				5'b10_11_1: {irq_enable, irq_reg[0]} <= 2'b00;         // IRQ disable ($C003-$DFFF)
 
 				5'b11_00_1: mirroring <= !prg_din[6];  // Mirroring
 			endcase
@@ -459,6 +495,38 @@ end else if (ce) begin
 	end
 end
 
+assign SS_MAP1_BACK[ 4: 0] = irq_reg;
+assign SS_MAP1_BACK[ 7: 5] = bank_select;
+assign SS_MAP1_BACK[    8] = prg_rom_bank_mode;
+assign SS_MAP1_BACK[    9] = chr_a12_invert;
+assign SS_MAP1_BACK[   10] = mirroring;
+assign SS_MAP1_BACK[   11] = irq_enable;
+assign SS_MAP1_BACK[   12] = irq_reload;
+assign SS_MAP1_BACK[20:13] = irq_latch;
+assign SS_MAP1_BACK[28:21] = counter;
+assign SS_MAP1_BACK[32:29] = ram_enable;
+assign SS_MAP1_BACK[36:33] = ram_protect;
+assign SS_MAP1_BACK[44:37] = chr_bank_0;
+assign SS_MAP1_BACK[52:45] = chr_bank_1;
+assign SS_MAP1_BACK[60:53] = chr_bank_2;
+assign SS_MAP1_BACK[63:61] = 3'b0; // free to be used
+
+assign SS_MAP2_BACK[ 7: 0] = chr_bank_3;
+assign SS_MAP2_BACK[15: 8] = chr_bank_4;
+assign SS_MAP2_BACK[23:16] = chr_bank_5;
+assign SS_MAP2_BACK[29:24] = prg_bank_0;
+assign SS_MAP2_BACK[35:30] = prg_bank_1;
+assign SS_MAP2_BACK[41:36] = prg_bank_2;
+assign SS_MAP2_BACK[45:42] = a12_ctr;
+assign SS_MAP2_BACK[   46] = last_a12;
+assign SS_MAP2_BACK[49:47] = mapper37_multicart;
+assign SS_MAP2_BACK[   50] = mapper47_multicart;
+assign SS_MAP2_BACK[54:51] = mapper189_prgsel;
+assign SS_MAP2_BACK[   55] = ram6_enabled;
+assign SS_MAP2_BACK[   56] = ram6_enable;
+assign SS_MAP2_BACK[   57] = ram6_protect;
+assign SS_MAP2_BACK[63:58] = 6'b0; // free to be used
+
 // The PRG bank to load. Each increment here is 8kb. So valid values are 0..63.
 reg [5:0] prgsel;
 always @* begin
@@ -553,6 +621,18 @@ assign vram_a10 = TxSROM ? chrsel[7] :              // TxSROM do not support mir
 					(mirroring ? chr_ain[10] : chr_ain[11]);
 assign vram_ce = chr_ain[13] && !four_screen_mirroring;
 
+// savestate
+localparam SAVESTATE_MODULES    = 2;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+wire [63:0] SS_MAP1, SS_MAP2;
+wire [63:0] SS_MAP1_BACK, SS_MAP2_BACK;	
+wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1];
+	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
+eReg_SavestateV #(SSREG_INDEX_MAP2, 64'h0000000000000000) iREG_SAVESTATE_MAP2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_MAP2_BACK, SS_MAP2);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
+
 endmodule
 
 
@@ -578,7 +658,7 @@ module Mapper165(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 	input [13:0] chr_ain_o
 );
 
@@ -750,7 +830,7 @@ module Mapper413 (
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 	input [13:0] chr_ain_o,
 	output [2:0] prg_aoute    // Extended prg address out bits
 );

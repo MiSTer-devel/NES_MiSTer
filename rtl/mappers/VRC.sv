@@ -22,7 +22,7 @@ module VRC1(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -119,7 +119,7 @@ module VRC3(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -223,7 +223,14 @@ module VRC24(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -243,7 +250,7 @@ wire chr_allow;
 reg vram_a10;
 wire vram_ce;
 wire irq;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 
 reg [4:0] prg_bank0, prg_bank1;
@@ -277,6 +284,19 @@ always @(posedge clk)
 		chr_bank5 <= 9'd5;
 		chr_bank6 <= 9'd6;
 		chr_bank7 <= 9'd7;
+	end else if (SaveStateBus_load) begin
+		prg_bank0  <= SS_MAP1[ 4: 0];
+		prg_bank1  <= SS_MAP1[ 9: 5];
+		chr_bank0  <= SS_MAP1[18:10];
+		chr_bank1  <= SS_MAP1[27:19];
+		chr_bank2  <= SS_MAP1[36:28];
+		chr_bank3  <= SS_MAP1[45:37];
+		chr_bank4  <= SS_MAP1[54:46];
+		chr_bank5  <= SS_MAP1[63:55];
+		chr_bank6  <= SS_MAP2[ 8: 0];
+		chr_bank7  <= SS_MAP2[17: 9];
+		mirroring  <= SS_MAP2[19:18];
+		prg_invert <= SS_MAP2[   20];
 	end else if (ce) begin
 		if (prg_ain[15] & prg_write) begin
 			casez ({prg_ain[14:12], registers, mapperVRC4})
@@ -305,6 +325,20 @@ always @(posedge clk)
 			endcase
 		end
 	end
+	
+assign SS_MAP1_BACK[ 4: 0] = prg_bank0;
+assign SS_MAP1_BACK[ 9: 5] = prg_bank1;
+assign SS_MAP1_BACK[18:10] = chr_bank0;
+assign SS_MAP1_BACK[27:19] = chr_bank1;
+assign SS_MAP1_BACK[36:28] = chr_bank2;
+assign SS_MAP1_BACK[45:37] = chr_bank3;
+assign SS_MAP1_BACK[54:46] = chr_bank4;
+assign SS_MAP1_BACK[63:55] = chr_bank5;
+assign SS_MAP2_BACK[ 8: 0] = chr_bank6;
+assign SS_MAP2_BACK[17: 9] = chr_bank7;
+assign SS_MAP2_BACK[19:18] = mirroring;
+assign SS_MAP2_BACK[   20] = prg_invert;
+assign SS_MAP2_BACK[63:21] = 43'b0; // free to be used
 
 always begin
 	// mirroring mode
@@ -353,7 +387,29 @@ wire irqc  = {prg_ain[15:12],registers[1:0]}==6'b1111_10; // 0xF002
 wire irqa  = {prg_ain[15:12],registers[1:0]}==6'b1111_11; // 0xF003
 wire irqout;
 assign irq = irqout & mapperVRC4;
-vrcIRQ vrc4irq(clk,enable,prg_write,{irqlh,irqll},irqc,irqa,prg_din,irqout,ce);
+vrcIRQ vrc4irq
+(
+	clk,enable,prg_write,{irqlh,irqll},irqc,irqa,prg_din,irqout,ce,
+	// savestates
+	SaveStateBus_Din, 
+	SaveStateBus_Adr,
+	SaveStateBus_wren,
+	SaveStateBus_rst,
+	SaveStateBus_load,
+	SaveStateBus_wired_or[2]
+);
+
+// savestate
+localparam SAVESTATE_MODULES    = 3;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+wire [63:0] SS_MAP1, SS_MAP2;
+wire [63:0] SS_MAP1_BACK, SS_MAP2_BACK;	
+wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1] | SaveStateBus_wired_or[2];
+	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
+eReg_SavestateV #(SSREG_INDEX_MAP2, 64'h0000000000000000) iREG_SAVESTATE_MAP2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_MAP2_BACK, SS_MAP2);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule
 
@@ -378,7 +434,14 @@ module VRC6(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b,  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+		// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -400,7 +463,7 @@ wire vram_a10;
 wire vram_ce;
 wire irq;
 wire [15:0] audio = audio_in;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 wire nesprg_oe;
 wire [7:0] neschrdout;
@@ -416,16 +479,30 @@ reg [7:0] m2;
 wire m2_n = 1;//~ce;  //m2_n not used as clk.  Invert m2 (ce).
 
 always @(posedge clk) begin
-	m2[7:1] <= m2[6:0];
-	m2[0] <= ce;
+	if (SaveStateBus_load) begin
+		m2 <= 8'd0;
+	end else begin
+		m2[7:1] <= m2[6:0];
+		m2[0] <= ce;
+	end
 end
 
-MAPVRC6 vrc6(m2[7], m2_n, clk, enable, prg_write, nesprg_oe, 0,
+MAPVRC6 vrc6
+(
+	m2[7], m2_n, clk, enable, prg_write, nesprg_oe, 0,
 	1, prg_ain, chr_ain, prg_din, 8'b0, prg_dout,
 	neschrdout, neschr_oe, chr_allow, chrram_oe, wram_oe, wram_we, prgram_we,
 	prgram_oe, chr_aout[18:10], ramprgaout, irq, vram_ce,// exp6,
 	0, 7'b1111111, 6'b111111, flags[14], flags[16], flags[15],
-	ce, flags[1]);
+	ce, flags[1],
+	// savestates
+	SaveStateBus_Din, 
+	SaveStateBus_Adr,
+	SaveStateBus_wren,
+	SaveStateBus_rst,
+	SaveStateBus_load,
+	SaveStateBus_Dout
+);
 
 assign chr_aout[21:19] = 3'b100;
 assign chr_aout[9:0] = chr_ain[9:0];
@@ -460,7 +537,7 @@ module VRC7(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -605,7 +682,14 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 
 	input ce,// add
 	//output [15:0] audio,
-	input mapper26
+	input mapper26,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 
 );
 	//wire [15:0] ain=prgain;                             //MAP18
@@ -622,10 +706,22 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 	wire irqc = {ain[15:12],ain[1:0]}==6'b111101;
 	wire irqa = {ain[15:12],ain[1:0]}==6'b111110;
 	always@(posedge clk20) begin
-		if (~enable)
+		if (~enable) begin
 			{prgbank8, prgbankC, mirror, chrbank0, chrbank1, chrbank2,
 				chrbank3, chrbank4, chrbank5, chrbank6, chrbank7} <= 0;
-		else if(ce && nesprg_we) begin
+		end else if (SaveStateBus_load) begin
+			chrbank0 <= SS_MAP1[ 7: 0];
+			chrbank1 <= SS_MAP1[15: 8];
+			chrbank2 <= SS_MAP1[23:16];
+			chrbank3 <= SS_MAP1[31:24];
+			chrbank4 <= SS_MAP1[39:32];
+			chrbank5 <= SS_MAP1[47:40];
+			chrbank6 <= SS_MAP1[55:48];
+			chrbank7 <= SS_MAP1[63:56];
+			prgbank8 <= SS_MAP2[ 4: 0];
+			prgbankC <= SS_MAP2[10: 5];
+			mirror   <= SS_MAP2[12:11];
+		end else if(ce && nesprg_we) begin
 			casex({ain[15:12],ain[1:0]})
 				6'b1000xx:prgbank8<=nesprgdin[4:0]; //800x
 				6'b1100xx:prgbankC<=nesprgdin[5:0]; //C00x
@@ -643,6 +739,19 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 			endcase
 		end
 	end
+	
+	assign SS_MAP1_BACK[ 7: 0] = chrbank0;
+	assign SS_MAP1_BACK[15: 8] = chrbank1;
+	assign SS_MAP1_BACK[23:16] = chrbank2;
+	assign SS_MAP1_BACK[31:24] = chrbank3;
+	assign SS_MAP1_BACK[39:32] = chrbank4;
+	assign SS_MAP1_BACK[47:40] = chrbank5;
+	assign SS_MAP1_BACK[55:48] = chrbank6;
+	assign SS_MAP1_BACK[63:56] = chrbank7;
+	assign SS_MAP2_BACK[ 4: 0] = prgbank8;
+	assign SS_MAP2_BACK[10: 5] = prgbankC;
+	assign SS_MAP2_BACK[12:11] = mirror;
+	assign SS_MAP2_BACK[63:13] = 51'b0; // free to be used
 
 	//bankswitch
 	reg [18:13] prgbankin;
@@ -670,7 +779,17 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 		end
 	end
 
-	vrcIRQ vrc6irq(clk20,enable,nesprg_we,{irql,irql},irqc,irqa,nesprgdin,irq,ce);
+	vrcIRQ vrc6irq
+	(
+		clk20,enable,nesprg_we,{irql,irql},irqc,irqa,nesprgdin,irq,ce,
+		// savestates
+		SaveStateBus_Din, 
+		SaveStateBus_Adr,
+		SaveStateBus_wren,
+		SaveStateBus_rst,
+		SaveStateBus_load,
+		SaveStateBus_wired_or[2]
+	);
 
 //mirroring
 	assign ramchraout[10]=!chrain[13] ? chrbank[10] : ((mirror==0 & chrain[10]) | (mirror==1 & chrain[11]) | (mirror==3));
@@ -697,6 +816,18 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 	wire config_rd = 0;
 	assign nesprgdout=8'b0;
 	assign nesprg_oe=wram_oe | prgram_oe | config_rd;
+	
+	// savestate
+	localparam SAVESTATE_MODULES    = 3;
+	wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+	wire [63:0] SS_MAP1, SS_MAP2;
+	wire [63:0] SS_MAP1_BACK, SS_MAP2_BACK;	
+	wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1] | SaveStateBus_wired_or[2];
+		
+	eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk20, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
+	eReg_SavestateV #(SSREG_INDEX_MAP2, 64'h0000000000000000) iREG_SAVESTATE_MAP2 (clk20, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_MAP2_BACK, SS_MAP2);  
+	
+	assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule
 
@@ -709,15 +840,26 @@ module vrcIRQ(
 	input irqack_add,
 	input [7:0] nesprgdin,
 	output irq,
-	input ce
+	input ce,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 reg [7:0] irqlatch;
 reg irqM,irqE,irqA;
 always@(posedge clk20) begin
-	if (~enable)
+	if (~enable) begin
 		{irqM, irqA, irqlatch} <= 0;
-	else if(ce && nesprg_we) begin
+	end else if (SaveStateBus_load) begin
+		irqM     <= SS_MAP1[    0];
+		irqA     <= SS_MAP1[    1];
+		irqlatch <= SS_MAP1[ 9: 2];
+	end else if(ce && nesprg_we) begin
 		if (irqlatch_add == 2'b11)
 			irqlatch<=nesprgdin;                      //F000
 		else if (irqlatch_add == 2'b10)
@@ -737,9 +879,13 @@ reg [1:0] line;
 wire irqclk=irqM|(scalar==0);
 wire setE=nesprg_we & irqctrl_add & nesprgdin[1];
 always@(posedge clk20) begin
-	if (~enable)
+	if (~enable) begin
 		{irqcnt, scalar, line} <= 0;
-	else if(setE) begin
+	end else if (SaveStateBus_load) begin
+		irqcnt <= SS_MAP1[17:10];
+		scalar <= SS_MAP1[24:18];
+		line   <= SS_MAP1[26:25];
+	end else if(setE) begin
 		scalar<=113;
 		line<=0;
 		irqcnt<=irqlatch;
@@ -763,6 +909,9 @@ always@(posedge clk20) begin
 	if(~enable) begin
 		irqE<=0;
 		timeout<=0;
+	end else if (SaveStateBus_load) begin
+		irqE    <= SS_MAP1[   27];
+		timeout <= SS_MAP1[   28];
 	end else if (ce) begin
 		if(nesprg_we & (irqctrl_add | irqack_add)) //write Fxx1 or Fxx2
 			timeout<=0;
@@ -777,6 +926,21 @@ always@(posedge clk20) begin
 end
 
 assign irq=timeout & irqE;
+
+// savestate
+assign SS_MAP1_BACK[    0] = irqM;
+assign SS_MAP1_BACK[    1] = irqA;
+assign SS_MAP1_BACK[ 9: 2] = irqlatch;
+assign SS_MAP1_BACK[17:10] = irqcnt;
+assign SS_MAP1_BACK[24:18] = scalar;
+assign SS_MAP1_BACK[26:25] = line;
+assign SS_MAP1_BACK[   27] = irqE;
+assign SS_MAP1_BACK[   28] = timeout;
+assign SS_MAP1_BACK[63:29] = 35'b0; // free to be used
+
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+eReg_SavestateV #(SSREG_INDEX_L2MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk20, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_MAP1_BACK, SS_MAP1);  
 
 endmodule
 
@@ -842,7 +1006,14 @@ module vrc6_mixed (
 	input  [15:0] addr_in,
 	input   [7:0] data_in,
 	input  [15:0] audio_in,    // Inverted audio from APU
-	output [15:0] audio_out
+	output [15:0] audio_out,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 vrc6sound snd_vrc6 (
@@ -855,7 +1026,14 @@ vrc6sound snd_vrc6 (
 	.din(data_in),
 	.outSq1(vrc6sq1_out),
 	.outSq2(vrc6sq2_out),
-	.outSaw(vrc6saw_out)
+	.outSaw(vrc6saw_out),
+	// savestates
+	.SaveStateBus_Din  (SaveStateBus_Din ), 
+	.SaveStateBus_Adr  (SaveStateBus_Adr ),
+	.SaveStateBus_wren (SaveStateBus_wren),
+	.SaveStateBus_rst  (SaveStateBus_rst ),
+	.SaveStateBus_load (SaveStateBus_load),
+	.SaveStateBus_Dout (SaveStateBus_Dout)
 );
 
 //sound
@@ -888,7 +1066,14 @@ module vrc6sound(
 	input [7:0] din,
 	output [3:0] outSq1,       //range=0..0x0F
 	output [3:0] outSq2,       //range=0..0x0F
-	output [4:0] outSaw        //range=0..0x1F
+	output [4:0] outSaw,       //range=0..0x1F
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 wire [15:0] ain=addr_invert ? {addr_in[15:2],addr_in[0],addr_in[1]} :  addr_in; //MAP1A : MAP18
@@ -911,6 +1096,27 @@ always@(posedge clk) begin
 		en0<=0;
 		en1<=0;
 		en2<=0;
+	end else if (SaveStateBus_load) begin
+		mode0    <= SS_MAP1[    0];
+		mode1    <= SS_MAP1[    1];
+		vol0     <= SS_MAP1[ 6: 3];
+		vol1     <= SS_MAP1[10: 7];
+		vol2     <= SS_MAP1[16:11];
+		duty0    <= SS_MAP1[19:17];
+		duty1    <= SS_MAP1[22:20];
+		freq0    <= SS_MAP1[34:23];
+		freq1    <= SS_MAP1[46:35];
+		freq2    <= SS_MAP1[58:47];
+		div0     <= SS_MAP2[11: 0];
+		div1     <= SS_MAP2[23:12];
+		div2     <= SS_MAP2[36:24];
+		en0      <= SS_MAP2[   37];
+		en1      <= SS_MAP2[   38];
+		en2      <= SS_MAP2[   39];
+		duty0cnt <= SS_MAP2[43:40];
+		duty1cnt <= SS_MAP2[47:44];
+		duty2cnt <= SS_MAP2[50:48];
+		acc      <= SS_MAP2[58:51];
 	end else if(ce) begin
 		if(wr) begin
 			case(ain)
@@ -969,6 +1175,42 @@ wire [4:0] ch2=en2?acc[7:3]:5'd0;
 assign outSq1=ch0;
 assign outSq2=ch1;
 assign outSaw=ch2;
+
+// savestate
+assign SS_MAP1_BACK[    0] = mode0;
+assign SS_MAP1_BACK[    1] = mode1;
+assign SS_MAP1_BACK[ 6: 3] = vol0;
+assign SS_MAP1_BACK[10: 7] = vol1;
+assign SS_MAP1_BACK[16:11] = vol2;
+assign SS_MAP1_BACK[19:17] = duty0;
+assign SS_MAP1_BACK[22:20] = duty1;
+assign SS_MAP1_BACK[34:23] = freq0;
+assign SS_MAP1_BACK[46:35] = freq1;
+assign SS_MAP1_BACK[58:47] = freq2;
+assign SS_MAP1_BACK[63:59] = 5'b0; // free to be used
+
+assign SS_MAP2_BACK[11: 0] = div0;
+assign SS_MAP2_BACK[23:12] = div1;
+assign SS_MAP2_BACK[36:24] = div2;
+assign SS_MAP2_BACK[   37] = en0;
+assign SS_MAP2_BACK[   38] = en1;
+assign SS_MAP2_BACK[   39] = en2;
+assign SS_MAP2_BACK[43:40] = duty0cnt;
+assign SS_MAP2_BACK[47:44] = duty1cnt;
+assign SS_MAP2_BACK[50:48] = duty2cnt;
+assign SS_MAP2_BACK[58:51] = acc;
+assign SS_MAP2_BACK[63:59] = 5'b0; // free to be used
+
+localparam SAVESTATE_MODULES    = 2;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+wire [63:0] SS_MAP1, SS_MAP2;
+wire [63:0] SS_MAP1_BACK, SS_MAP2_BACK;	
+wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1];
+	
+eReg_SavestateV #(SSREG_INDEX_SNDMAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
+eReg_SavestateV #(SSREG_INDEX_SNDMAP2, 64'h0000000000000000) iREG_SAVESTATE_MAP2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_MAP2_BACK, SS_MAP2);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule
 

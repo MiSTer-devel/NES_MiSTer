@@ -4,10 +4,13 @@
 // altera message_off 10935
 // altera message_off 10027
 
+import regs_savestates::*;
+
 // Module handles updating the loopy scroll register
 module LoopyGen (
 	input clk,
 	input ce,
+	input reset,
 	input is_rendering,
 	input [2:0] ain,     // input address from CPU
 	input [7:0] din,     // data input
@@ -16,8 +19,18 @@ module LoopyGen (
 	input is_pre_render, // Is this the pre-render scanline
 	input [8:0] cycle,
 	output [14:0] loopy,
-	output [2:0] fine_x_scroll  // Current loopy value
+	output [2:0] fine_x_scroll,  // Current loopy value
+	// savestates              
+	input [63:0]  SaveStateBus_Din,
+	input [ 9:0]  SaveStateBus_Adr,
+	input         SaveStateBus_wren,
+	input         SaveStateBus_rst,
+	output [63:0] SaveStateBus_Dout
 );
+
+wire [63:0] SS_LOOPY;
+wire [63:0] SS_LOOPY_BACK;
+eReg_SavestateV #(SSREG_INDEX_LOOPY, SSREG_DEFAULT_LOOPY) iREG_SAVESTATE (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_LOOPY_BACK, SS_LOOPY);  
 
 // Controls how much to increment on each write
 reg ppu_incr; // 0 = 1, 1 = 32
@@ -33,102 +46,117 @@ reg [7:0] din_shift[2];
 reg [1:0] write_shift;
 reg [1:0] latch_shift;
 
-initial begin
-	ppu_incr = 0;
-	loopy_v = 0;
-	loopy_t = 0;
-	loopy_x = 0;
-	ppu_address_latch = 0;
-end
+assign SS_LOOPY_BACK[    0] = ppu_incr;
+assign SS_LOOPY_BACK[15: 1] = loopy_v;
+assign SS_LOOPY_BACK[30:16] = loopy_t;
+assign SS_LOOPY_BACK[33:31] = loopy_x;
+assign SS_LOOPY_BACK[   34] = ppu_address_latch;
+assign SS_LOOPY_BACK[42:35] = din_shift[0];
+assign SS_LOOPY_BACK[50:43] = din_shift[1];
+assign SS_LOOPY_BACK[52:51] = write_shift;
+assign SS_LOOPY_BACK[54:53] = latch_shift;
+assign SS_LOOPY_BACK[63:55] = 9'b0; // free to be used
 
 // Handle updating loopy_t and loopy_v
-always @(posedge clk) if (ce) begin
-	if (is_rendering) begin
-		// Increment course X scroll right after attribute table byte was fetched.
-		if (cycle[2:0] == 3 && (cycle < 256 || cycle >= 320 && cycle < 336)) begin
-			loopy_v[4:0] <= loopy_v[4:0] + 1'd1;
-			loopy_v[10] <= loopy_v[10] ^ (loopy_v[4:0] == 31);
+always @(posedge clk) begin
+	if (reset) begin
+		ppu_incr          <= SS_LOOPY[    0]; //0;
+		loopy_v           <= SS_LOOPY[15: 1]; //0;
+		loopy_t           <= SS_LOOPY[30:16]; //0;
+		loopy_x           <= SS_LOOPY[33:31]; //0;
+		ppu_address_latch <= SS_LOOPY[   34]; //0;
+		din_shift[0]      <= SS_LOOPY[42:35]; //0;
+		din_shift[1]      <= SS_LOOPY[50:43]; //0;
+		write_shift       <= SS_LOOPY[52:51]; //0;
+		latch_shift       <= SS_LOOPY[54:53]; //0;
+	end else if (ce) begin
+		if (is_rendering) begin
+			// Increment course X scroll right after attribute table byte was fetched.
+			if (cycle[2:0] == 3 && (cycle < 256 || cycle >= 320 && cycle < 336)) begin
+				loopy_v[4:0] <= loopy_v[4:0] + 1'd1;
+				loopy_v[10] <= loopy_v[10] ^ (loopy_v[4:0] == 31);
+			end
+	
+			// Vertical Increment
+			if (cycle == 251) begin
+				loopy_v[14:12] <= loopy_v[14:12] + 1'd1;
+				if (loopy_v[14:12] == 7) begin
+					if (loopy_v[9:5] == 29) begin
+						loopy_v[9:5] <= 0;
+						loopy_v[11] <= !loopy_v[11];
+					end else begin
+						loopy_v[9:5] <= loopy_v[9:5] + 1'd1;
+					end
+				end
+			end
+	
+			// Horizontal Reset at cycle 257
+			if (cycle == 256)
+				{loopy_v[10], loopy_v[4:0]} <= {loopy_t[10], loopy_t[4:0]};
+	
+			// On cycle 256 of each scanline, copy horizontal bits from loopy_t into loopy_v
+			// On cycle 304 of the pre-render scanline, copy loopy_t into loopy_v
+			if (cycle == 304 && is_pre_render) begin
+				loopy_v <= loopy_t;
+			end
 		end
-
-		// Vertical Increment
-		if (cycle == 251) begin
-			loopy_v[14:12] <= loopy_v[14:12] + 1'd1;
-			if (loopy_v[14:12] == 7) begin
-				if (loopy_v[9:5] == 29) begin
-					loopy_v[9:5] <= 0;
-					loopy_v[11] <= !loopy_v[11];
-				end else begin
-					loopy_v[9:5] <= loopy_v[9:5] + 1'd1;
+	
+		if (write && ain == 0) begin
+			loopy_t[10] <= din[0];
+			loopy_t[11] <= din[1];
+			ppu_incr <= din[2];
+		end else if (write && ain == 5) begin
+			if (!ppu_address_latch) begin
+				loopy_t[4:0] <= din[7:3];
+				loopy_x <= din[2:0];
+			end else begin
+				loopy_t[9:5] <= din[7:3];
+				loopy_t[14:12] <= din[2:0];
+			end
+			ppu_address_latch <= !ppu_address_latch;
+		end else if (write && ain == 6) begin
+			ppu_address_latch <= !ppu_address_latch;
+		end else if (read && ain == 2) begin
+			ppu_address_latch <= 0; //Reset PPU address latch
+		end else if ((read || write) && ain == 7) begin
+			// Increment address every time we accessed a reg
+			if (~is_rendering) begin
+				loopy_v <= loopy_v + (ppu_incr ? 15'd32 : 15'd1);
+			end else begin
+				// During rendering (on the pre-render line and the visible lines 0-239, provided either background or sprite rendering is
+				// enabled), it will update v in an odd way, triggering a coarse X increment and a Y increment simultaneously (with normal
+				// wrapping behavior). Internally, this is caused by the carry inputs to various sections of v being set up for rendering,
+				// and the $2007 access triggering a "load next value" signal for all of v (when not rendering, the carry inputs are set up
+				// to linearly increment v by either 1 or 32). This behavior is not affected by the status of the increment bit. The Young
+				// Indiana Jones Chronicles uses this for some effects to adjust the Y scroll during rendering, and also Burai Fighter (U)
+				// to draw the scorebar.
+				loopy_v[4:0] <= loopy_v[4:0] + 1'd1;
+				loopy_v[10] <= loopy_v[10] ^ (loopy_v[4:0] == 31);
+				loopy_v[14:12] <= loopy_v[14:12] + 1'd1;
+				if (loopy_v[14:12] == 7) begin
+					if (loopy_v[9:5] == 29) begin
+						loopy_v[9:5] <= 0;
+						loopy_v[11] <= !loopy_v[11];
+					end else begin
+						loopy_v[9:5] <= loopy_v[9:5] + 1'd1;
+					end
 				end
 			end
 		end
-
-		// Horizontal Reset at cycle 257
-		if (cycle == 256)
-			{loopy_v[10], loopy_v[4:0]} <= {loopy_t[10], loopy_t[4:0]};
-
-		// On cycle 256 of each scanline, copy horizontal bits from loopy_t into loopy_v
-		// On cycle 304 of the pre-render scanline, copy loopy_t into loopy_v
-		if (cycle == 304 && is_pre_render) begin
-			loopy_v <= loopy_t;
-		end
-	end
-
-	if (write && ain == 0) begin
-		loopy_t[10] <= din[0];
-		loopy_t[11] <= din[1];
-		ppu_incr <= din[2];
-	end else if (write && ain == 5) begin
-		if (!ppu_address_latch) begin
-			loopy_t[4:0] <= din[7:3];
-			loopy_x <= din[2:0];
-		end else begin
-			loopy_t[9:5] <= din[7:3];
-			loopy_t[14:12] <= din[2:0];
-		end
-		ppu_address_latch <= !ppu_address_latch;
-	end else if (write && ain == 6) begin
-		ppu_address_latch <= !ppu_address_latch;
-	end else if (read && ain == 2) begin
-		ppu_address_latch <= 0; //Reset PPU address latch
-	end else if ((read || write) && ain == 7) begin
-		// Increment address every time we accessed a reg
-		if (~is_rendering) begin
-			loopy_v <= loopy_v + (ppu_incr ? 15'd32 : 15'd1);
-		end else begin
-			// During rendering (on the pre-render line and the visible lines 0-239, provided either background or sprite rendering is
-			// enabled), it will update v in an odd way, triggering a coarse X increment and a Y increment simultaneously (with normal
-			// wrapping behavior). Internally, this is caused by the carry inputs to various sections of v being set up for rendering,
-			// and the $2007 access triggering a "load next value" signal for all of v (when not rendering, the carry inputs are set up
-			// to linearly increment v by either 1 or 32). This behavior is not affected by the status of the increment bit. The Young
-			// Indiana Jones Chronicles uses this for some effects to adjust the Y scroll during rendering, and also Burai Fighter (U)
-			// to draw the scorebar.
-			loopy_v[4:0] <= loopy_v[4:0] + 1'd1;
-			loopy_v[10] <= loopy_v[10] ^ (loopy_v[4:0] == 31);
-			loopy_v[14:12] <= loopy_v[14:12] + 1'd1;
-			if (loopy_v[14:12] == 7) begin
-				if (loopy_v[9:5] == 29) begin
-					loopy_v[9:5] <= 0;
-					loopy_v[11] <= !loopy_v[11];
-				end else begin
-					loopy_v[9:5] <= loopy_v[9:5] + 1'd1;
-				end
+	
+		// Writes to vram address appear to be delayed by 2 cycles
+		latch_shift <= {latch_shift[0], ppu_address_latch};
+		write_shift <= {write_shift[0], (write && ain == 6)};
+		din_shift <= '{din, din_shift[0]};
+	
+		if (write_shift[1]) begin
+			if (!latch_shift[1]) begin
+				loopy_t[13:8] <= din_shift[1][5:0];
+				loopy_t[14] <= 0;
+			end else begin
+				loopy_t[7:0] <= din_shift[1];
+				loopy_v <= {loopy_t[14:8], din_shift[1]};
 			end
-		end
-	end
-
-	// Writes to vram address appear to be delayed by 2 cycles
-	latch_shift <= {latch_shift[0], ppu_address_latch};
-	write_shift <= {write_shift[0], (write && ain == 6)};
-	din_shift <= '{din, din_shift[0]};
-
-	if (write_shift[1]) begin
-		if (!latch_shift[1]) begin
-			loopy_t[13:8] <= din_shift[1][5:0];
-			loopy_t[14] <= 0;
-		end else begin
-			loopy_t[7:0] <= din_shift[1];
-			loopy_v <= {loopy_t[14:8], din_shift[1]};
 		end
 	end
 end
@@ -140,7 +168,7 @@ endmodule
 
 
 // Generates the current scanline / cycle counters
-module ClockGen(
+module ClockGen #(parameter USE_SAVESTATE = 0) (
 	input clk,
 	input ce,
 	input reset,
@@ -155,10 +183,18 @@ module ClockGen(
 	output entering_vblank,
 	output reg is_pre_render,
 	output short_frame,
-	output is_vbe_sl
+	output is_vbe_sl,
+	output evenframe,
+	// savestates              
+	input [63:0]  SaveStateBus_Din,
+	input [ 9:0]  SaveStateBus_Adr,
+	input         SaveStateBus_wren,
+	input         SaveStateBus_rst,
+	output [63:0] SaveStateBus_Dout
 );
 
 reg even_frame_toggle = 0; // 1 indicates even frame.
+assign evenframe = even_frame_toggle;
 
 // Dendy is 291 to 310
 wire [8:0] vblank_start_sl;
@@ -208,10 +244,38 @@ assign is_vbe_sl = (scanline == vblank_end_sl);
 // New value for is_in_vblank flag
 wire new_is_in_vblank = entering_vblank ? 1'b1 : exiting_vblank ? 1'b0 : is_in_vblank;
 
+// Savestates
+wire [63:0] SS_CLKGEN;
+generate
+	if (USE_SAVESTATE) begin
+		wire [63:0] SS_CLKGEN_BACK;
+		wire [63:0] SS_CLKGEN_OUT;
+		eReg_SavestateV #(SSREG_INDEX_CLOCKGEN, SSREG_DEFAULT_CLOCKGEN) iREG_SAVESTATE (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SS_CLKGEN_OUT, SS_CLKGEN_BACK, SS_CLKGEN);  
+		assign SaveStateBus_Dout = SS_CLKGEN_OUT;
+
+		assign SS_CLKGEN_BACK[  8:0] = cycle;
+		assign SS_CLKGEN_BACK[    9] = is_in_vblank;
+		assign SS_CLKGEN_BACK[13:10] = rendering_sr;
+		assign SS_CLKGEN_BACK[22:14] = scanline;
+		assign SS_CLKGEN_BACK[   23] = is_pre_render;
+		assign SS_CLKGEN_BACK[   24] = even_frame_toggle;
+		assign SS_CLKGEN_BACK[63:25] = 39'b0; // free to be used
+	end else begin
+		assign SS_CLKGEN         = 64'b0;
+		assign SaveStateBus_Dout = SS_CLKGEN;
+	end
+endgenerate
+
 // Set if the current line is line 0..239
 always @(posedge clk) if (reset) begin
-	cycle <= 338;
-	is_in_vblank <= 0;
+	if (USE_SAVESTATE) begin
+		cycle        <= SS_CLKGEN[  8:0]; // 338;
+		is_in_vblank <= SS_CLKGEN[    9]; // 0;
+		rendering_sr <= SS_CLKGEN[13:10]; // no reset before => 0 should be ok;	
+	end else begin
+		cycle        <= 338;
+		is_in_vblank <= 0;
+	end
 end else if (ce) begin
 	// On a real AV famicom, the NMI even_odd_timing test fails with 09, this SR is to make that happen
 	rendering_sr <= {rendering_sr[2:0], is_rendering};
@@ -220,9 +284,15 @@ end else if (ce) begin
 end
 
 always @(posedge clk) if (reset) begin
-	scanline <= 0;
-	is_pre_render <= 0;
-	even_frame_toggle <= 0; // Resets to 0, the first frame will always end with 341 pixels.
+	if (USE_SAVESTATE) begin
+		scanline          <= SS_CLKGEN[22:14]; // 0;
+		is_pre_render     <= SS_CLKGEN[   23]; // 0;
+		even_frame_toggle <= SS_CLKGEN[   24]; // 0; // Resets to 0, the first frame will always end with 341 pixels.
+	end else begin
+		scanline          <= 0;
+		is_pre_render     <= 0;
+		even_frame_toggle <= 0; // Resets to 0, the first frame will always end with 341 pixels.
+	end
 end else if (ce && end_of_line) begin
 	// Once the scanline counter reaches end of 260, it gets reset to -1.
 	scanline <= (scanline == vblank_end_sl) ? 9'b111111111 : scanline + 1'd1;
@@ -357,8 +427,25 @@ module OAMEval(
 	output reg sprite0,        // True if sprite#0 is included on the scan line currently being painted.
 	input is_vbe,              // Last line before pre-render
 	input PAL,
-	output masked_sprites      // If the game is trying to mask extra sprites
+	output masked_sprites,     // If the game is trying to mask extra sprites
+	// savestates              
+	input [63:0]  SaveStateBus_Din,
+	input [ 9:0]  SaveStateBus_Adr,
+	input         SaveStateBus_wren,
+	input         SaveStateBus_rst,
+	output [63:0] SaveStateBus_Dout,
+	
+	input  [7:0]  Savestate_OAMAddr,     
+	input         Savestate_OAMRdEn,    
+	input         Savestate_OAMWrEn,    
+	input  [7:0]  Savestate_OAMWriteData,
+	output [7:0]  Savestate_OAMReadData
 );
+
+wire [63:0] SS_OAMEVAL;
+wire [63:0] SS_OAMEVAL_BACK;
+eReg_SavestateV #(SSREG_INDEX_OAMEVAL, SSREG_DEFAULT_OAMEVAL) iREG_SAVESTATE (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_OAMEVAL_BACK, SS_OAMEVAL);  
+
 
 // https://wiki.nesdev.com/w/index.php/PPU_sprite_evaluation
 // NOTE: At the time of this writing, much information on the wiki is off by one, as mentioned here:
@@ -384,8 +471,8 @@ reg oam_temp_wren;         // Write enable for OAM temp, disabled if full
 // Extra Registers
 reg [5:0] oam_addr_ex;     // OAM pointer for use with extra sprites
 reg [3:0] oam_temp_slot_ex;
-reg [1:0] m_ex;
-reg [7:0] oam_data_ex;
+reg [1:0] m_ex;				// unused?
+reg [7:0] oam_data_ex;     // unused?
 reg [2:0] spr_counter;     // Count sprites
 
 wire visible = (scanline < 240);
@@ -400,36 +487,71 @@ reg [2:0] repeat_count;
 
 assign masked_sprites = &repeat_count;
 
-always @(posedge clk) begin :oam_eval
 reg n_ovr, ex_ovr;
 reg [1:0] eval_counter;
-reg old_rendering;
-reg [8:0] last_y, last_tile, last_attr;
-
 reg overflow;
+
+assign SS_OAMEVAL_BACK[ 7: 0] = oam_data;        
+assign SS_OAMEVAL_BACK[    8] = oam_temp_wren;   
+assign SS_OAMEVAL_BACK[14: 9] = oam_temp_addr;   
+assign SS_OAMEVAL_BACK[17:15] = oam_temp_slot;   
+assign SS_OAMEVAL_BACK[21:18] = oam_temp_slot_ex;
+assign SS_OAMEVAL_BACK[   22] = n_ovr;           
+assign SS_OAMEVAL_BACK[25:23] = spr_counter;     
+assign SS_OAMEVAL_BACK[28:26] = repeat_count;    
+assign SS_OAMEVAL_BACK[   29] = sprite0;         
+assign SS_OAMEVAL_BACK[   30] = sprite0_curr;    
+assign SS_OAMEVAL_BACK[37:31] = feed_cnt;        
+assign SS_OAMEVAL_BACK[   38] = overflow;        
+assign SS_OAMEVAL_BACK[40:39] = eval_counter;    
+assign SS_OAMEVAL_BACK[   41] = ex_ovr;          
+assign SS_OAMEVAL_BACK[47:42] = oam_addr_ex; 
+assign SS_OAMEVAL_BACK[55:48] = oam_addr; 
+assign SS_OAMEVAL_BACK[58:56] = (oam_state == STATE_IDLE)  ? 3'd0 :
+										  (oam_state == STATE_CLEAR) ? 3'd1 :
+										  (oam_state == STATE_EVAL)  ? 3'd2 :
+										  (oam_state == STATE_FETCH) ? 3'd3 :
+																				 3'd4;
+assign SS_OAMEVAL_BACK[63:59] = 5'b0; // free to be used 
+
+always @(posedge clk) begin :oam_eval
+reg old_rendering; // unused?
+reg [8:0] last_y, last_tile, last_attr; // unused?
 
 if (cycle == 340 && ce) begin
 	sprite0 <= sprite0_curr;
 	sprite0_curr <= 0;
-end
+end  
+
+if (Savestate_OAMRdEn) Savestate_OAMReadData  <= oam[Savestate_OAMAddr];
+if (Savestate_OAMWrEn) oam[Savestate_OAMAddr] <= Savestate_OAMWriteData;
 
 if (reset) begin
 	oam_temp <= '{64{8'hFF}};
-	oam_data <= oam_temp[0];
-	oam_temp_addr <= 0;
-	oam_temp_slot <= 0;
-	oam_temp_wren <= 1;
-	oam_temp_slot_ex <= 0;
-	n_ovr <= 0;
-	spr_counter <= 0;
-	repeat_count <= 0;
-	sprite0 <= 0;
-	sprite0_curr <= 0;
-	feed_cnt <= 0;
-	overflow <= 0;
-	eval_counter <= 0;
-	ex_ovr <= 0;
-	oam_state <= STATE_IDLE;
+	
+	oam_data         <= SS_OAMEVAL[ 7: 0]; //oam_temp[0] == 8'hFF
+	oam_temp_wren    <= SS_OAMEVAL[    8]; //1;
+	oam_temp_addr    <= SS_OAMEVAL[14: 9]; //0;
+	oam_temp_slot    <= SS_OAMEVAL[17:15]; //0;
+	oam_temp_slot_ex <= SS_OAMEVAL[21:18]; //0;
+	n_ovr            <= SS_OAMEVAL[   22]; //0;
+	spr_counter      <= SS_OAMEVAL[25:23]; //0;
+	repeat_count     <= SS_OAMEVAL[28:26]; //0;
+	sprite0          <= SS_OAMEVAL[   29]; //0;
+	sprite0_curr     <= SS_OAMEVAL[   30]; //0;
+	feed_cnt         <= SS_OAMEVAL[37:31]; //0;
+	overflow         <= SS_OAMEVAL[   38]; //0;
+	eval_counter     <= SS_OAMEVAL[40:39]; //0;
+	ex_ovr           <= SS_OAMEVAL[   41]; //0;
+	oam_addr_ex      <= SS_OAMEVAL[47:42]; //0;
+	oam_addr         <= SS_OAMEVAL[55:48]; //0;
+	case (SS_OAMEVAL[58:56])
+		0: oam_state <= STATE_IDLE;
+		1: oam_state <= STATE_CLEAR;
+		2: oam_state <= STATE_EVAL;
+		3: oam_state <= STATE_FETCH;
+		4: oam_state <= STATE_REFRESH;
+	endcase
 end else if (ce) begin
 
 	// State machine. Remember these will be one ppu cycle early.
@@ -877,19 +999,38 @@ module PaletteRam
 	input [5:0] din,
 	output [5:0] dout,
 	input write,
-	input reset
+	input reset,
+	// savestates              
+	input [63:0]  SaveStateBus_Din,
+	input [ 9:0]  SaveStateBus_Adr,
+	input         SaveStateBus_wren,
+	input         SaveStateBus_rst,
+	output [63:0] SaveStateBus_Dout
 );
 
-reg [5:0] palette [32] = '{
-	6'h00, 6'h01, 6'h00, 6'h01,
-	6'h00, 6'h02, 6'h02, 6'h0D,
-	6'h08, 6'h10, 6'h08, 6'h24,
-	6'h00, 6'h00, 6'h04, 6'h2C,
-	6'h09, 6'h01, 6'h34, 6'h03,
-	6'h00, 6'h04, 6'h00, 6'h14,
-	6'h08, 6'h3A, 6'h00, 6'h02,
-	6'h00, 6'h20, 6'h2C, 6'h08
-};
+// savestates
+localparam SAVESTATE_MODULES    = 4;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+assign SaveStateBus_Dout  = SaveStateBus_wired_or[ 0] | SaveStateBus_wired_or[ 1] | SaveStateBus_wired_or[ 2] | SaveStateBus_wired_or[ 3];
+
+wire [63:0] SS_PAL [3:0];
+wire [63:0] SS_PAL_BACK [3:0];
+eReg_SavestateV #(SSREG_INDEX_PAL0, SSREG_DEFAULT_PAL0) iREG_SAVESTATE_PAL0 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_PAL_BACK[0], SS_PAL[0]);  
+eReg_SavestateV #(SSREG_INDEX_PAL1, SSREG_DEFAULT_PAL1) iREG_SAVESTATE_PAL1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_PAL_BACK[1], SS_PAL[1]);  
+eReg_SavestateV #(SSREG_INDEX_PAL2, SSREG_DEFAULT_PAL2) iREG_SAVESTATE_PAL2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[2], SS_PAL_BACK[2], SS_PAL[2]);  
+eReg_SavestateV #(SSREG_INDEX_PAL3, SSREG_DEFAULT_PAL3) iREG_SAVESTATE_PAL3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[3], SS_PAL_BACK[3], SS_PAL[3]);  
+
+reg [5:0] palette [32];
+// = '{
+//	6'h00, 6'h01, 6'h00, 6'h01,
+//	6'h00, 6'h02, 6'h02, 6'h0D,
+//	6'h08, 6'h10, 6'h08, 6'h24,
+//	6'h00, 6'h00, 6'h04, 6'h2C,
+//	6'h09, 6'h01, 6'h34, 6'h03,
+//	6'h00, 6'h04, 6'h00, 6'h14,
+//	6'h08, 6'h3A, 6'h00, 6'h02,
+//	6'h00, 6'h20, 6'h2C, 6'h08
+//};
 
 // Force read from backdrop channel if reading from any addr 0.
 // Do this to the input, not here
@@ -898,18 +1039,25 @@ reg [5:0] palette [32] = '{
 wire [4:0] addr2 = (addr[1:0] == 0) ? {1'b0, addr[3:0]} : addr;
 assign dout = palette[addr2];
 
-always @(posedge clk) if (reset)
-	palette <= '{
-		6'h00, 6'h01, 6'h00, 6'h01,
-		6'h00, 6'h02, 6'h02, 6'h0D,
-		6'h08, 6'h10, 6'h08, 6'h24,
-		6'h00, 6'h00, 6'h04, 6'h2C,
-		6'h09, 6'h01, 6'h34, 6'h03,
-		6'h00, 6'h04, 6'h00, 6'h14,
-		6'h08, 6'h3A, 6'h00, 6'h02,
-		6'h00, 6'h20, 6'h2C, 6'h08
-	};
-else if (ce && write) begin
+assign SS_PAL_BACK[0][ 5: 0] = palette[ 0]; assign SS_PAL_BACK[1][ 5: 0] = palette[1 ]; assign SS_PAL_BACK[2][ 5: 0] = palette[2 ]; assign SS_PAL_BACK[3][ 5: 0] = palette[3 ];
+assign SS_PAL_BACK[0][13: 8] = palette[ 4]; assign SS_PAL_BACK[1][13: 8] = palette[5 ]; assign SS_PAL_BACK[2][13: 8] = palette[6 ]; assign SS_PAL_BACK[3][13: 8] = palette[7 ];
+assign SS_PAL_BACK[0][21:16] = palette[ 8]; assign SS_PAL_BACK[1][21:16] = palette[9 ]; assign SS_PAL_BACK[2][21:16] = palette[10]; assign SS_PAL_BACK[3][21:16] = palette[11];
+assign SS_PAL_BACK[0][29:24] = palette[12]; assign SS_PAL_BACK[1][29:24] = palette[13]; assign SS_PAL_BACK[2][29:24] = palette[14]; assign SS_PAL_BACK[3][29:24] = palette[15];
+assign SS_PAL_BACK[0][37:32] = palette[16]; assign SS_PAL_BACK[1][37:32] = palette[17]; assign SS_PAL_BACK[2][37:32] = palette[18]; assign SS_PAL_BACK[3][37:32] = palette[19];
+assign SS_PAL_BACK[0][45:40] = palette[20]; assign SS_PAL_BACK[1][45:40] = palette[21]; assign SS_PAL_BACK[2][45:40] = palette[22]; assign SS_PAL_BACK[3][45:40] = palette[23];
+assign SS_PAL_BACK[0][53:48] = palette[24]; assign SS_PAL_BACK[1][53:48] = palette[25]; assign SS_PAL_BACK[2][53:48] = palette[26]; assign SS_PAL_BACK[3][53:48] = palette[27];
+assign SS_PAL_BACK[0][61:56] = palette[28]; assign SS_PAL_BACK[1][61:56] = palette[29]; assign SS_PAL_BACK[2][61:56] = palette[30]; assign SS_PAL_BACK[3][61:56] = palette[31];
+
+always @(posedge clk) if (reset) begin
+	palette[ 0] <= SS_PAL[0][ 5: 0]; palette[1 ] <= SS_PAL[1][ 5: 0]; palette[2 ] <= SS_PAL[2][ 5: 0]; palette[3 ] <= SS_PAL[3][ 5: 0];
+	palette[ 4] <= SS_PAL[0][13: 8]; palette[5 ] <= SS_PAL[1][13: 8]; palette[6 ] <= SS_PAL[2][13: 8]; palette[7 ] <= SS_PAL[3][13: 8];
+	palette[ 8] <= SS_PAL[0][21:16]; palette[9 ] <= SS_PAL[1][21:16]; palette[10] <= SS_PAL[2][21:16]; palette[11] <= SS_PAL[3][21:16];
+	palette[12] <= SS_PAL[0][29:24]; palette[13] <= SS_PAL[1][29:24]; palette[14] <= SS_PAL[2][29:24]; palette[15] <= SS_PAL[3][29:24];
+	palette[16] <= SS_PAL[0][37:32]; palette[17] <= SS_PAL[1][37:32]; palette[18] <= SS_PAL[2][37:32]; palette[19] <= SS_PAL[3][37:32];
+	palette[20] <= SS_PAL[0][45:40]; palette[21] <= SS_PAL[1][45:40]; palette[22] <= SS_PAL[2][45:40]; palette[23] <= SS_PAL[3][45:40];
+	palette[24] <= SS_PAL[0][53:48]; palette[25] <= SS_PAL[1][53:48]; palette[26] <= SS_PAL[2][53:48]; palette[27] <= SS_PAL[3][53:48];
+	palette[28] <= SS_PAL[0][61:56]; palette[29] <= SS_PAL[1][61:56]; palette[30] <= SS_PAL[2][61:56]; palette[31] <= SS_PAL[3][61:56];
+end else if (ce && write) begin
 	palette[addr2] <= din;
 end
 
@@ -938,10 +1086,37 @@ module PPU(
 	output  [8:0] cycle,
 	output [19:0] mapper_ppu_flags,
 	output reg [2:0] emphasis,
-	output       short_frame,
-	input        extra_sprites,
-	input  [1:0] mask
+	output        short_frame,
+	input         extra_sprites,
+	input  [1:0]  mask,
+	output        render_ena_out,
+	output        evenframe,
+	// savestates              
+	input [63:0]  SaveStateBus_Din,
+	input [ 9:0]  SaveStateBus_Adr,
+	input         SaveStateBus_wren,
+	input         SaveStateBus_rst,
+	input         SaveStateBus_load,
+	output [63:0] SaveStateBus_Dout,
+	
+	input  [7:0]  Savestate_OAMAddr,     
+	input         Savestate_OAMRdEn,    
+	input         Savestate_OAMWrEn,    
+	input  [7:0]  Savestate_OAMWriteData,
+	output [7:0]  Savestate_OAMReadData
 );
+
+// Savestates
+localparam SAVESTATE_MODULES    = 6;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+assign SaveStateBus_Dout = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1] | SaveStateBus_wired_or[2] | SaveStateBus_wired_or[3] | SaveStateBus_wired_or[4] | SaveStateBus_wired_or[5];
+
+wire [63:0] SS_PPU;
+wire [63:0] SS_PPU_BACK;
+wire [63:0] SS_PPU_DECAY;
+wire [63:0] SS_PPU_DECAY_BACK;
+eReg_SavestateV #(SSREG_INDEX_PPU_1, SSREG_DEFAULT_PPU_1) iREG_SAVESTATE_PPU       (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_PPU_BACK,       SS_PPU);  
+eReg_SavestateV #(SSREG_INDEX_PPU_2, SSREG_DEFAULT_PPU_2) iREG_SAVESTATE_PPU_DECAY (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_PPU_DECAY_BACK, SS_PPU_DECAY);  
 
 // These are stored in control register 0
 reg obj_patt; // Object pattern table
@@ -981,6 +1156,7 @@ wire is_pre_render_line;  // True while we're on the pre render scanline
 reg enable_playfield, enable_objects;
 
 wire rendering_enabled = enable_objects | enable_playfield;
+assign render_ena_out = rendering_enabled;
 
 // 2C02 has an "is_vblank" flag that is true from pixel 0 of line 241 to pixel 0 of line 0;
 wire is_rendering = rendering_enabled && (scanline < 240 || is_pre_render_line);
@@ -1001,8 +1177,16 @@ ClockGen clock(
 	.entering_vblank     (entering_vblank),
 	.is_pre_render       (is_pre_render_line),
 	.short_frame         (short_frame),
-	.is_vbe_sl           (is_vbe_sl)
+	.is_vbe_sl           (is_vbe_sl),
+	.evenframe				(evenframe),
+	// savestates
+	.SaveStateBus_Din  (SaveStateBus_Din ), 
+	.SaveStateBus_Adr  (SaveStateBus_Adr ),
+	.SaveStateBus_wren (SaveStateBus_wren),
+	.SaveStateBus_rst  (SaveStateBus_rst ),
+	.SaveStateBus_Dout (SaveStateBus_wired_or[2])
 );
+defparam clock.USE_SAVESTATE = 1;
 
 // The loopy module handles updating of the loopy address
 wire [14:0] loopy;
@@ -1011,6 +1195,7 @@ wire [2:0] fine_x_scroll;
 LoopyGen loopy0(
 	.clk           (clk),
 	.ce            (ce),
+	.reset         (reset),
 	.is_rendering  (is_rendering),
 	.ain           (ain),
 	.din           (din),
@@ -1019,7 +1204,13 @@ LoopyGen loopy0(
 	.is_pre_render (is_pre_render_line),
 	.cycle         (cycle),
 	.loopy         (loopy),
-	.fine_x_scroll (fine_x_scroll)
+	.fine_x_scroll (fine_x_scroll),
+	 // savestates
+	.SaveStateBus_Din  (SaveStateBus_Din ), 
+	.SaveStateBus_Adr  (SaveStateBus_Adr ),
+	.SaveStateBus_wren (SaveStateBus_wren),
+	.SaveStateBus_rst  (SaveStateBus_rst ),
+	.SaveStateBus_Dout (SaveStateBus_wired_or[3])
 );
 
 // Set to true if the current ppu_addr pointer points into palette ram.
@@ -1068,7 +1259,18 @@ OAMEval spriteeval (
 	.sprite0           (obj0_on_line),
 	.is_vbe            (is_vbe_sl),
 	.PAL               (sys_type[0]),
-	.masked_sprites    (masked_sprites)
+	.masked_sprites    (masked_sprites),
+	 // savestates
+	.SaveStateBus_Din       (SaveStateBus_Din        ), 
+	.SaveStateBus_Adr       (SaveStateBus_Adr        ),
+	.SaveStateBus_wren      (SaveStateBus_wren       ),
+	.SaveStateBus_rst       (SaveStateBus_rst        ),
+	.SaveStateBus_Dout      (SaveStateBus_wired_or[4]),
+	.Savestate_OAMAddr      (Savestate_OAMAddr       ),     
+	.Savestate_OAMRdEn      (Savestate_OAMRdEn       ),    
+	.Savestate_OAMWrEn      (Savestate_OAMWrEn       ),    
+	.Savestate_OAMWriteData (Savestate_OAMWriteData  ),
+	.Savestate_OAMReadData  (Savestate_OAMReadData   )
 );
 
 
@@ -1141,20 +1343,27 @@ wire show_obj_on_pixel = (object_clip || (cycle[7:3] != 0)) && enable_objects;
 wire [4:0] obj_pixel = {obj_pixel_noblank[4:2], show_obj_on_pixel ? obj_pixel_noblank[1:0] : 2'b00};
 
 reg sprite0_hit_bg;            // True if sprite#0 has collided with the BG in the last frame.
-always @(posedge clk) if (ce) begin
-	if (cycle == 340 && is_vbe_sl) begin
-		sprite0_hit_bg <= 0;
-	end else if (
-		is_rendering        &&    // Object rendering is enabled
-		!cycle[8]           &&    // X Pixel 0..255
-		cycle[7:0] != 255   &&    // X pixel != 255
-		!is_pre_render_line &&    // Y Pixel 0..239
-		obj0_on_line        &&    // True if sprite#0 is included on the scan line.
-		is_obj0_pixel       &&    // True if the pixel came from tempram #0.
-		show_obj_on_pixel   &&
-		bg_pixel[1:0] != 0) begin // Background pixel nonzero.
 
-			sprite0_hit_bg <= 1;
+assign SS_PPU_BACK[0] = sprite0_hit_bg;
+
+always @(posedge clk) begin
+	if (SaveStateBus_load) begin
+		sprite0_hit_bg <= SS_PPU[0];
+	end else if (ce) begin
+		if (cycle == 340 && is_vbe_sl) begin
+			sprite0_hit_bg <= 0;
+		end else if (
+			is_rendering        &&    // Object rendering is enabled
+			!cycle[8]           &&    // X Pixel 0..255
+			cycle[7:0] != 255   &&    // X pixel != 255
+			!is_pre_render_line &&    // Y Pixel 0..239
+			obj0_on_line        &&    // True if sprite#0 is included on the scan line.
+			is_obj0_pixel       &&    // True if the pixel came from tempram #0.
+			show_obj_on_pixel   &&
+			bg_pixel[1:0] != 0) begin // Background pixel nonzero.
+	
+				sprite0_hit_bg <= 1;
+		end
 	end
 end
 
@@ -1215,7 +1424,13 @@ PaletteRam palette_ram(
 	.addr  (pram_addr), // Read addr
 	.din   (din[5:0]),  // Value to write
 	.dout  (color2),    // Output color
-	.write (write && (ain == 7) && is_pal_address) // Condition for writing
+	.write (write && (ain == 7) && is_pal_address), // Condition for writing
+	// savestates
+	.SaveStateBus_Din  (SaveStateBus_Din ), 
+	.SaveStateBus_Adr  (SaveStateBus_Adr ),
+	.SaveStateBus_wren (SaveStateBus_wren),
+	.SaveStateBus_rst  (SaveStateBus_rst ),
+	.SaveStateBus_Dout (SaveStateBus_wired_or[5])
 );
 
 wire pal_mask = ~|scanline || cycle < 2 || cycle > 253;
@@ -1230,37 +1445,58 @@ assign color = (mask_right | mask_left | mask_pal) ? 6'h0E : color1;
 wire clear_nmi = (exiting_vblank | (read && ain == 2));
 wire set_nmi = entering_vblank & ~clear_nmi;
 
-always @(posedge clk)
-if (ce) begin
-	if (reset) begin
-		{obj_patt, bg_patt, obj_size, vbl_enable} <= 0; // 2000 resets to 0
-		{grayscale, playfield_clip, object_clip, enable_playfield, enable_objects, emphasis} <= 0; // 2001 resets to 0
-		nmi_occured <= 0;
-	end else if (write) begin
-		case (ain)
-			0: begin // PPU Control Register 1
-				// t:....BA.. ........ = d:......BA
-				obj_patt <= din[3];
-				bg_patt <= din[4];
-				obj_size <= din[5];
-				vbl_enable <= din[7];
-			end
+assign SS_PPU_BACK[    1] = obj_patt;
+assign SS_PPU_BACK[    2] = bg_patt;
+assign SS_PPU_BACK[    3] = obj_size;
+assign SS_PPU_BACK[    4] = vbl_enable;
+assign SS_PPU_BACK[    5] = grayscale;
+assign SS_PPU_BACK[    6] = playfield_clip;
+assign SS_PPU_BACK[    7] = object_clip;
+assign SS_PPU_BACK[    8] = enable_playfield;
+assign SS_PPU_BACK[    9] = enable_objects;
+assign SS_PPU_BACK[12:10] = emphasis;
+assign SS_PPU_BACK[   13] = nmi_occured;
 
-			1: begin // PPU Control Register 2
-				grayscale <= din[0];
-				playfield_clip <= din[1];
-				object_clip <= din[2];
-				enable_playfield <= din[3];
-				enable_objects <= din[4];
-				emphasis <= |sys_type ? {din[7], din[5], din[6]} : din[7:5];
-			end
-		endcase
+always @(posedge clk) begin
+	if (reset) begin
+		obj_patt         <= SS_PPU[    1]; // 0; // 2000 resets to 0
+		bg_patt          <= SS_PPU[    2]; // 0; // 2000 resets to 0
+		obj_size         <= SS_PPU[    3]; // 0; // 2000 resets to 0
+		vbl_enable       <= SS_PPU[    4]; // 0;
+		grayscale        <= SS_PPU[    5]; // 0; // 2001 resets to 0
+		playfield_clip   <= SS_PPU[    6]; // 0; // 2001 resets to 0
+		object_clip      <= SS_PPU[    7]; // 0; // 2001 resets to 0
+		enable_playfield <= SS_PPU[    8]; // 0; // 2001 resets to 0
+		enable_objects   <= SS_PPU[    9]; // 0; // 2001 resets to 0
+		emphasis         <= SS_PPU[12:10]; // 0; // 2001 resets to 0
+		nmi_occured      <= SS_PPU[   13]; // 0; // wasn't reset before!
+	end else if (ce) begin
+		if (write) begin
+			case (ain)
+				0: begin // PPU Control Register 1
+					// t:....BA.. ........ = d:......BA
+					obj_patt <= din[3];
+					bg_patt <= din[4];
+					obj_size <= din[5];
+					vbl_enable <= din[7];
+				end
+	
+				1: begin // PPU Control Register 2
+					grayscale <= din[0];
+					playfield_clip <= din[1];
+					object_clip <= din[2];
+					enable_playfield <= din[3];
+					enable_objects <= din[4];
+					emphasis <= |sys_type ? {din[7], din[5], din[6]} : din[7:5];
+				end
+			endcase
+		end
+		// https://wiki.nesdev.com/w/index.php/NMI
+		if (set_nmi)
+			nmi_occured <= 1;
+		if (clear_nmi)
+			nmi_occured <= 0;
 	end
-	// https://wiki.nesdev.com/w/index.php/NMI
-	if (set_nmi)
-		nmi_occured <= 1;
-	if (clear_nmi)
-		nmi_occured <= 0;
 end
 
 // If we're triggering a VBLANK NMI
@@ -1270,10 +1506,19 @@ assign nmi = nmi_occured && vbl_enable;
 // One cycle after vram_r was asserted, the value
 // is available on the bus.
 reg vram_read_delayed;
-always @(posedge clk) if (ce) begin
-	if (vram_read_delayed)
-		vram_latch <= vram_din;
-	vram_read_delayed <= vram_r_ppudata;
+
+assign SS_PPU_BACK[21:14] = vram_latch;       
+assign SS_PPU_BACK[   22] = vram_read_delayed;
+
+always @(posedge clk) begin
+	if (SaveStateBus_load) begin
+		vram_latch        <= SS_PPU[21:14];
+		vram_read_delayed <= SS_PPU[   22];
+	end else if (ce) begin
+		if (vram_read_delayed)
+			vram_latch <= vram_din;
+		vram_read_delayed <= vram_r_ppudata;
+	end
 end
 
 // Value currently being written to video ram
@@ -1286,6 +1531,15 @@ reg [23:0] decay_high;
 reg [23:0] decay_low;
 
 reg refresh_high, refresh_low;
+
+assign SS_PPU_BACK[   23] = refresh_high;
+assign SS_PPU_BACK[   24] = refresh_low; 
+assign SS_PPU_BACK[32:25] = latched_dout;
+assign SS_PPU_BACK[63:33] = 31'b0; // free to be used
+
+assign SS_PPU_DECAY_BACK[23: 0] = decay_low;
+assign SS_PPU_DECAY_BACK[47:24] = decay_high;
+assign SS_PPU_DECAY_BACK[63:48] = 16'b0; // free to be use
 
 always @(posedge clk) begin
 	if (refresh_high) begin
@@ -1344,6 +1598,14 @@ always @(posedge clk) begin
 		refresh_high <= 1'b1;
 		refresh_low <= 1'b1;
 		latched_dout <= din;
+	end
+	
+	if (SaveStateBus_load) begin
+		refresh_high <= SS_PPU[   23];
+		refresh_low  <= SS_PPU[   24];
+		latched_dout <= SS_PPU[32:25];
+		decay_low    <= SS_PPU_DECAY[23: 0];
+		decay_high   <= SS_PPU_DECAY[47:24];
 	end
 end
 

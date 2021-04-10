@@ -58,7 +58,12 @@ module sdram
 	input             ch2_wr,
 	input       [7:0] ch2_din,
 	output reg  [7:0] ch2_dout,
-	output reg        ch2_busy
+	output reg        ch2_busy,
+	
+	input             refresh,
+	input      [15:0] ss_in,
+	input             ss_load,
+	output     [15:0] ss_out
 );
 
 assign SDRAM_nCS = 0;
@@ -140,6 +145,11 @@ always @(posedge clk) begin
 			last_a[2] <= wr[2] ? '1 : ch2_addr[24:1];
 			ch2_busy <= 1;
 			state <= STATE_START;
+		end
+		else if (refresh) begin
+			ram_req <= 1'b0;
+			we      <= 1'b0;
+			state   <= STATE_START;
 		end
 	end
 
@@ -256,7 +266,14 @@ always @(posedge clk) begin
 			else ch2_dout <= a[0] ? last_data[2][15:8] : last_data[2][7:0];
 		end
 	end
+	
+	if (ss_load) begin
+		ch0_dout <= ss_in[7:0];
+		ch1_dout <= ss_in[15:8];
+	end
 end
+
+assign ss_out = {ch1_dout, ch0_dout};
 
 
 altddio_out

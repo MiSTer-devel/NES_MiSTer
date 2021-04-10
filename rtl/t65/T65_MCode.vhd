@@ -109,7 +109,7 @@ begin
               not P(Flag_Z) when "110",
                   P(Flag_Z) when others;
 
-  process (IR, MCycle, P, Branch, Mode, Rdy_mod)
+  process (IR, MCycle, P, Branch, Mode, Rdy_mod, BCD_en)
   begin
     lCycle      <= Cycle_1;
     Set_BusA_To <= Set_BusA_To_ABC;
