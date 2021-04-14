@@ -154,6 +154,7 @@ module NES(
 	output [25:0] SAVE_out_Adr,  	// all addresses are DWORD addresses!
 	output        SAVE_out_rnw,   // read = 1, write = 0
 	output        SAVE_out_ena,   // one cycle high for each action
+	output  [7:0] SAVE_out_be,     
 	input         SAVE_out_done   // should be one cycle high when write is done or read value is valid
 );
 
@@ -851,6 +852,7 @@ savestates savestates (
 	.bus_out_Adr            (SAVE_out_Adr),   
 	.bus_out_rnw            (SAVE_out_rnw),   
 	.bus_out_ena            (SAVE_out_ena),   
+	.bus_out_be             (SAVE_out_be),   
 	.bus_out_done           (SAVE_out_done)  
 );
 

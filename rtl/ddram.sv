@@ -38,6 +38,7 @@ module ddram
 	input  [63:0] ch1_din,
 	input         ch1_req,
 	input         ch1_rnw,
+	input  [7:0]  ch1_be,
 	output        ch1_ready
 );
 
@@ -80,7 +81,7 @@ always @(posedge DDRAM_CLK) begin
 					ch_rq[1]         <= 0;
 					ch               <= 1;
 					ram_data         <= ch1_din;
-					ram_be           <= 8'hFF;
+					ram_be           <= ch1_be;
 					ram_address      <= ch1_addr;
 					ram_burst        <= 1;
 					if(~ch1_rnw) begin

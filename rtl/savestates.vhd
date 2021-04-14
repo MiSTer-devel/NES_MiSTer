@@ -44,6 +44,7 @@ entity savestates is
       bus_out_Adr             : buffer std_logic_vector(25 downto 0) := (others => '0');
       bus_out_rnw             : out    std_logic := '0';
       bus_out_ena             : out    std_logic := '0';
+      bus_out_be              : out    std_logic_vector(7 downto 0) := (others => '0');
       bus_out_done            : in     std_logic
    );
 end entity;
@@ -106,7 +107,7 @@ architecture arch of savestates is
    signal RAMAddrNext         : std_logic_vector(24 downto 0) := (others => '0');
    signal memory_slow         : unsigned(2 downto 0) := (others => '0');
    
-   signal header_amount       : unsigned(31 downto 0) := (others => '0');
+   signal header_amount       : unsigned(31 downto 0) := to_unsigned(1, 32);
 
 begin 
 
@@ -122,16 +123,14 @@ begin
          reset_ss      <= '0';
          reset_delay   <= '0';
          load_done     <= '0';
+
+         bus_out_be    <= x"FF";
          
          memory_slow <= memory_slow + 1;
          if (memory_slow = 6) then
             Save_RAMRdEn  <= '0';
             Save_RAMWrEn  <= '0';
          end if;
-         
-         --if (reset_in = '1') then 
-         --   header_amount <= (others => '0');
-         --end if;
    
          case state is
          
@@ -144,11 +143,7 @@ begin
                elsif (save = '1') then
                   state                <= SAVE_WAITSETTLE;
                   sleep_savestate      <= '1';
-                  if (increaseSSHeaderCount = '1') then
-                     header_amount        <= header_amount + 1;
-						else
-							header_amount        <= (others => '0');
-                  end if;
+                  header_amount        <= header_amount + 1;
                elsif (load = '1') then
                   state                <= LOAD_WAITSETTLE;
                   settle               <= 0;
@@ -206,6 +201,9 @@ begin
                   bus_out_Adr    <= std_logic_vector(to_unsigned(savestate_address, 26));
                   bus_out_Din    <= std_logic_vector(to_unsigned(STATESIZE, 32)) & std_logic_vector(header_amount);
                   bus_out_ena    <= '1';
+                  if (increaseSSHeaderCount = '0') then
+                     bus_out_be  <= x"F0";
+                  end if;
                end if;
             
             when SAVEMEMORY_READ =>
