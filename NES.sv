@@ -226,7 +226,7 @@ parameter CONF_STR2 = {
 	"H5D0R6,Load Backup RAM;",
 	"H5D0R7,Save Backup RAM;",
 	"-;",
-	"oC,Savestates to SDCard,Off,On;",
+	"oC,Savestates to SDCard,On,Off;",
 	"oDE,Savestate Slot,1,2,3,4;",
 	"d7rA,Save state(Alt+F1-F4);",
 	"d7rB,Restore state(F1-F4);",
@@ -868,7 +868,7 @@ NES nes (
 	
 	// savestates
 	.mapper_has_savestate    (mapper_has_savestate),
-	.increaseSSHeaderCount   (status[44]),
+	.increaseSSHeaderCount   (!status[44]),
 	.save_state              (ss_save),
 	.load_state              (ss_load),
 	.savestate_number        (ss_slot),
@@ -892,6 +892,7 @@ NES nes (
 	.SAVE_out_Adr            (ss_addr),          // all addresses are DWORD addresses!
 	.SAVE_out_rnw            (ss_rnw),           // read = 1, write = 0
 	.SAVE_out_ena            (ss_req),           // one cycle high for each action
+	.SAVE_out_be             (ss_be),           
 	.SAVE_out_done           (ss_ack)            // should be one cycle high when write is done or read value is valid
 );
 
@@ -1268,6 +1269,7 @@ end
 
 wire [63:0] ss_dout, ss_din;
 wire [27:2] ss_addr;
+wire  [7:0] ss_be;
 wire        ss_rnw, ss_req, ss_ack;
 
 wire [24:0] Savestate_SDRAMAddr;     
@@ -1303,6 +1305,7 @@ ddram ddram
 	.ch1_dout(ss_dout),
 	.ch1_req(ss_req),
 	.ch1_rnw(ss_rnw),
+	.ch1_be(ss_be),
 	.ch1_ready(ss_ack)
 );
 
