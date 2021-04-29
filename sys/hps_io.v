@@ -87,14 +87,9 @@ module hps_io #(parameter STRLEN=0, PS2DIV=0, WIDE=0, VDNUM=1, PS2WE=0)
 
 	// SD block level access
 	input      [31:0] sd_lba,
-	input      [VD:0] sd_rd,       // only single sd_rd can be active at any given time
-	input      [VD:0] sd_wr,       // only single sd_wr can be active at any given time
-	output reg        sd_ack,
-
-	// do not use in new projects.
-	// CID and CSD are fake except CSD image size field.
-	input             sd_conf,
-	output reg        sd_ack_conf,
+	input      [VD:0] sd_rd,
+	input      [VD:0] sd_wr,
+	output reg [VD:0] sd_ack,
 
 	// SD byte level access. Signals for 2-PORT altsyncram.
 	output reg [AW:0] sd_buff_addr,
@@ -161,7 +156,7 @@ module hps_io #(parameter STRLEN=0, PS2DIV=0, WIDE=0, VDNUM=1, PS2WE=0)
 assign EXT_BUS[31:16] = HPS_BUS[31:16];
 assign EXT_BUS[35:33] = HPS_BUS[35:33];
 
-localparam MAX_W = $clog2((512 > (STRLEN+1)) ? 512 : (STRLEN+1))-1;
+localparam MAX_W = $clog2((32 > (STRLEN+2)) ? 32 : (STRLEN+2))-1;
 
 localparam DW = (WIDE) ? 15 : 7;
 localparam AW = (WIDE) ?  7 : 8;
@@ -199,7 +194,7 @@ wire [15:0] sd_cmd =
 	(VDNUM>=3) ? sd_rd[2] : 1'b0,
 	(VDNUM>=2) ? sd_rd[1] : 1'b0,
 
-	4'h5, sd_conf, 1'b1,
+	4'h5, 1'b0, 1'b0,
 	sd_wr[0],
 	sd_rd[0]
 };
@@ -237,6 +232,7 @@ wire       pressed  = (ps2_key_raw[15:8] != 8'hf0);
 wire       extended = (~pressed ? (ps2_key_raw[23:16] == 8'he0) : (ps2_key_raw[15:8] == 8'he0));
 
 reg [MAX_W:0] byte_cnt;
+wire [7:0] disk = 4'd1 << (io_din[10:8]-1'd1);
 
 always@(posedge clk_sys) begin : uio_block
 	reg [15:0] cmd;
@@ -282,7 +278,6 @@ always@(posedge clk_sys) begin : uio_block
 		cmd <= 0;
 		byte_cnt <= 0;
 		sd_ack <= 0;
-		sd_ack_conf <= 0;
 		io_dout <= 0;
 		ps2skip <= 0;
 		img_mounted <= 0;
@@ -295,10 +290,9 @@ always@(posedge clk_sys) begin : uio_block
 		if(byte_cnt == 0) begin
 			cmd <= io_din;
 
-			case(io_din)
-				'h19: sd_ack_conf <= 1;
-				'h17,
-				'h18: sd_ack <= 1;
+			casex(io_din)
+				'hX17,
+				'hX18: sd_ack <= VD ? disk[VD:0] : 1'd1;
 				'h29: io_dout <= {4'hA, stflg};
 				'h2B: io_dout <= 1;
 				'h2F: io_dout <= 1;
@@ -311,7 +305,7 @@ always@(posedge clk_sys) begin : uio_block
 			if(io_din == 5) ps2_key_raw <= 0;
 		end else begin
 
-			case(cmd)
+			casex(cmd)
 				// buttons and switches
 				'h01: cfg <= io_din;
 				'h02: if(byte_cnt==1) joystick_0[15:0] <= io_din; else joystick_0[31:16] <= io_din;
@@ -353,7 +347,7 @@ always@(posedge clk_sys) begin : uio_block
 						end
 
 				// reading config string, returning a byte from string
-				'h14: if(byte_cnt < STRLEN + 1) io_dout[7:0] <= conf_str[(STRLEN - byte_cnt)<<3 +:8];
+				'h14: if(byte_cnt <= STRLEN) io_dout[7:0] <= conf_str[{(STRLEN - byte_cnt),3'b000} +:8];
 
 				// reading sd card status
 				'h16: if(!byte_cnt[MAX_W:3]) begin
@@ -365,20 +359,15 @@ always@(posedge clk_sys) begin : uio_block
 							endcase
 						end
 
-				// send SD config IO -> FPGA
-				// flag that download begins
-				// sd card knows data is config if sd_dout_strobe is asserted
-				// with sd_ack still being inactive (low)
-				'h19,
 				// send sector IO -> FPGA
 				// flag that download begins
-				'h17: begin
+				'hX17: begin
 							sd_buff_dout <= io_din[DW:0];
 							b_wr <= 1;
 						end
 
 				// reading sd card write data
-				'h18: begin
+				'hX18: begin
 							if(~&sd_buff_addr) sd_buff_addr <= sd_buff_addr + 1'b1;
 							io_dout <= sd_buff_din;
 						end
