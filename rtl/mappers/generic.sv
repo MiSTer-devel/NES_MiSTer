@@ -959,7 +959,7 @@ module Mapper28(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk
 	input        enable,      // Mapper enabled
-	input [31:0] flags,       // Cart flags
+	input [63:0] flags,       // Cart flags
 	input [15:0] prg_ain,     // prg address
 	inout [21:0] prg_aout_b,  // prg address out
 	input        prg_read,    // prg read
@@ -1086,7 +1086,10 @@ end else if (ce) begin
 	if (prg_ain[15] & prg_write) begin
 		casez (selreg)
 			3'b000:  {mode[0], a53chr}  <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[1:0]};     // CHR RAM bank
-			3'b001:  {mode[0], inner}   <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[3:0]};     // "inner" bank
+			3'b001: begin
+			         {mode[0], inner}   <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[3:0]};     // "inner" bank
+			         {outer[5:3]}       <= {(mapper == 2) ? prg_din[6:4] : outer[5:3]};          // Oversize mapper 2
+			        end
 			3'b010:  {mode}             <= {prg_din[5:0]};                                       // mode register
 			3'b011:  {outer}            <= {prg_din[5:0]};                                       // "outer" bank
 			3'b10?:  {security}         <= {prg_din[5:4],prg_din[1:0]};                          // security
@@ -1128,15 +1131,18 @@ always begin
 		5'b11_10_1,
 		5'b11_11_0: a53prg = {outer[5:3], inner[3:0]};               // 256K banks, UNROM mode
 
-		default: a53prg = {outer[5:0], extend_bit ? outer[0] : prg_ain[14]};  // 16K fixed bank
+		default: a53prg = {(mapper == 2) ? 6'h3F : outer[5:0], extend_bit ? outer[0] : prg_ain[14]};  // 16K fixed bank
 	endcase
 
 	chr_dout = 8'hFF;//chr_ain[7:0]; // return open bus = LSB of address? below when CHR disabled by security
 end
 
 assign vram_ce = chr_ain[13];
-assign prg_aout = {1'b0, (a53prg & 7'b0011111), prg_ain[13:0]};
-assign prg_allow = prg_ain[15] && !prg_write;
+wire prg_is_ram = (prg_ain[15:13] == 3'b011) && (|flags[29:26] | |flags[34:31]);
+wire [21:0] prg_aout_tmp = {1'b0, (a53prg & 7'b0011111), prg_ain[13:0]};
+wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]}; // assuming (flags[] == 7) => 8K
+assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
+assign prg_allow = prg_ain[15] && !prg_write || prg_is_ram;
 assign prg_conflict = prg_ain[15] && (mapper == 3) && (submapper != 1);
 assign chr_allow = flags[15];
 assign chr_aout = {7'b10_0000_0, a53chr, chr_ain[12:0]};
