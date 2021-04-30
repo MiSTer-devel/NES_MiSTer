@@ -4,6 +4,7 @@ This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://git
 
 ## Features
  * Supports saves for most games
+ * Savestates
  * Supports NTSC, PAL, and Dendy system types
  * FDS Support with expansion audio
  * Multiple Palette options
@@ -31,6 +32,20 @@ This feature will double the number of sprites drawn per scanlines, decreasing t
 
 ## Saving and Loading
 The battery backed RAM (Save RAM) for the NES does not write to disk automatically. When loading a game, you must select **Load Backup RAM** from the OSD menu. After saving in your game, you must then write the RAM to the SD card by selecting **Save Backup RAM** from the menu. If you do not save your RAM to disk, the contents will be lost next time you restart the core or switch games. Alternatively you can enable to Autosave option from the OSD menu, and if you do your games will be recorded to disk every time you open the OSD menu. FDS saving uses the same method as for cartridge RAM saves.
+
+# Savestates
+Core provides 4 slots to save and restore the state. 
+Those can be saved to SDCard or reside only in memory for temporary use(OSD Option). 
+Usage with either Keyboard, Gamepad mappable button or OSD.
+
+Keyboard Hotkeys for save states:
+- Alt-F1..F4 - save the state
+- F1...F4 - restore
+
+Gamepad:
+- Savestatebutton+Left or Right switches the savestate slot
+- Savestatebutton+Start+Down saves to the selected slot
+- Savestatebutton+Start+Up loads from the selected slot
 
 ## Zapper Support
 The "Zapper" (aka Light Gun) can be used via two methods. You can select Peripheral: Zapper(Mouse) to use your mouse to aim and shoot with the left button. This mode uses relative mouse motion, so devices that rely on absolute coordinates will not work via this method. Alternatively, you can choose Zapper(Joy) to use the Analog stick to aim, and the defined Trigger button to fire. Guns such as Aimtrak have joystick modes which may be compatible with this method.
