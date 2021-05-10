@@ -31,12 +31,14 @@ Before loading \*.FDS files, you must first load the official, unpatched FDS BIO
 This feature will double the number of sprites drawn per scanlines, decreasing the flickering sprites that NES is known for. Some games relied on the 8 sprite behavior to work correctly, such as Simon's Quest swamps. Other mappers may be impacted by using extra sprites. While it works well in most games, glitches may occur with this enabled.
 
 ## Saving and Loading
-The battery backed RAM (Save RAM) for the NES does not write to disk automatically. When loading a game, you must select **Load Backup RAM** from the OSD menu. After saving in your game, you must then write the RAM to the SD card by selecting **Save Backup RAM** from the menu. If you do not save your RAM to disk, the contents will be lost next time you restart the core or switch games. Alternatively you can enable to Autosave option from the OSD menu, and if you do your games will be recorded to disk every time you open the OSD menu. FDS saving uses the same method as for cartridge RAM saves.
+The battery backed RAM (Save RAM) for the NES does not write to disk automatically. After saving in your game, you must then write the RAM to the SD card by selecting **Save Backup RAM** from the menu. If you do not save your RAM to disk, the contents will be lost next time you restart the core or switch games. Alternatively you can enable to Autosave option from the OSD menu, and if you do your games will be recorded to disk every time you open the OSD menu. FDS saving uses the same method as for cartridge RAM saves. Save RAM is stored as a .sav file based on the NES/FDS filename in `/media/fat/saves/NES/`.  Examples:  
+`Metroid (Japan) (Rev 3).fds` -> `Metroid (Japan) (Rev 3).sav`  
+`Legend of Zelda, The (USA) (Rev 1).nes` -> `Legend of Zelda, The (USA) (Rev 1).sav`
 
 # Savestates
-Core provides 4 slots to save and restore the state. 
+Core provides 4 slots to save and restore the state (FDS not supported). 
 Those can be saved to SDCard or reside only in memory for temporary use(OSD Option). 
-Usage with either Keyboard, Gamepad mappable button or OSD.
+Usage with either Keyboard, Gamepad mappable button or OSD. Save states are stored as .ss files in `/media/fat/savestates/NES/`, with an underscore and the save slot number (1,2,3,4) preceding `.ss`. Example (save slot 1): `Metroid (USA).nes` -> `Metroid (USA)_1.ss`
 
 Keyboard Hotkeys for save states:
 - Alt-F1..F4 - save the state
