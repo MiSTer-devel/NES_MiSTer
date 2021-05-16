@@ -209,11 +209,7 @@ parameter CONF_STR = {
 	"H1F2,BIN,Load FDS BIOS;",
 	"-;",
 	"ONO,System Type,NTSC,PAL,Dendy;",
-	"OG,Disk Swap ("
-	};
-
-parameter CONF_STR2 = {
-	"),Auto,FDS button;",
+	"OG,Disk Swap,Auto,FDS button;",
 	"OCF,Palette,Smooth,Unsat.,FCEUX,NES Classic,Composite,PC-10,PVM,Wavebeam,Real,Sony CXA,YUV,Greyscale,Rockman9,Ninten.,Custom;",
 	"H3FC3,PAL,Custom Palette;",
 	"-;",
@@ -245,7 +241,6 @@ parameter CONF_STR2 = {
 	"P1OP,Extra Sprites,Off,On;",
 	"P1-;",
 	"P1OUV,Audio Enable,Both,Internal,Cart Expansion,None;",
-
 	"P2,Input Options;",
 	"P2-;",
 	"P2O9,Swap Joysticks,No,Yes;",
@@ -256,7 +251,6 @@ parameter CONF_STR2 = {
 	"P2-;",
 	"P2OL,Zapper Trigger,Mouse,Joystick;",
 	"P2OM,Crosshairs,On,Off;",
-
 	"-;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP/Mat 1,PP/Mat 2,PP/Mat 3,PP/Mat 4,PP/Mat 5,PP/Mat 6,PP/Mat 7,PP/Mat 8,PP/Mat 9,PP/Mat 10,PP/Mat 11,PP/Mat 12,Savestates;",
@@ -381,11 +375,11 @@ wire        forced_scandoubler;
 
 wire [21:0] gamma_bus;
 
-hps_io #(.STRLEN(($size(CONF_STR)>>3) + ($size(CONF_STR2)>>3) + 2)) hps_io
+hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-	.conf_str({CONF_STR, diskside==3?"2B":diskside==2?"2A":diskside==1?"1B":"1A", CONF_STR2}),
+	.conf_str(CONF_STR),
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),

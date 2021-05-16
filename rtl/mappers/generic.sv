@@ -1139,7 +1139,7 @@ end
 
 assign vram_ce = chr_ain[13];
 wire prg_is_ram = (prg_ain[15:13] == 3'b011) && (|flags[29:26] | |flags[34:31]);
-wire [21:0] prg_aout_tmp = {1'b0, (a53prg & 7'b0011111), prg_ain[13:0]};
+wire [21:0] prg_aout_tmp = {1'b0, a53prg, prg_ain[13:0]};
 wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]}; // assuming (flags[] == 7) => 8K
 assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
 assign prg_allow = prg_ain[15] && !prg_write || prg_is_ram;
