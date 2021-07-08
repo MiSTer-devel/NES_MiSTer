@@ -292,7 +292,8 @@ reg        cfg_custom_t = 0;
 reg  [5:0] cfg_custom_p1;
 reg [31:0] cfg_custom_p2;
 
-reg  [4:0] vol_att = 0;
+reg  [4:0] vol_att;
+initial vol_att = 5'b11111;
 
 reg  [6:0] coef_addr;
 reg  [8:0] coef_data;
@@ -618,7 +619,7 @@ wire         vbuf_write;
 
 wire  [23:0] hdmi_data;
 wire         hdmi_vs, hdmi_hs, hdmi_de, hdmi_vbl;
-wire         freeze_image;
+wire         freeze;
 
 `ifndef MISTER_DEBUG_NOHDMI
 wire clk_hdmi  = hdmi_clk_out;
@@ -640,7 +641,7 @@ ascal
 (
 	.reset_na (~reset_req),
 	.run      (1),
-	.freeze   (freeze_image),
+	.freeze   (freeze),
 
 	.i_clk    (clk_ihdmi),
 	.i_ce     (ce_hpix),
@@ -1523,13 +1524,13 @@ emu emu
 
 	.HDMI_WIDTH(direct_video ? 12'd0 : hdmi_width),
 	.HDMI_HEIGHT(direct_video ? 12'd0 : hdmi_height),
+	.HDMI_FREEZE(freeze),
 
 	.CLK_VIDEO(clk_vid),
 	.CE_PIXEL(ce_pix),
 	.VGA_SL(scanlines),
 	.VIDEO_ARX(ARX),
 	.VIDEO_ARY(ARY),
-	.FREEZE_IMAGE(freeze_image),
 
 `ifdef MISTER_FB
 	.FB_EN(fb_en),

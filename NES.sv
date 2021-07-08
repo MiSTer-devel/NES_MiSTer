@@ -39,7 +39,7 @@ module emu
 
 	input  [11:0] HDMI_WIDTH,
 	input  [11:0] HDMI_HEIGHT,
-	output        FREEZE_IMAGE,
+	output        HDMI_FREEZE,
 
 `ifdef MISTER_FB
 	// Use framebuffer in DDRAM (USE_FB=1 in qsf)
@@ -375,11 +375,10 @@ wire        forced_scandoubler;
 
 wire [21:0] gamma_bus;
 
-hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
+hps_io #(.CONF_STR(CONF_STR)) hps_io
 (
 	.clk_sys(clk),
 	.HPS_BUS(HPS_BUS),
-	.conf_str(CONF_STR),
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
@@ -411,13 +410,13 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 	.ioctl_wait(ioctl_wait | save_wait),
 	.ioctl_index(filetype),
 
-	.sd_lba(sd_lba),
+	.sd_lba('{sd_lba}),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
 	.sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din(sd_buff_din),
+	.sd_buff_din('{sd_buff_din}),
 	.sd_buff_wr(sd_buff_wr),
 	.img_mounted(img_mounted),
 	.img_readonly(img_readonly),
@@ -787,7 +786,7 @@ wire      corepaused;
 wire      refresh;
 wire      sleep_savestate;
 
-assign FREEZE_IMAGE = corepaused;
+assign HDMI_FREEZE = corepaused;
 
 always_ff @(posedge clk) begin
 	pausecore <= sleep_savestate | (status[41] && OSD_STATUS && !ioctl_download && !reset_nes);
@@ -1126,6 +1125,7 @@ video video
 video_mixer #(260, 0, 1) video_mixer
 (
 	.*,
+	.freeze_sync(),
 	.VGA_DE(vga_de),
 	.hq2x(scale==1),
 	.scandoubler(scale || forced_scandoubler)
