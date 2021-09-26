@@ -321,24 +321,76 @@ localparam VBL_END   = 511;
 wire is_padding = (hc > 255);
 
 reg dark_r, dark_g, dark_b;
-reg dark_r2, dark_g2, dark_b2;
 // bits are in order {B, G, R} for NTSC color emphasis
 // Only effects range $00-$0D, $10-$1D, $20-$2D, and $30-$3D
+/*
 always @(posedge clk) if (pix_ce_n) begin
 	{dark_r, dark_g, dark_b} <= 3'b000;
 
-	if (~&color_ef[3:1]) begin // Only applies in draw range
-		dark_r <= emphasis[1] | emphasis[2];
-		dark_r2 <= emphasis[1] & emphasis[2];
-		dark_g <= emphasis[0] | emphasis[2];
-		dark_g2 <= emphasis[0] & emphasis[2];
-		dark_b <= emphasis[0] | emphasis[1];
-		dark_b2 <= emphasis[0] | emphasis[1];
+	if (~&color_ef[3:1] && emphasis) begin // Only applies in draw range
+		dark_r <= ~emphasis[0] | &emphasis;
+		dark_g <= ~emphasis[1] | &emphasis;
+		dark_b <= ~emphasis[2] | &emphasis;
 	end
 end
 
-assign R = dark_r2 ? pixel[23:17] + pixel[23:18] : dark_r ? pixel[23:17] + pixel[23:18] + pixel[23:20] : pixel[23:16];
-assign G = dark_g2 ? pixel[15:9]  + pixel[15:10] : dark_g ? pixel[15:9]  + pixel[15:10] + pixel[15:12] : pixel[15:8];
-assign B = dark_b2 ? pixel[7:1]   + pixel[7:2]   : dark_b ? pixel[7:1]   + pixel[7:2]   + pixel[7:4]   : pixel[7:0];
+assign R = dark_r ? (pixel[23:16] - pixel[23:18]) : pixel[23:16];
+assign G = dark_g ? (pixel[15:8]  - pixel[15:10]) : pixel[15:8]; 
+assign B = dark_b ? (pixel[7:0]   - pixel[7:2]  ) : pixel[7:0];  
+*/
+
+wire [7:0] ri = pixel[23:16];
+wire [7:0] gi = pixel[15:8];
+wire [7:0] bi = pixel[7:0];
+
+reg [7:0] ro,go,bo;
+always @(posedge clk) if (pix_ce_n) begin
+	ro <= ri;
+	go <= gi;
+	bo <= bi;
+	if (~&color_ef[3:1]) begin // Only applies in draw range
+		case(emphasis)
+			1: begin
+					ro <= ri;
+					go <= gi - gi[7:2];
+					bo <= bi - bi[7:2];
+				end
+			2: begin
+					ro <= ri - ri[7:2];
+					go <= gi;
+					bo <= bi - bi[7:2];
+				end
+			3: begin
+					ro <= ri - ri[7:2];
+					go <= gi - gi[7:3];
+					bo <= bi - bi[7:2] - bi[7:3];
+				end
+			4: begin
+					ro <= ri - ri[7:3];
+					go <= gi - gi[7:3];
+					bo <= bi;
+				end
+			5: begin
+					ro <= ri - ri[7:3];
+					go <= gi - gi[7:2];
+					bo <= bi - bi[7:3];
+				end
+			6: begin
+					ro <= ri - ri[7:2];
+					go <= gi - gi[7:3];
+					bo <= bi - bi[7:3];
+				end
+			7: begin
+					ro <= ri - ri[7:2];
+					go <= gi - gi[7:2];
+					bo <= bi - bi[7:2];
+				end
+		endcase
+	end
+end
+
+assign R = ro;
+assign G = go;
+assign B = bo;
 
 endmodule
