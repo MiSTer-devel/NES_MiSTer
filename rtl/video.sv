@@ -223,6 +223,8 @@ spram #(.addr_width(6), .data_width(24), .mem_name("pal"), .mem_init_file("rtl/t
 
 reg [23:0] pixel;
 
+reg hbl, vbl;
+
 always @(posedge clk) begin
 	
 	if(pix_ce_n) begin
@@ -245,8 +247,8 @@ always @(posedge clk) begin
 			default:pixel <= pal_smooth_lut[color_ef][23:0];
 		endcase
 	
-		HBlank <= hblank;
-		VBlank <= vblank;
+		hbl <= hblank;
+		vbl <= vblank;
 	end
 end
 
@@ -304,12 +306,12 @@ always @(posedge clk) begin
 			vblank <= (vc >= VBL_START);                                   // 240 lines
 		end
 		
-		if(hc == 278) begin
+		if(hc == 279) begin
 			HSync <= 1;
 			VSync <= ((vc >= vsync_start) && (vc < vsync_start+3));
 		end
 
-		if(hc == 303) HSync <= 0;
+		if(hc == 304) HSync <= 0;
 	end
 end
 
@@ -321,23 +323,6 @@ localparam VBL_END   = 511;
 wire is_padding = (hc > 255);
 
 reg dark_r, dark_g, dark_b;
-// bits are in order {B, G, R} for NTSC color emphasis
-// Only effects range $00-$0D, $10-$1D, $20-$2D, and $30-$3D
-/*
-always @(posedge clk) if (pix_ce_n) begin
-	{dark_r, dark_g, dark_b} <= 3'b000;
-
-	if (~&color_ef[3:1] && emphasis) begin // Only applies in draw range
-		dark_r <= ~emphasis[0] | &emphasis;
-		dark_g <= ~emphasis[1] | &emphasis;
-		dark_b <= ~emphasis[2] | &emphasis;
-	end
-end
-
-assign R = dark_r ? (pixel[23:16] - pixel[23:18]) : pixel[23:16];
-assign G = dark_g ? (pixel[15:8]  - pixel[15:10]) : pixel[15:8]; 
-assign B = dark_b ? (pixel[7:0]   - pixel[7:2]  ) : pixel[7:0];  
-*/
 
 wire [7:0] ri = pixel[23:16];
 wire [7:0] gi = pixel[15:8];
@@ -387,6 +372,9 @@ always @(posedge clk) if (pix_ce_n) begin
 				end
 		endcase
 	end
+	
+	HBlank <= hbl;
+	VBlank <= vbl;
 end
 
 assign R = ro;
