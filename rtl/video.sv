@@ -330,48 +330,52 @@ wire [7:0] bi = pixel[7:0];
 
 reg [7:0] ro,go,bo;
 always @(posedge clk) if (pix_ce_n) begin
+	reg [2:0] emph;
 	ro <= ri;
 	go <= gi;
 	bo <= bi;
+	emph <= 0;
 	if (~&color_ef[3:1]) begin // Only applies in draw range
-		case(emphasis)
-			1: begin
-					ro <= ri;
-					go <= gi - gi[7:2];
-					bo <= bi - bi[7:2];
-				end
-			2: begin
-					ro <= ri - ri[7:2];
-					go <= gi;
-					bo <= bi - bi[7:2];
-				end
-			3: begin
-					ro <= ri - ri[7:2];
-					go <= gi - gi[7:3];
-					bo <= bi - bi[7:2] - bi[7:3];
-				end
-			4: begin
-					ro <= ri - ri[7:3];
-					go <= gi - gi[7:3];
-					bo <= bi;
-				end
-			5: begin
-					ro <= ri - ri[7:3];
-					go <= gi - gi[7:2];
-					bo <= bi - bi[7:3];
-				end
-			6: begin
-					ro <= ri - ri[7:2];
-					go <= gi - gi[7:3];
-					bo <= bi - bi[7:3];
-				end
-			7: begin
-					ro <= ri - ri[7:2];
-					go <= gi - gi[7:2];
-					bo <= bi - bi[7:2];
-				end
-		endcase
+		emph <= emphasis;
 	end
+	
+	case(emph)
+		1: begin
+				ro <= ri;
+				go <= gi - gi[7:2];
+				bo <= bi - bi[7:2];
+			end
+		2: begin
+				ro <= ri - ri[7:2];
+				go <= gi;
+				bo <= bi - bi[7:2];
+			end
+		3: begin
+				ro <= ri - ri[7:2];
+				go <= gi - gi[7:3];
+				bo <= bi - bi[7:2] - bi[7:3];
+			end
+		4: begin
+				ro <= ri - ri[7:3];
+				go <= gi - gi[7:3];
+				bo <= bi;
+			end
+		5: begin
+				ro <= ri - ri[7:3];
+				go <= gi - gi[7:2];
+				bo <= bi - bi[7:3];
+			end
+		6: begin
+				ro <= ri - ri[7:2];
+				go <= gi - gi[7:3];
+				bo <= bi - bi[7:3];
+			end
+		7: begin
+				ro <= ri - ri[7:2];
+				go <= gi - gi[7:2];
+				bo <= bi - bi[7:2];
+			end
+	endcase
 	
 	HBlank <= hbl;
 	VBlank <= vbl;
