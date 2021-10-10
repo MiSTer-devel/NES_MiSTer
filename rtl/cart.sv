@@ -33,8 +33,8 @@ module cart_top (
 	output reg        prg_bus_write,  // PRG Data Driven
 	output reg        prg_conflict,   // PRG Data is ROM & prg_din
 	output reg        has_savestate,  // mapper supports savestates
-	input      [20:0] prg_mask,       // PRG Mask for SDRAM translation
-	input      [19:0] chr_mask,       // CHR Mask for SDRAM translation
+	input       [9:0] prg_mask,       // PRG Mask for SDRAM translation
+	input       [9:0] chr_mask,       // CHR Mask for SDRAM translation
 	input             chr_ex,         // chr_addr is from an extra sprite read if high
 	input             chr_read,       // Read from CHR
 	input             chr_write,      // Write to CHR
@@ -2136,10 +2136,10 @@ always @* begin
 
 	// Address translation for SDRAM
 	if ((prg_aout[21] == 1'b0) && (prg_aout[24] == 1'b0))
-		prg_aout[20:0] = (prg_aout[20:0] & prg_mask);
+		prg_aout[20:0] = {(prg_aout[20:11] & prg_mask[9:0]), prg_aout[10:0]};
 
 	if (chr_aout[21:20] == 2'b10)
-		chr_aout[19:0] = {chr_aout[19:0] & chr_mask};
+		chr_aout[19:0] = {(chr_aout[19:11] & chr_mask[8:0]), chr_aout[10:0]};
 
 
 	// Remap the CHR address into VRAM, if needed.
