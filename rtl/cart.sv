@@ -294,14 +294,14 @@ MMC2 mmc2(
 //*****************************************************************************//
 // Name   : MMC3                                                               //
 // Mappers: 4, 33, 37, 47, 48, 74, 76, 80, 82, 88, 95, 112, 118, 119, 154, 189,//
-//          191, 192, 194, 195, 206, 207                                       //
+//          191, 192, 194, 195, 196, 206, 207                                  //
 // Status : Working -- Blaarg IRQ timing test fails, but may be submapper      //
 // Notes  : While currently working well, this mapper could use a full review. //
 // Games  : Crystalis, Battletoads                                             //
 //*****************************************************************************//
 wire mmc3_en = me[118] | me[119] | me[47] | me[206] | me[112] | me[88] | me[154] | me[95]
 	| me[76] | me[80] | me[82] | me[207] | me[48] | me[33] | me[37] | me[74] | me[191]
-	| me[192] | me[194] | me[195] | me[4] | me[189];
+	| me[192] | me[194] | me[195] | me[196] | me[4] | me[189];
 
 MMC3 mmc3 (
 	.clk        (clk),
@@ -1190,6 +1190,37 @@ Mapper218 map218(
 );
 
 //*****************************************************************************//
+// Name   : Mapper 227                                                 //
+// Mappers: 227                                                                //
+// Status : Needs evaluation                                                   //
+// Notes  :                                                                    //
+// Games  : 1200-in-1, 600-in-1, Bio Hazard                                    //
+//*****************************************************************************//
+Mapper227 map227(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[227]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b)
+);
+
+//*****************************************************************************//
 // Name   : Active Enterprises                                                 //
 // Mappers: 228                                                                //
 // Status : Working                                                            //
@@ -1239,6 +1270,37 @@ Mapper234 map234(
 	.prg_read   (prg_read),
 	.prg_write  (prg_write),
 	.prg_din    (prg_from_ram),
+	.prg_dout_b (prg_dout_b),
+	.prg_allow_b(prg_allow_b),
+	.chr_ain    (chr_ain),
+	.chr_aout_b (chr_addr_b),
+	.chr_read   (chr_read),
+	.chr_allow_b(chr_allow_b),
+	.vram_a10_b (vram_a10_b),
+	.vram_ce_b  (vram_ce_b),
+	.irq_b      (irq_b),
+	.flags_out_b(flags_out_b),
+	.audio_in   (audio_in),
+	.audio_b    (audio_out_b)
+);
+
+//*****************************************************************************//
+// Name   : Mapper 246                                                         //
+// Mappers: 246                                                                 //
+// Status : Needs evaluation                                                   //
+// Notes  :                                                                    //
+// Games  : Feng Shen Bang                                                     //
+//*****************************************************************************//
+Mapper246 map246(
+	.clk        (clk),
+	.ce         (ce),
+	.enable     (me[246]),
+	.flags      (flags),
+	.prg_ain    (prg_ain),
+	.prg_aout_b (prg_addr_b),
+	.prg_read   (prg_read),
+	.prg_write  (prg_write),
+	.prg_din    (prg_din),
 	.prg_dout_b (prg_dout_b),
 	.prg_allow_b(prg_allow_b),
 	.chr_ain    (chr_ain),
@@ -1818,6 +1880,8 @@ Mapper225 map225(
 	.audio_in   (audio_in),
 	.audio_b    (audio_out_b)
 );
+
+
 
 //*****************************************************************************//
 // Name   : Mapper 413                                                         //

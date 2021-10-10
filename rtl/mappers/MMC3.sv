@@ -293,6 +293,7 @@ wire mapper191 = (flags[7:0] == 191);   // Has 2KB CHR RAM
 wire mapper192 = (flags[7:0] == 192);   // Has 4KB CHR RAM
 wire mapper194 = (flags[7:0] == 194);   // Has 2KB CHR RAM
 wire mapper195 = (flags[7:0] == 195);   // Has 4KB CHR RAM
+wire mapper196 = (flags[7:0] == 196);   // PRG A0 line switcheroo
 wire mapper189 = (flags[7:0] == 189);
 wire MMC6 = ((flags[7:0] == 4) && (flags[24:21] == 1)); // mapper 4, submapper 1 = MMC6
 wire acclaim = ((flags[7:0] == 4) && (flags[24:21] == 3)); // Acclaim mapper
@@ -309,6 +310,7 @@ wire prg_invert_support = (irq_support && !mapper48);
 wire chr_invert_support = (irq_support && !mapper48) || mapper82;
 wire regs_7e = mapper80 || mapper82 || mapper207;
 wire internal_128 = mapper80 || mapper207;
+wire prg_reg_odd = (~mapper196) ? prg_ain[0] : ( |prg_ain[3:2] | (prg_ain[1] & ~prg_ain[14]) );
 
 always @(posedge clk)
 if (~enable) begin
@@ -361,9 +363,9 @@ end else if (ce) begin
 	irq_reg[6:1] <= irq_reg[5:0]; // 6 cycle delay
 	if (!regs_7e && prg_write && prg_ain[15]) begin
 		if (!mapper33 && !mapper48 && !mapper112) begin
-			casez({prg_ain[14:13], prg_ain[1:0]})
-				4'b00_?0: {chr_a12_invert, prg_rom_bank_mode, ram6_enabled, bank_select} <= {prg_din[7:5], prg_din[2:0]}; // Bank select ($8000-$9FFE, even)
-				4'b00_?1: begin // Bank data ($8001-$9FFF, odd)
+			casez({prg_ain[14:13], prg_reg_odd})
+				3'b00_0: {chr_a12_invert, prg_rom_bank_mode, ram6_enabled, bank_select} <= {prg_din[7:5], prg_din[2:0]}; // Bank select ($8000-$9FFE, even)
+				3'b00_1: begin // Bank data ($8001-$9FFF, odd)
 					case (bank_select)
 						0: chr_bank_0 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
 						1: chr_bank_1 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
@@ -375,12 +377,12 @@ end else if (ce) begin
 						7: prg_bank_1 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
 					endcase
 				end
-				4'b01_?0: mirroring <= !prg_din[0];                   // Mirroring ($A000-$BFFE, even)
-				4'b01_?1: {ram_enable, ram_protect, ram6_enable, ram6_protect} <= {{4{prg_din[7]}},{4{prg_din[6]}}, prg_din[5:4]}; // PRG RAM protect ($A001-$BFFF, odd)
-				4'b10_?0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
-				4'b10_?1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFF, odd)
-				4'b11_?0: {irq_enable, irq_reg[0]} <= 2'b00;         // IRQ disable ($E000-$FFFE, even)
-				4'b11_?1: irq_enable <= 1;                           // IRQ enable ($E001-$FFFF, odd)
+				3'b01_0: mirroring <= !prg_din[0];                   // Mirroring ($A000-$BFFE, even)
+				3'b01_1: {ram_enable, ram_protect, ram6_enable, ram6_protect} <= {{4{prg_din[7]}},{4{prg_din[6]}}, prg_din[5:4]}; // PRG RAM protect ($A001-$BFFF, odd)
+				3'b10_0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
+				3'b10_1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFF, odd)
+				3'b11_0: {irq_enable, irq_reg[0]} <= 2'b00;         // IRQ disable ($E000-$FFFE, even)
+				3'b11_1: irq_enable <= 1;                           // IRQ enable ($E001-$FFFF, odd)
 			endcase
 		end else if (!mapper112) begin
 			casez({prg_ain[14:13], prg_ain[1:0], mapper48})
