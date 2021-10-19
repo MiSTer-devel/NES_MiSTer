@@ -1538,6 +1538,11 @@ always @(posedge clk) begin
 				  bytes_left <= bytes_left - 1'd1;
 				  mem_addr <= mem_addr + 1'd1;
 				end
+			 end else if (mapper == 8'd232) begin
+				mem_addr <= 25'b0_0011_1000_0000_0111_1111_1110; // Quattro - Clear these two RAM address to restart game menu
+				bytes_left <= 21'h2;
+				state <= S_CLEARRAM;
+				clearclk <= 4'h0;
 			 end else begin
 				done <= 1;
 				busy <= 0;
@@ -1582,11 +1587,13 @@ always @(posedge clk) begin
 					bytes_left <= bytes_left - 1'd1;
 					mem_addr <= mem_addr + 1'd1;
 				end
-			 end else begin
+			 end else if (type_fds) begin
 				mem_addr <= 25'b0_0000_0000_0000_0000_0000_0000;
 				bytes_left <= 21'h2000;
 				state <= S_COPYBIOS;
 				clearclk <= 4'h0;
+			 end else begin
+				state <= S_DONE;
 			 end
 			end
 		S_COPYBIOS: begin // Read the next |bytes_left| bytes into |mem_addr|
