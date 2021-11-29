@@ -22,7 +22,7 @@ module MMC0(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -75,7 +75,7 @@ module Mapper13(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -137,7 +137,7 @@ module Mapper30(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -228,7 +228,14 @@ module Mapper66(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -247,7 +254,7 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-wire [15:0] flags_out = {13'h0, prg_conflict, 2'b00};
+wire [15:0] flags_out = {12'h0, 1'b1, prg_conflict, 2'b00};
 
 
 reg [4:0] prg_bank;
@@ -267,6 +274,9 @@ always @(posedge clk)
 if (~enable) begin
 	prg_bank <= 0;
 	chr_bank <= 0;
+end else if (SaveStateBus_load) begin
+	prg_bank <= SS_MAP1[ 4: 0];
+	chr_bank <= SS_MAP1[11: 5];
 end else if (ce) begin
 	if (prg_ain[15] & prg_write) begin
 		if (GXROM)
@@ -297,6 +307,10 @@ end else if (ce) begin
 	end
 end
 
+assign SS_MAP1_BACK[ 4: 0] = prg_bank;
+assign SS_MAP1_BACK[11: 5] = chr_bank;
+assign SS_MAP1_BACK[63:12] = 52'b0; // free to be used
+
 assign prg_aout = {2'b00, prg_bank, prg_ain[14:0]};
 assign prg_allow = prg_ain[15] && !prg_write;
 assign chr_allow = flags[15];
@@ -304,6 +318,15 @@ assign chr_aout = {2'b10, chr_bank, chr_ain[12:0]};
 assign vram_ce = chr_ain[13];
 assign vram_a10 = flags[14] ? chr_ain[10] : chr_ain[11];
 wire prg_conflict = prg_ain[15] && (Mapper149);
+
+// savestate
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+wire [63:0] SaveStateBus_Dout_active;	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout_active, SS_MAP1_BACK, SS_MAP1);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
+
 
 endmodule
 
@@ -330,7 +353,7 @@ module Mapper34(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -412,7 +435,14 @@ module Mapper71(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -431,7 +461,7 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 reg [3:0] prg_bank;
 reg ciram_select;
@@ -440,6 +470,9 @@ always @(posedge clk)
 if (~enable) begin
 	prg_bank <= 0;
 	ciram_select <= 0;
+end else if (SaveStateBus_load) begin
+	prg_bank     <= SS_MAP1[ 3: 0];
+	ciram_select <= SS_MAP1[    4];
 end else if (ce) begin
 	if (prg_ain[15] && prg_write) begin
 		if (!prg_ain[14] && mapper232) // $8000-$BFFF Outer bank select (only on iNES 232)
@@ -450,6 +483,10 @@ end else if (ce) begin
 			prg_bank <= {mapper232 ? prg_bank[3:2] : prg_din[3:2], prg_din[1:0]};
 	end
 end
+
+assign SS_MAP1_BACK[ 3: 0] = prg_bank;
+assign SS_MAP1_BACK[    4] = ciram_select;
+assign SS_MAP1_BACK[63: 5] = 59'b0; // free to be used
 
 reg [3:0] prgout;
 always begin
@@ -468,6 +505,14 @@ assign vram_ce = chr_ain[13];
 // XXX(ludde): Fire hawk uses flags[14] == 0 while no other game seems to do that.
 // So when flags[14] == 0 we use ciram_select instead.
 assign vram_a10 = flags[14] ? chr_ain[10] : ciram_select;
+
+// savestate
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+wire [63:0] SaveStateBus_Dout_active;	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout_active, SS_MAP1_BACK, SS_MAP1);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule
 
@@ -494,7 +539,7 @@ module Mapper77(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -567,7 +612,7 @@ module Mapper78(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -655,7 +700,14 @@ module Mapper79(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -674,7 +726,7 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-wire [15:0] flags_out = {13'h0, prg_conflict, 2'b00};
+wire [15:0] flags_out = {12'h0, 1'b1, prg_conflict, 2'b00};
 
 reg [2:0] prg_bank;
 reg [3:0] chr_bank;
@@ -688,6 +740,10 @@ if (~enable) begin
 	prg_bank <= 0;
 	chr_bank <= 0;
 	mirroring <= 0;
+end else if (SaveStateBus_load) begin
+	prg_bank  <= SS_MAP1[ 2: 0];
+	chr_bank  <= SS_MAP1[ 6: 3];
+	mirroring <= SS_MAP1[    7];
 end else if (ce) begin
 	if (prg_ain[15:13] == 3'b010 && prg_ain[8] && prg_write)
 		if (mapper133)
@@ -699,6 +755,11 @@ end else if (ce) begin
 			{mirroring, chr_bank[3], prg_bank, chr_bank[2:0]} <= prg_din;
 end
 
+assign SS_MAP1_BACK[ 2: 0] = prg_bank;
+assign SS_MAP1_BACK[ 6: 3] = chr_bank;
+assign SS_MAP1_BACK[    7] = mirroring;
+assign SS_MAP1_BACK[63: 8] = 56'b0; // free to be used
+
 assign prg_aout = {4'b00_00, prg_bank, prg_ain[14:0]};
 assign prg_allow = prg_ain[15] && !prg_write;
 assign chr_allow = flags[15];
@@ -707,6 +768,14 @@ assign vram_ce = chr_ain[13];
 wire mirrconfig = mapper113 ? mirroring : flags[14]; // Mapper #13 has mapper controlled mirroring
 assign vram_a10 = mirrconfig ? chr_ain[10] : chr_ain[11]; // 0: horiz, 1: vert
 wire prg_conflict = prg_ain[15] && mapper148;
+
+// savestate
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+wire [63:0] SaveStateBus_Dout_active;	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout_active, SS_MAP1_BACK, SS_MAP1);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule
 
@@ -733,7 +802,7 @@ module Mapper89(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -839,7 +908,7 @@ module Mapper107(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -890,7 +959,7 @@ module Mapper28(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk
 	input        enable,      // Mapper enabled
-	input [31:0] flags,       // Cart flags
+	input [63:0] flags,       // Cart flags
 	input [15:0] prg_ain,     // prg address
 	inout [21:0] prg_aout_b,  // prg address out
 	input        prg_read,    // prg read
@@ -908,7 +977,14 @@ module Mapper28(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -929,7 +1005,7 @@ wire chr_allow;
 reg vram_a10;
 reg [7:0] chr_dout;
 wire vram_ce;
-wire [15:0] flags_out = {13'h0, prg_conflict, 1'b0, has_chr_dout};
+wire [15:0] flags_out = {12'h0, 1'b1, prg_conflict, 1'b0, has_chr_dout};
 
 wire prg_conflict, has_chr_dout;
 
@@ -997,13 +1073,23 @@ if (~enable) begin
 		mode[5:2] <= 4'b1100; // 256K banks, (B)NROM mode
 		outer[5:0] <= 6'h00;
 	end
+end else if (SaveStateBus_load) begin
+	inner    <= SS_MAP1[ 3: 0];  
+	mode     <= SS_MAP1[ 9: 4];   
+	outer    <= SS_MAP1[15:10];  
+	selreg   <= SS_MAP1[18:16]; 
+	security <= SS_MAP1[22:19];
+	a53chr   <= SS_MAP1[24:23];
 end else if (ce) begin
 	if ((prg_ain[15:12] == 4'h5) & prg_write && allow_select)
 			selreg <= {1'b0,prg_din[7], prg_din[0]};        // select register
 	if (prg_ain[15] & prg_write) begin
 		casez (selreg)
 			3'b000:  {mode[0], a53chr}  <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[1:0]};     // CHR RAM bank
-			3'b001:  {mode[0], inner}   <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[3:0]};     // "inner" bank
+			3'b001: begin
+			         {mode[0], inner}   <= {(mode[1] ? mode[0] : prg_din[4]), prg_din[3:0]};     // "inner" bank
+			         {outer[5:3]}       <= {(mapper == 2) ? prg_din[6:4] : outer[5:3]};          // Oversize mapper 2
+			        end
 			3'b010:  {mode}             <= {prg_din[5:0]};                                       // mode register
 			3'b011:  {outer}            <= {prg_din[5:0]};                                       // "outer" bank
 			3'b10?:  {security}         <= {prg_din[5:4],prg_din[1:0]};                          // security
@@ -1012,6 +1098,14 @@ end else if (ce) begin
 		endcase
 	end
 end
+
+assign SS_MAP1_BACK[ 3: 0] = inner;   
+assign SS_MAP1_BACK[ 9: 4] = mode;    
+assign SS_MAP1_BACK[15:10] = outer;   
+assign SS_MAP1_BACK[18:16] = selreg;  
+assign SS_MAP1_BACK[22:19] = security;
+assign SS_MAP1_BACK[24:23] = a53chr;
+assign SS_MAP1_BACK[63:25] = 39'b0; // free to be used
 
 always begin
 	// mirroring mode
@@ -1037,15 +1131,18 @@ always begin
 		5'b11_10_1,
 		5'b11_11_0: a53prg = {outer[5:3], inner[3:0]};               // 256K banks, UNROM mode
 
-		default: a53prg = {outer[5:0], extend_bit ? outer[0] : prg_ain[14]};  // 16K fixed bank
+		default: a53prg = {(mapper == 2) ? 6'h3F : outer[5:0], extend_bit ? outer[0] : prg_ain[14]};  // 16K fixed bank
 	endcase
 
 	chr_dout = 8'hFF;//chr_ain[7:0]; // return open bus = LSB of address? below when CHR disabled by security
 end
 
 assign vram_ce = chr_ain[13];
-assign prg_aout = {1'b0, (a53prg & 7'b0011111), prg_ain[13:0]};
-assign prg_allow = prg_ain[15] && !prg_write;
+wire prg_is_ram = (prg_ain[15:13] == 3'b011) && (|flags[29:26] | |flags[34:31]);
+wire [21:0] prg_aout_tmp = {1'b0, a53prg, prg_ain[13:0]};
+wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]}; // assuming (flags[] == 7) => 8K
+assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
+assign prg_allow = prg_ain[15] && !prg_write || prg_is_ram;
 assign prg_conflict = prg_ain[15] && (mapper == 3) && (submapper != 1);
 assign chr_allow = flags[15];
 assign chr_aout = {7'b10_0000_0, a53chr, chr_ain[12:0]};
@@ -1055,5 +1152,13 @@ assign has_chr_dout = (mapper == 185) && (((submapper == 0) && (security[1:0] ==
 		|| ((submapper == 5) && (security[1:0] != 2'b01))
 		|| ((submapper == 6) && (security[1:0] != 2'b10))
 		|| ((submapper == 7) && (security[1:0] != 2'b11)));
+
+// savestate
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+wire [63:0] SaveStateBus_Dout_active;	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout_active, SS_MAP1_BACK, SS_MAP1);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule

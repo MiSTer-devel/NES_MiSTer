@@ -20,7 +20,14 @@ module Mapper69(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -40,7 +47,7 @@ wire chr_allow;
 reg vram_a10;
 wire vram_ce;
 reg irq;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 wire [15:0] audio;
 
 reg [7:0] chr_bank[0:7];
@@ -74,6 +81,27 @@ if (~enable) begin
 	ram_enable <= 0;
 	ram_select <= 0;
 	irq <= 0;
+end else if (SaveStateBus_load) begin
+	chr_bank[0]   <= SS_MAP1[ 7: 0];
+	chr_bank[1]   <= SS_MAP1[15: 8];
+	chr_bank[2]   <= SS_MAP1[23:16];
+	chr_bank[3]   <= SS_MAP1[31:24];
+	chr_bank[4]   <= SS_MAP1[39:32];
+	chr_bank[5]   <= SS_MAP1[47:40];
+	chr_bank[6]   <= SS_MAP1[55:48];
+	chr_bank[7]   <= SS_MAP1[63:56];
+	prg_bank[0]   <= SS_MAP2[ 4: 0];
+	prg_bank[1]   <= SS_MAP2[ 9: 5];
+	prg_bank[2]   <= SS_MAP2[14:10];
+	prg_bank[3]   <= SS_MAP2[19:15];
+	mirroring     <= SS_MAP2[21:20];
+	irq_countdown <= SS_MAP2[   22];
+	irq_trigger   <= SS_MAP2[   23];
+	irq_counter   <= SS_MAP2[39:24];
+	addr          <= SS_MAP2[43:40];
+	ram_enable    <= SS_MAP2[   44];
+	ram_select    <= SS_MAP2[   45];
+	irq           <= SS_MAP2[   46];
 end else if (ce) begin
 	irq_counter <= new_irq_counter[15:0];
 	if (irq_trigger && new_irq_counter[16]) irq <= 1;
@@ -97,6 +125,28 @@ end else if (ce) begin
 		endcase
 	end
 end
+
+assign SS_MAP1_BACK[ 7: 0] = chr_bank[0];
+assign SS_MAP1_BACK[15: 8] = chr_bank[1];
+assign SS_MAP1_BACK[23:16] = chr_bank[2];
+assign SS_MAP1_BACK[31:24] = chr_bank[3];
+assign SS_MAP1_BACK[39:32] = chr_bank[4];
+assign SS_MAP1_BACK[47:40] = chr_bank[5];
+assign SS_MAP1_BACK[55:48] = chr_bank[6];
+assign SS_MAP1_BACK[63:56] = chr_bank[7];
+assign SS_MAP2_BACK[ 4: 0] = prg_bank[0];
+assign SS_MAP2_BACK[ 9: 5] = prg_bank[1];
+assign SS_MAP2_BACK[14:10] = prg_bank[2];
+assign SS_MAP2_BACK[19:15] = prg_bank[3];
+assign SS_MAP2_BACK[21:20] = mirroring;
+assign SS_MAP2_BACK[   22] = irq_countdown;
+assign SS_MAP2_BACK[   23] = irq_trigger;
+assign SS_MAP2_BACK[39:24] = irq_counter;
+assign SS_MAP2_BACK[43:40] = addr;
+assign SS_MAP2_BACK[   44] = ram_enable;
+assign SS_MAP2_BACK[   45] = ram_select;
+assign SS_MAP2_BACK[   46] = irq;
+assign SS_MAP2_BACK[63:47] = 17'b0; // free to be used
 
 always begin
 	casez(mirroring[1:0])
@@ -131,6 +181,18 @@ assign vram_ce = chr_ain[13];
 
 assign audio = audio_in;
 
+// savestate
+localparam SAVESTATE_MODULES    = 2;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+wire [63:0] SS_MAP1, SS_MAP2;
+wire [63:0] SS_MAP1_BACK, SS_MAP2_BACK;	
+wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1];
+	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
+eReg_SavestateV #(SSREG_INDEX_MAP2, 64'h0000000000000000) iREG_SAVESTATE_MAP2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_MAP2_BACK, SS_MAP2);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
+
 endmodule
 
 
@@ -142,7 +204,14 @@ module SS5b_mixed (
 	input  [15:0] addr_in,
 	input   [7:0] data_in,
 	input  [15:0] audio_in,    // Inverted audio from APU
-	output [15:0] audio_out
+	output [15:0] audio_out,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 SS5b_audio snd_5b (
@@ -152,7 +221,14 @@ SS5b_audio snd_5b (
 	.wren(wren),
 	.addr_in(addr_in),
 	.data_in(data_in),
-	.audio_out(exp_out)
+	.audio_out(exp_out),
+	// savestates
+	.SaveStateBus_Din  (SaveStateBus_Din ), 
+	.SaveStateBus_Adr  (SaveStateBus_Adr ),
+	.SaveStateBus_wren (SaveStateBus_wren),
+	.SaveStateBus_rst  (SaveStateBus_rst ),
+	.SaveStateBus_load (SaveStateBus_load),
+	.SaveStateBus_Dout (SaveStateBus_Dout)
 );
 
 // Sunsoft 5B audio amplifies each channel logarithmicly before mixing. It's then mixed
@@ -176,7 +252,14 @@ module SS5b_audio (
 	input         wren,
 	input  [15:0] addr_in,
 	input   [7:0] data_in,
-	output [15:0] audio_out
+	output [15:0] audio_out,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 reg [3:0] reg_select;
@@ -234,6 +317,36 @@ if (~enable) begin
 
 	{tone_a, tone_b, tone_c, envelope_a, envelope_b, envelope_c, cycles, noise_lfsr} <= 0;
 	{tone_a_cnt, tone_b_cnt, tone_c_cnt, noise_cnt} <= 0;
+end else if (SaveStateBus_load) begin
+	internal[0 ] <= SS_MAP1[ 7: 0]; 
+	internal[1 ] <= SS_MAP1[15: 8]; 
+	internal[2 ] <= SS_MAP1[23:16]; 
+	internal[3 ] <= SS_MAP1[31:24]; 
+	internal[4 ] <= SS_MAP1[39:32]; 
+	internal[5 ] <= SS_MAP1[47:40]; 
+	internal[6 ] <= SS_MAP1[55:48]; 
+	internal[7 ] <= SS_MAP1[63:56]; 
+	internal[8 ] <= SS_MAP2[ 7: 0]; 
+	internal[9 ] <= SS_MAP2[15: 8]; 
+	internal[10] <= SS_MAP2[23:16]; 
+	internal[11] <= SS_MAP2[31:24]; 
+	internal[12] <= SS_MAP2[39:32]; 
+	internal[13] <= SS_MAP2[47:40]; 
+	internal[14] <= SS_MAP2[55:48]; 
+	internal[15] <= SS_MAP2[63:56];
+	reg_select   <= SS_MAP3[ 3: 0];
+	cycles       <= SS_MAP3[ 8: 4];
+	tone_a_cnt   <= SS_MAP3[20: 9];
+	tone_b_cnt   <= SS_MAP3[32:21];
+	tone_c_cnt   <= SS_MAP3[44:33];
+	noise_cnt    <= SS_MAP3[56:45];
+	tone_a       <= SS_MAP3[61:57];
+	tone_b       <= SS_MAP4[ 4: 0];
+	tone_c       <= SS_MAP4[ 9: 5];
+	noise_lfsr   <= SS_MAP4[26:10];
+	envelope_a   <= SS_MAP4[32:27];
+	envelope_b   <= SS_MAP4[38:33];
+	envelope_c   <= SS_MAP4[44:39];
 end else if (ce) begin
 	cycles <= cycles + 1'b1;
 
@@ -319,6 +432,54 @@ wire [7:0] ss5b_amp_lut[0:31] = '{
 	8'd53, 8'd63, 8'd74, 8'd89, 8'd105, 8'd125, 8'd149, 8'd177
 };
 
+// savestate
+assign SS_MAP1_BACK[ 7: 0] = internal[0 ]; 
+assign SS_MAP1_BACK[15: 8] = internal[1 ]; 
+assign SS_MAP1_BACK[23:16] = internal[2 ]; 
+assign SS_MAP1_BACK[31:24] = internal[3 ]; 
+assign SS_MAP1_BACK[39:32] = internal[4 ]; 
+assign SS_MAP1_BACK[47:40] = internal[5 ]; 
+assign SS_MAP1_BACK[55:48] = internal[6 ]; 
+assign SS_MAP1_BACK[63:56] = internal[7 ]; 
+assign SS_MAP2_BACK[ 7: 0] = internal[8 ]; 
+assign SS_MAP2_BACK[15: 8] = internal[9 ]; 
+assign SS_MAP2_BACK[23:16] = internal[10]; 
+assign SS_MAP2_BACK[31:24] = internal[11]; 
+assign SS_MAP2_BACK[39:32] = internal[12]; 
+assign SS_MAP2_BACK[47:40] = internal[13]; 
+assign SS_MAP2_BACK[55:48] = internal[14]; 
+assign SS_MAP2_BACK[63:56] = internal[15];
+
+assign SS_MAP3_BACK[ 3: 0] = reg_select;
+assign SS_MAP3_BACK[ 8: 4] = cycles;
+assign SS_MAP3_BACK[20: 9] = tone_a_cnt;
+assign SS_MAP3_BACK[32:21] = tone_b_cnt;
+assign SS_MAP3_BACK[44:33] = tone_c_cnt;
+assign SS_MAP3_BACK[56:45] = noise_cnt;
+assign SS_MAP3_BACK[61:57] = tone_a;
+assign SS_MAP3_BACK[63:62] = 2'b0; // free to be used
+
+assign SS_MAP4_BACK[ 4: 0] = tone_b;
+assign SS_MAP4_BACK[ 9: 5] = tone_c;
+assign SS_MAP4_BACK[26:10] = noise_lfsr;
+assign SS_MAP4_BACK[32:27] = envelope_a;
+assign SS_MAP4_BACK[38:33] = envelope_b;
+assign SS_MAP4_BACK[44:39] = envelope_c;
+assign SS_MAP4_BACK[63:45] = 19'b0; // free to be used
+
+localparam SAVESTATE_MODULES    = 4;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+wire [63:0] SS_MAP1, SS_MAP2, SS_MAP3, SS_MAP4;
+wire [63:0] SS_MAP1_BACK, SS_MAP2_BACK, SS_MAP3_BACK, SS_MAP4_BACK;	
+wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1] | SaveStateBus_wired_or[2] | SaveStateBus_wired_or[3];
+	
+eReg_SavestateV #(SSREG_INDEX_SNDMAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
+eReg_SavestateV #(SSREG_INDEX_SNDMAP2, 64'h0000000000000000) iREG_SAVESTATE_MAP2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_MAP2_BACK, SS_MAP2);  
+eReg_SavestateV #(SSREG_INDEX_SNDMAP3, 64'h0000000000000000) iREG_SAVESTATE_MAP3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[2], SS_MAP3_BACK, SS_MAP3);  
+eReg_SavestateV #(SSREG_INDEX_SNDMAP4, 64'h0000000000000000) iREG_SAVESTATE_MAP4 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[3], SS_MAP4_BACK, SS_MAP4);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
+
 endmodule
 
 // Mapper 190, Magic Kid GooGoo
@@ -344,7 +505,7 @@ module Mapper67 (
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -485,7 +646,7 @@ module Mapper68(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, 0, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;

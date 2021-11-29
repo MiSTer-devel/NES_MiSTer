@@ -9,8 +9,6 @@ module video
 	input  [5:0] color,
 	input  [8:0] count_h,
 	input  [8:0] count_v,
-	input        forced_scandoubler,
-	input  [2:0] scale,
 	input        hide_overscan,
 	input  [3:0] palette,
 	input  [2:0] emphasis,
@@ -21,17 +19,16 @@ module video
 	input [23:0] load_color_data,
 	input  [5:0] load_color_index,
 
-	inout [21:0] gamma_bus,
-
-	output       ce_pix,
 	output   reg hold_reset,
 
-	output       VGA_HS,
-	output       VGA_VS,
-	output       VGA_DE,
-	output [7:0] VGA_R,
-	output [7:0] VGA_G,
-	output [7:0] VGA_B
+	output       ce_pix,
+	output reg   HSync,
+	output reg   VSync,
+	output reg   HBlank,
+	output reg   VBlank,
+	output [7:0] R,
+	output [7:0] G,
+	output [7:0] B
 );
 
 reg pix_ce, pix_ce_n;
@@ -41,6 +38,8 @@ always @(negedge clk) begin
 	pix_ce   <= ~cnt[1] & ~cnt[0];
 	pix_ce_n <=  cnt[1] & ~cnt[0];
 end
+
+assign ce_pix = pix_ce;
 
 // Smooth palette from FirebrandX
 wire [23:0] pal_smooth_lut[64] = '{
@@ -223,7 +222,8 @@ spram #(.addr_width(6), .data_width(24), .mem_name("pal"), .mem_init_file("rtl/t
 );
 
 reg [23:0] pixel;
-reg HBlank_r, VBlank_r;
+
+reg hbl, vbl;
 
 always @(posedge clk) begin
 	
@@ -247,13 +247,13 @@ always @(posedge clk) begin
 			default:pixel <= pal_smooth_lut[color_ef][23:0];
 		endcase
 	
-		HBlank_r <= HBlank;
-		VBlank_r <= VBlank;
+		hbl <= hblank;
+		vbl <= vblank;
 	end
 end
 
 
-reg  HBlank, VBlank, HSync, VSync;
+reg  hblank, vblank;
 reg  [9:0] h, v;
 reg  [1:0] free_sync = 0;
 wire [9:0] hc = (&free_sync | reset) ? h : count_h;
@@ -299,19 +299,19 @@ always @(posedge clk) begin
 
 	if(pix_ce) begin
 		if(hide_overscan) begin
-			HBlank <= (hc >= HBL_START && hc <= HBL_END);                  // 280 - ((224/240) * 16) = 261.3
-			VBlank <= (vc > (VBL_START - 9)) || (vc < 8);                  // 240 - 16 = 224
+			hblank <= (hc >= HBL_START && hc <= HBL_END);                  // 280 - ((224/240) * 16) = 261.3
+			vblank <= (vc > (VBL_START - 9)) || (vc < 8);                  // 240 - 16 = 224
 		end else begin
-			HBlank <= (hc >= HBL_START) && (hc <= HBL_END);                // 280 pixels
-			VBlank <= (vc >= VBL_START);                                   // 240 lines
+			hblank <= (hc >= HBL_START) && (hc <= HBL_END);                // 280 pixels
+			vblank <= (vc >= VBL_START);                                   // 240 lines
 		end
 		
-		if(hc == 278) begin
+		if(hc == 279) begin
 			HSync <= 1;
 			VSync <= ((vc >= vsync_start) && (vc < vsync_start+3));
 		end
 
-		if(hc == 303) HSync <= 0;
+		if(hc == 304) HSync <= 0;
 	end
 end
 
@@ -323,40 +323,66 @@ localparam VBL_END   = 511;
 wire is_padding = (hc > 255);
 
 reg dark_r, dark_g, dark_b;
-// bits are in order {B, G, R} for NTSC color emphasis
-// Only effects range $00-$0D, $10-$1D, $20-$2D, and $30-$3D
-always @(posedge clk) if (pix_ce_n) begin
-	{dark_r, dark_g, dark_b} <= 3'b000;
 
+wire [7:0] ri = pixel[23:16];
+wire [7:0] gi = pixel[15:8];
+wire [7:0] bi = pixel[7:0];
+
+reg [7:0] ro,go,bo;
+always @(posedge clk) if (pix_ce_n) begin
+	reg [2:0] emph;
+	ro <= ri;
+	go <= gi;
+	bo <= bi;
+	emph <= 0;
 	if (~&color_ef[3:1]) begin // Only applies in draw range
-		dark_r <= emphasis[1] | emphasis[2];
-		dark_g <= emphasis[0] | emphasis[2];
-		dark_b <= emphasis[0] | emphasis[1];
+		emph <= emphasis;
 	end
+	
+	case(emph)
+		1: begin
+				ro <= ri;
+				go <= gi - gi[7:2];
+				bo <= bi - bi[7:2];
+			end
+		2: begin
+				ro <= ri - ri[7:2];
+				go <= gi;
+				bo <= bi - bi[7:2];
+			end
+		3: begin
+				ro <= ri - ri[7:2];
+				go <= gi - gi[7:3];
+				bo <= bi - bi[7:2] - bi[7:3];
+			end
+		4: begin
+				ro <= ri - ri[7:3];
+				go <= gi - gi[7:3];
+				bo <= bi;
+			end
+		5: begin
+				ro <= ri - ri[7:3];
+				go <= gi - gi[7:2];
+				bo <= bi - bi[7:3];
+			end
+		6: begin
+				ro <= ri - ri[7:2];
+				go <= gi - gi[7:3];
+				bo <= bi - bi[7:3];
+			end
+		7: begin
+				ro <= ri - ri[7:2];
+				go <= gi - gi[7:2];
+				bo <= bi - bi[7:2];
+			end
+	endcase
+	
+	HBlank <= hbl;
+	VBlank <= vbl;
 end
 
-wire  [7:0] vga_r = dark_r ? pixel[23:17] + pixel[23:18] : pixel[23:16];
-wire  [7:0] vga_g = dark_g ? pixel[15:9] + pixel[15:10] : pixel[15:8];
-wire  [7:0] vga_b = dark_b ? pixel[7:1] + pixel[7:2] : pixel[7:0];
-
-video_mixer #(260, 0, 1) video_mixer
-(
-	.*,
-	.clk_vid(clk),
-	.ce_pix(pix_ce),
-	.ce_pix_out(ce_pix),
-	
-	.HBlank(HBlank_r),
-	.VBlank(VBlank_r),
-
-	.scanlines(0),
-	.hq2x(scale==1),
-	.scandoubler(scale || forced_scandoubler),
-	.mono(0),
-
-	.R(vga_r),
-	.G(vga_g),
-	.B(vga_b)
-);
+assign R = ro;
+assign G = go;
+assign B = bo;
 
 endmodule
