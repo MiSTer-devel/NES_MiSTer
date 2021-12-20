@@ -337,6 +337,9 @@ assign mapper_ovr = mapper159 || submapper5;
 
 EEPROM_24C0x eeprom(
 	.type_24C01(mapper159),         //24C01 is 128 bytes, 24C02 is 256 bytes
+	.page_mask(4'h3),               //all NES appear to use 4 bytes in writing
+	.no_test_state(mapper159),      //all 24C01 used by NES appear to be X24C01, which don't use test_state
+	.address_write_only(!mapper159),//described in 24C0xA docs, appears 24C02 in mapper 16.5 uses this, which only specify address on write commands
 	.clk(clk),
 	.ce(ce),
 	.reset(~enable),
