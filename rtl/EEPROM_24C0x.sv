@@ -4,6 +4,9 @@
 module EEPROM_24C0x 
   (//Replace type_24C01 with EEPROM size and command size (Test State y/n and address bytes)?
    input type_24C01,          //24C01 is 128 bytes/no Test State?, 24C02 is 256 bytes/Test State
+	input [3:0] page_mask,     //Typically 0x3, 0x7, or 0xF; semi-correlated with size
+	input no_test_state,       //No control word (ID check/upper address bits); Usually only for X24C01
+	input address_write_only,  //Some models only set address in write mode (24C0xA?)
    input clk, input ce, input reset,
    input SCL,                 // Serial Clock
    input SDA_in,              // Serial Data (same pin as below, split for convenience)
@@ -33,9 +36,9 @@ mystate state;
   reg [8:0] data; // 8 bits data, plus ack bit
   reg last_SCL;
   reg last_SDA;
-  //Some 24C01 documents show it working with a test state, instead of combined address/read/write.
-  //If these are used, NoTestState needs to be an input to the module, not just derived from the type.
-  wire NoTestState = type_24C01;
+  reg read_next;
+  //Some X24C0x documents show it working with a test state, instead of combined address/read/write.
+  //wire no_test_state = type_24C01;
 
   always @(posedge clk) if (reset) begin
     state <= STATE_STANDBY;
@@ -45,6 +48,7 @@ mystate state;
 	 SDA_out <= 1;  //NoAck
     ram_read <= 0;
     ram_write <= 0;
+    read_next <= 0;
   end else if (SaveStateBus_load) begin
 	 case (SS_MAP1[ 2: 0])
 		 0: state <= STATE_STANDBY;
@@ -61,20 +65,28 @@ mystate state;
 	 ram_write <= SS_MAP1[   17];
 	 data      <= SS_MAP1[26:18];
 	 address   <= SS_MAP1[34:27];
+	 read_next <= SS_MAP1[   35];
   end else if (ce) begin
 	 last_SCL <= SCL;
 	 last_SDA <= SDA_in;
     if (ram_write && ram_done) begin
 	   ram_write <= 0;
-		address[3:0] <= address[3:0] + 4'b1; //Increment wraps at 16 byte boundary
+		//address[3:0] <= (address[3:0] & ~page_mask) | (page_mask & (address[3:0] + 4'h1)); //Increment wraps at 4/8/16 byte boundary
+	   //Alternate for line above:
+	   address[3:0] <= address[3:0] + 4'h1; // Wrap at 4/8/16 byte boundary
+	   if (!page_mask[2]) begin
+		  address[2] <= address[2];          //Put back; Increment wraps at 4 byte boundary   : mask = 0x3
+	   end
+	   if (!page_mask[3]) begin
+		  address[3] <= address[3];          //Put back; Increment wraps at 4/8 byte boundary : mask = 0x3 or 0x7
+	   end
     end
     if (ram_read && ram_done) begin
 	   ram_read <= 0;
 		data <= {data_from_ram, 1'b1};  //NoAck at end
-		address <= address + 8'b1;
     end
     if (SCL && last_SCL && !SDA_in && last_SDA) begin
-		if (NoTestState)
+		if (no_test_state)
 		  state <= STATE_ADDRESS;
 		else
 	     state <= STATE_TEST;
@@ -98,16 +110,22 @@ mystate state;
 		  if (state == STATE_TEST) begin
 		    if (command[7:1] == {4'b1010, E_id}) begin
 			   if (command[0]) begin
-				  state <= STATE_READ;
-				  ram_read <= 1;
+			     if (address_write_only) begin
+				    state <= STATE_READ;
+				    ram_read <= 1;
+			     end else begin
+				    state <= STATE_ADDRESS;
+			     end
+				  read_next <= 1;
 				end else begin
 				  state <= STATE_ADDRESS;
+				  read_next <= 0;
 				end
 				SDA_out <= 0; //Ack
 			 end
           command <= 10'd1;
 		  end else if (state == STATE_ADDRESS) begin
-		    if (NoTestState) begin
+		    if (type_24C01) begin
 		      address <= {1'b0,command[7:1]};
 				if (command[0]) begin
 				  state <= STATE_READ;
@@ -117,7 +135,12 @@ mystate state;
 				end
 			 end else begin
 		      address <= command[7:0];
-			   state <= STATE_WRITE;
+				if (read_next & !address_write_only) begin
+			     state <= STATE_READ;
+				  ram_read <= 1;
+				end else begin
+			     state <= STATE_WRITE;
+				end
 			 end
 		    SDA_out <= 0; //Ack
           command <= 10'd1;
@@ -131,6 +154,7 @@ mystate state;
 		  end else if (state == STATE_READ) begin
 		    ram_read <= 1;
 			 SDA_out <= 1; //NoAck
+          address <= address + 8'b1;
           command <= 10'd1;
 		  end
 		end
@@ -154,7 +178,8 @@ mystate state;
   assign SS_MAP1_BACK[   17] = ram_write;
   assign SS_MAP1_BACK[26:18] = data;
   assign SS_MAP1_BACK[34:27] = address;
-  assign SS_MAP1_BACK[63:35] = 29'b0; // free to be used
+  assign SS_MAP1_BACK[   35] = read_next;
+  assign SS_MAP1_BACK[63:36] = 28'b0; // free to be used
   
   wire [63:0] SS_MAP1;
   wire [63:0] SS_MAP1_BACK;	
