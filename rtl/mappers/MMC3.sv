@@ -23,7 +23,14 @@ module Rambo1(
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
-	input [13:0] chr_ain_o
+	input [13:0] chr_ain_o,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -45,7 +52,7 @@ wire chr_allow;
 wire vram_a10;
 wire vram_ce;
 reg irq;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 reg [3:0] bank_select;             // Register to write to next
 reg prg_rom_bank_mode;             // Mode for PRG banking
@@ -72,12 +79,17 @@ reg [4:0] a12_ctr;
 wire a12_edge = (chr_ain_o[12] && a12_ctr == 0) || old_a12_edge;
 reg reload_extra = 0;
 always @(posedge clk) begin
-	old_a12_edge <= a12_edge && !ce;
-	if (ce) begin
-		if (chr_ain_o[12]) begin
-			a12_ctr <= 5'd16;
-		end else if (a12_ctr > 0) begin
-			a12_ctr <= a12_ctr - 1'd1;
+	if (SaveStateBus_load) begin
+		old_a12_edge       <= SS_MAP1[   33];
+		a12_ctr            <= SS_MAP1[38:34];
+	end else begin
+		old_a12_edge <= a12_edge && !ce;
+		if (ce) begin
+			if (chr_ain_o[12]) begin
+				a12_ctr <= 5'd16;
+			end else if (a12_ctr > 0) begin
+				a12_ctr <= a12_ctr - 1'd1;
+			end
 		end
 	end
 end
@@ -101,6 +113,35 @@ if (~enable) begin
 	cycle_counter <= 0;
 	irq <= 0;
 	irq_delay <= 0;
+end else if (SaveStateBus_load) begin
+	irq                <= SS_MAP1[    0];
+	cycle_counter      <= SS_MAP1[ 2: 1];
+	irq_cycle_mode     <= SS_MAP1[    3];
+	next_irq_cycle_mode<= SS_MAP1[    4];
+	reload_extra       <= SS_MAP1[    5];
+	bank_select        <= SS_MAP1[ 9: 6];
+	prg_rom_bank_mode  <= SS_MAP1[   10];
+	chr_a12_invert     <= SS_MAP1[   11];
+	mirroring          <= SS_MAP1[   12];
+	irq_enable         <= SS_MAP1[   13];
+	irq_reload         <= SS_MAP1[   14];
+	irq_latch          <= SS_MAP1[22:15];
+	counter            <= SS_MAP1[30:23];
+	irq_delay          <= SS_MAP1[32:31];
+//	old_a12_edge       <= SS_MAP1[   33];
+//	a12_ctr            <= SS_MAP1[38:34];
+	chr_bank_0         <= SS_MAP1[46:39];
+	chr_bank_1         <= SS_MAP1[54:47];
+	chr_bank_2         <= SS_MAP1[62:55];
+	chr_K              <= SS_MAP1[   63];
+	chr_bank_3         <= SS_MAP2[ 7: 0];
+	chr_bank_4         <= SS_MAP2[15: 8];
+	chr_bank_5         <= SS_MAP2[23:16];
+	prg_bank_0         <= SS_MAP2[29:24];
+	prg_bank_1         <= SS_MAP2[35:30];
+	prg_bank_2         <= SS_MAP2[41:36];
+	chr_bank_8         <= SS_MAP2[49:42];
+	chr_bank_9         <= SS_MAP2[57:50];
 end else if (ce) begin
 	// Process these before writes so irq_reload and cycle_counter register writes take precedence.
 	cycle_counter <= cycle_counter + 1'd1;
@@ -160,6 +201,37 @@ end else if (ce) begin
 	end
 end
 
+assign SS_MAP1_BACK[    0] = irq;
+assign SS_MAP1_BACK[ 2: 1] = cycle_counter;
+assign SS_MAP1_BACK[    3] = irq_cycle_mode;
+assign SS_MAP1_BACK[    4] = next_irq_cycle_mode;
+assign SS_MAP1_BACK[    5] = reload_extra;
+assign SS_MAP1_BACK[ 9: 6] = bank_select;
+assign SS_MAP1_BACK[   10] = prg_rom_bank_mode;
+assign SS_MAP1_BACK[   11] = chr_a12_invert;
+assign SS_MAP1_BACK[   12] = mirroring;
+assign SS_MAP1_BACK[   13] = irq_enable;
+assign SS_MAP1_BACK[   14] = irq_reload;
+assign SS_MAP1_BACK[22:15] = irq_latch;
+assign SS_MAP1_BACK[30:23] = counter;
+assign SS_MAP1_BACK[32:31] = irq_delay;
+assign SS_MAP1_BACK[   33] = old_a12_edge;
+assign SS_MAP1_BACK[38:34] = a12_ctr;
+assign SS_MAP1_BACK[46:39] = chr_bank_0;
+assign SS_MAP1_BACK[54:47] = chr_bank_1;
+assign SS_MAP1_BACK[62:55] = chr_bank_2;
+assign SS_MAP1_BACK[   63] = chr_K;
+
+assign SS_MAP2_BACK[ 7: 0] = chr_bank_3;
+assign SS_MAP2_BACK[15: 8] = chr_bank_4;
+assign SS_MAP2_BACK[23:16] = chr_bank_5;
+assign SS_MAP2_BACK[29:24] = prg_bank_0;
+assign SS_MAP2_BACK[35:30] = prg_bank_1;
+assign SS_MAP2_BACK[41:36] = prg_bank_2;
+assign SS_MAP2_BACK[49:42] = chr_bank_8;
+assign SS_MAP2_BACK[57:50] = chr_bank_9;
+assign SS_MAP2_BACK[63:58] = 6'b0; // free to be used
+
 // The PRG bank to load. Each increment here is 8kb. So valid values are 0..63.
 reg [5:0] prgsel;
 always @* begin
@@ -199,6 +271,19 @@ assign prg_allow = prg_ain[15] && !prg_write;
 assign vram_a10 = mapper158 ? chrsel[7] :  // Mapper 158 controls mirroring by switching the top bits of the CHR address
 		mirroring ? chr_ain[11] : chr_ain[10];
 assign vram_ce = chr_ain[13];
+
+// savestate
+localparam SAVESTATE_MODULES    = 2;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+wire [63:0] SS_MAP1, SS_MAP2;
+wire [63:0] SS_MAP1_BACK, SS_MAP2_BACK;	
+wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1];
+	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
+eReg_SavestateV #(SSREG_INDEX_MAP2, 64'h0000000000000000) iREG_SAVESTATE_MAP2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_MAP2_BACK, SS_MAP2);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
+
 endmodule
 
 // This mapper also handles mapper 33,47,48,74,76,80,82,88,95,118,119,154,191,192,194,195,206 and 207.

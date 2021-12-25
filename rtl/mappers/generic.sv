@@ -1,6 +1,6 @@
 // These mappers are simple generic mappers which can eventually be combined into a single module with parameters
 
-// No mapper chip
+// No mapper chip -- NOT currently used (Mapper28 is used for mapper 0)
 module MMC0(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk
@@ -41,7 +41,7 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 
 assign prg_aout = {7'b00_0000_0, prg_ain[14:0]};
@@ -137,7 +137,14 @@ module Mapper30(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -156,7 +163,7 @@ wire prg_allow;
 wire chr_allow;
 reg vram_a10;
 wire vram_ce;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 
 reg [4:0] prgbank;
@@ -170,6 +177,10 @@ always @(posedge clk) begin
 		prgbank   <= 0;
 		chrbank   <= 0;
 		nametable <= 0;
+	end else if (SaveStateBus_load) begin
+		prgbank   <= SS_MAP1[ 4: 0];
+		chrbank   <= SS_MAP1[ 6: 5];
+		nametable <= SS_MAP1[    7];
 	end else if (ce) begin
 		// with battery bit set $C000-$FFFF else $8000-$FFFF
 		if (prg_ain[15] & (prg_ain[14] | ~battery) & prg_write) begin
@@ -177,6 +188,11 @@ always @(posedge clk) begin
 		end
 	end
 end
+
+assign SS_MAP1_BACK[ 4: 0] = prgbank;
+assign SS_MAP1_BACK[ 6: 5] = chrbank;
+assign SS_MAP1_BACK[    7] = nametable;
+assign SS_MAP1_BACK[63: 8] = 56'b0; // free to be used
 
 always begin
 	// mirroring mode
@@ -193,6 +209,14 @@ assign prg_allow = prg_ain[15] && !prg_write;
 assign chr_allow = flags[15];
 assign chr_aout = {flags[15] ? 7'b11_1111_1 : 7'b10_0000_0, (four_screen && chr_ain[13]) ? 2'b11 : chrbank, chr_ain[12:0]};
 assign vram_ce = chr_ain[13] && !four_screen;
+
+// savestate
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+wire [63:0] SaveStateBus_Dout_active;	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout_active, SS_MAP1_BACK, SS_MAP1);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule
 
@@ -353,7 +377,14 @@ module Mapper34(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -372,7 +403,7 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 
 reg [5:0] prg_bank;
@@ -384,6 +415,10 @@ if (~enable) begin
 	prg_bank <= 0;
 	chr_bank_0 <= 0;
 	chr_bank_1 <= 1; // To be compatible with BxROM
+end else if (SaveStateBus_load) begin
+	prg_bank   <= SS_MAP1[ 5: 0];
+	chr_bank_0 <= SS_MAP1[ 9: 6];
+	chr_bank_1 <= SS_MAP1[13:10];
 end else if (ce && prg_write) begin
 	if (!NINA) begin // BxROM
 		if (prg_ain[15])
@@ -398,6 +433,11 @@ end else if (ce && prg_write) begin
 	end
 end
 
+assign SS_MAP1_BACK[ 5: 0] = prg_bank;
+assign SS_MAP1_BACK[ 9: 6] = chr_bank_0;
+assign SS_MAP1_BACK[13:10] = chr_bank_1;
+assign SS_MAP1_BACK[63:14] = 60'b0; // free to be used
+
 wire [21:0] prg_aout_tmp = {1'b0, prg_bank, prg_ain[14:0]};
 assign chr_allow = flags[15];
 assign chr_aout = {6'b10_0000, chr_ain[12] == 0 ? chr_bank_0 : chr_bank_1, chr_ain[11:0]};
@@ -409,6 +449,14 @@ assign prg_allow = prg_ain[15] && !prg_write || prg_is_ram;
 
 wire [21:0] prg_ram = {9'b11_1100_000, prg_ain[12:0]};
 assign prg_aout = prg_is_ram ? prg_ram : prg_aout_tmp;
+
+// savestate
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+wire [63:0] SaveStateBus_Dout_active;	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout_active, SS_MAP1_BACK, SS_MAP1);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule
 
@@ -539,7 +587,14 @@ module Mapper77(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -558,7 +613,7 @@ wire prg_allow;
 wire chr_allow;
 reg vram_a10;
 wire vram_ce;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 
 reg [3:0] prgbank;
@@ -568,12 +623,19 @@ always @(posedge clk) begin
 	if (~enable) begin
 		prgbank <= 0;
 		chrbank <= 0;
+	end else if (SaveStateBus_load) begin
+		prgbank     <= SS_MAP1[ 3: 0];
+		chrbank     <= SS_MAP1[ 7: 4];
 	end else if (ce) begin
 		if (prg_ain[15] & prg_write) begin
 			{chrbank, prgbank}   <= prg_din[7:0];
 		end
 	end
 end
+
+assign SS_MAP1_BACK[ 3: 0] = prgbank;
+assign SS_MAP1_BACK[ 7: 4] = chrbank;
+assign SS_MAP1_BACK[63: 8] = 56'b0; // free to be used
 
 always begin
 	vram_a10 = {chr_ain[10]};    // four screen (consecutive)
@@ -586,6 +648,14 @@ wire chrram = (chr_ain[13:11]!=3'b000);
 assign chr_aout[10:0] = {chr_ain[10:0]};
 assign chr_aout[21:11] = chrram ? {8'b11_1111_11, chr_ain[13:11]} : {7'b10_0000_0, chrbank};
 assign vram_ce = 0;
+
+// savestate
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+wire [63:0] SaveStateBus_Dout_active;	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout_active, SS_MAP1_BACK, SS_MAP1);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule
 
@@ -612,7 +682,14 @@ module Mapper78(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -631,7 +708,7 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 reg [3:0] prg_bank;
 reg [3:0] chr_bank;
@@ -644,6 +721,10 @@ always @(posedge clk) begin
 		prg_bank <= 0;
 		chr_bank <= 0;
 		mirroring <= flags[14];
+	end else if (SaveStateBus_load) begin
+		prg_bank  <= SS_MAP1[ 3: 0];
+		chr_bank  <= SS_MAP1[ 7: 4];
+		mirroring <= SS_MAP1[    8];
 	end else if (ce) begin
 		if (prg_ain[15] == 1'b1 && prg_write) begin
 			if (mapper70)
@@ -655,6 +736,11 @@ always @(posedge clk) begin
 		end
 	end
 end
+
+assign SS_MAP1_BACK[ 3: 0] = prg_bank;
+assign SS_MAP1_BACK[ 7: 4] = chr_bank;
+assign SS_MAP1_BACK[    8] = mirroring;
+assign SS_MAP1_BACK[63: 9] = 55'b0; // free to be used
 
 assign prg_aout = {4'b00_00, (prg_ain[14] ? 4'b1111 : prg_bank), prg_ain[13:0]};
 assign prg_allow = prg_ain[15] && !prg_write;
@@ -674,6 +760,14 @@ always begin
 end
 
 assign vram_a10 = vram_a10_t;
+
+// savestate
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+wire [63:0] SaveStateBus_Dout_active;	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout_active, SS_MAP1_BACK, SS_MAP1);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule
 
@@ -802,7 +896,14 @@ module Mapper89(
 	inout        irq_b,       // IRQ
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
-	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -821,7 +922,7 @@ wire prg_allow;
 wire chr_allow;
 reg vram_a10;
 wire vram_ce;
-reg [15:0] flags_out = 0;
+reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 
 reg [2:0] prgsel;
@@ -842,6 +943,11 @@ if (~enable) begin
 	prgsel <= 3'b110;
 	chrsel0 <= 4'b1111;
 	chrsel1 <= 4'b1111;
+end else if (SaveStateBus_load) begin
+	prgsel   <= SS_MAP1[ 2: 0];
+	chrsel0  <= SS_MAP1[ 6: 3];
+	chrsel1  <= SS_MAP1[10: 7];
+	mirror   <= SS_MAP1[   11];
 end else if (ce) begin
 	if (prg_ain[15] & prg_write & mapper89) begin
 		{chrsel0[3], prgsel, mirror, chrsel0[2:0]} <= prg_din;
@@ -852,6 +958,12 @@ end else if (ce) begin
 		{chrsel1[3:0], chrsel0[3:0]}  <= {2'b01,prg_din[5:4],1'b0,prg_din[2:0]};
 	end
 end
+
+assign SS_MAP1_BACK[ 2: 0] = prgsel;
+assign SS_MAP1_BACK[ 6: 3] = chrsel0;
+assign SS_MAP1_BACK[10: 7] = chrsel1;
+assign SS_MAP1_BACK[   11] = mirror;
+assign SS_MAP1_BACK[63:12] = 52'b0; // free to be used
 
 always begin
 	// mirroring mode
@@ -881,6 +993,14 @@ assign prg_aout = {5'b0, prg_temp, prg_ain[13:0]};
 assign prg_allow = prg_ain[15] && !prg_write;
 assign chr_allow = flags[15];
 assign chr_aout = {5'b10_000, chr_temp, chr_ain[11:0]};
+
+// savestate
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;	
+wire [63:0] SaveStateBus_Dout_active;	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout_active, SS_MAP1_BACK, SS_MAP1);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
 endmodule
 
