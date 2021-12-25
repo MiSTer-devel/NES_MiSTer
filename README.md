@@ -49,6 +49,8 @@ Gamepad:
 - Savestatebutton+Start+Down saves to the selected slot
 - Savestatebutton+Start+Up loads from the selected slot
 
+Currently supported mappers for savestates: 000,001,002,003,004,005,007,009,010,011,016,019,021,022,023,024,025,026,027,028,038,039,044,046,047,066,069,071,074,076,079,080,082,086,087,088,094,095,097,101,112,113,118,119,133,140,146,148,154,159,171,180,185,189,206,207,210,232
+
 ## Zapper Support
 The "Zapper" (aka Light Gun) can be used via two methods. You can select Peripheral: Zapper(Mouse) to use your mouse to aim and shoot with the left button. This mode uses relative mouse motion, so devices that rely on absolute coordinates will not work via this method. Alternatively, you can choose Zapper(Joy) to use the Analog stick to aim, and the defined Trigger button to fire. Guns such as Aimtrak have joystick modes which may be compatible with this method.
 
