@@ -65,15 +65,15 @@ module EEPROM_24C0x
       3: state <= STATE_WRITE;
       4: state <= STATE_READ;
     endcase
-    command   <= SS_MAP1[12:3];
-    last_SCL  <= SS_MAP1[13];
-    last_SDA  <= SS_MAP1[14];
-    SDA_out   <= SS_MAP1[15];
-    ram_read  <= SS_MAP1[16];
-    ram_write <= SS_MAP1[17];
+    command   <= SS_MAP1[12: 3];
+    last_SCL  <= SS_MAP1[   13];
+    last_SDA  <= SS_MAP1[   14];
+    SDA_out   <= SS_MAP1[   15];
+    ram_read  <= SS_MAP1[   16];
+    ram_write <= SS_MAP1[   17];
     data      <= SS_MAP1[26:18];
     address   <= SS_MAP1[34:27];
-    read_next <= SS_MAP1[35];
+    read_next <= SS_MAP1[   35];
   end else if (ce) begin
     last_SCL <= SCL;
     last_SDA <= SDA_in;
@@ -176,15 +176,15 @@ module EEPROM_24C0x
                                (state == STATE_ADDRESS)  ? 3'd2 :
                                (state == STATE_WRITE)    ? 3'd3 :
                                                            3'd4;
-  assign SS_MAP1_BACK[12:3] = command;
-  assign SS_MAP1_BACK[13] = last_SCL;
-  assign SS_MAP1_BACK[14] = last_SDA;
-  assign SS_MAP1_BACK[15] = SDA_out;
-  assign SS_MAP1_BACK[16] = ram_read;
-  assign SS_MAP1_BACK[17] = ram_write;
+  assign SS_MAP1_BACK[12: 3] = command;
+  assign SS_MAP1_BACK[   13] = last_SCL;
+  assign SS_MAP1_BACK[   14] = last_SDA;
+  assign SS_MAP1_BACK[   15] = SDA_out;
+  assign SS_MAP1_BACK[   16] = ram_read;
+  assign SS_MAP1_BACK[   17] = ram_write;
   assign SS_MAP1_BACK[26:18] = data;
   assign SS_MAP1_BACK[34:27] = address;
-  assign SS_MAP1_BACK[35] = read_next;
+  assign SS_MAP1_BACK[   35] = read_next;
   assign SS_MAP1_BACK[63:36] = 28'b0;  // free to be used
 
   wire [63:0] SS_MAP1;
