@@ -23,6 +23,8 @@ module MMC0(
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b  // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates              
+	// savestates support - but no state in mapper needs saving
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
