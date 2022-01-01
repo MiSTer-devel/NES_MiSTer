@@ -29,6 +29,7 @@ package regs_savestates;
 	parameter [9:0] SSREG_INDEX_MAP3     = 10'd34;
 	parameter [9:0] SSREG_INDEX_MAP4     = 10'd35;
 	parameter [9:0] SSREG_INDEX_MAP5     = 10'd36;
+	parameter [9:0] SSREG_INDEX_MAP6     = 10'd37;
 	
 	// additional modules for mappers in hierachy level 2
 	parameter [9:0] SSREG_INDEX_L2MAP1   = 10'd40;
