@@ -164,7 +164,7 @@ assign AUDIO_L   = sample[15:0];
 assign AUDIO_R   = AUDIO_L;
 assign AUDIO_MIX = 0;
 
-assign LED_USER  = downloading | (loader_fail & led_blink) | (bk_state != S_IDLE) | (bk_pending & status[50]);
+assign LED_USER  = downloading | (loader_fail & led_blink) | (bk_state != S_IDLE) | (bk_pending & ~status[50]);
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign BUTTONS [1] = 0;
@@ -395,7 +395,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.paddle_3(pdl[3]),
 
 	.status(status),
-	.status_menumask({(rom_loaded && mapper_has_savestate), en216p, status[50], ~raw_serial, (palette2_osd != 3'd5), ~gg_avail, bios_loaded, ~bk_ena}),
+	.status_menumask({(rom_loaded && mapper_has_savestate), en216p, ~status[50], ~raw_serial, (palette2_osd != 3'd5), ~gg_avail, bios_loaded, ~bk_ena}),
 	.status_in({status[63:47],ss_slot,status[44:0]}),
 	.status_set(statusUpdate),
 	.info_req(info_req),
@@ -1184,7 +1184,7 @@ always @(posedge clk) begin
 end
 
 wire bk_load    = status[6];
-wire bk_save    = status[7] | (bk_pending & OSD_STATUS && status[50]);
+wire bk_save    = status[7] | (bk_pending & OSD_STATUS && ~status[50]);
 reg  bk_loading = 0;
 reg  bk_loading_req = 0;
 reg  bk_request = 0;
