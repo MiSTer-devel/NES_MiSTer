@@ -1,0 +1,24 @@
+
+Hardware & Software used for "NTSC-RT2XPro" NES Palette:
+
+NES NTSC Front-loader composite video output and Monster RCA cable.
+Test ROM that fills the entire signal with a single color entry.
+RetroTink2X Pro with updated custom firmware (to ensure pure white is as close to 255 without clipping other colors).
+Datapath Vision E1S set to lossless 8-8-8 color capture.
+Adobe Photoshop with safe area of NES signal cropped and color averaged to a single RGB value.
+
+Palette hindsight: I should have boosted the Retrotink 2X Pro's pure white for NES beyond the max 255 as I found the colors to be a little too muted for my tastes. Granted, they are nicely balanced, but I should have harassed Mike to keep indulging me on my testing.
+
+
+Credits:
+
+James-F: Reverse engineered how a conventional CRT handles composite video decoding, which is quite a bit different from what modern TVs and video capture devices do.
+
+Mike Chi: For tirelessly working with my OCD to dial in the brightness for pure white to 254 in order to ensure a beautiful rich color palette without crushing the brightest colors.
+
+Firebrandx: Hardware and software handling, beta testing, compiling palette RGB values, nagging Mike Chi with OCD.
+
+Enjoy!
+
+
+-Firebrandx

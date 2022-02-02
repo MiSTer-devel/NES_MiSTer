@@ -1,0 +1,7 @@
+
+Smooth - Balanced Greys (FBX):
+
+This is Firebrandx's premiere palette work for the NTSC NES experience. Combines reverse engineered NTSC output levels with a few slight tweaks to improve 'nostalgic' performance on digital displays. Has a wide dynamic range of dark-to-light colors. Greys are balanced in this version as opposed to the original 'Smooth (FBX)' palette that imitated the slightly green tinge to the grey entries from a front-loader NES console. People complained, so this palette was re-released with balanced greys.
+
+
+
