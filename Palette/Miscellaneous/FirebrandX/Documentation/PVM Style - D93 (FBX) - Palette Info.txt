@@ -1,0 +1,8 @@
+
+PVM Style D93 (FBX):
+
+Approximated NTSC NES color appearance on the screen of a Sony PVM monitor running at D93 color temperature. Meant for digital displays ONLY.
+
+
+
+

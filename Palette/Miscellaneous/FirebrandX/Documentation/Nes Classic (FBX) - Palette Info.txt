@@ -1,0 +1,5 @@
+
+NES Classic (FBX):
+
+Color values taken from the NES Classic console Nintendo released in 2016. The kernel was hacked to include a test ROM that fills the screen with each color entry. Then the HDMI 720p signal was fed into a Datapath Vision E1s capture card, and the screens dumped in lossless 8-8-8 RGB bitmaps. The bitmaps were then color averaged using Adobe Photoshop to remove Nintendo's epilepsy protection.
+

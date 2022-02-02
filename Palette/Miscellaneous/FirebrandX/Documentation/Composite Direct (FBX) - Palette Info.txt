@@ -1,0 +1,7 @@
+
+Composite Direct (FBX):
+
+A pure direct capture palette. Capture devices will 'clip' NTSC voltages to fit the RGB color space. Most colors will come out normally, but some extreme edge-case colors will be clipped and result in a differen hue. The major example is the Super Mario Brother's blue sky appearing more purplish in direct captures. 
+
+
+
