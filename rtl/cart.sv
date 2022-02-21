@@ -2110,6 +2110,7 @@ NSF nsfplayer(
 	.chr_ain    (chr_ain),
 	.chr_aout_b (chr_addr_b),
 	.chr_read   (chr_read),
+	.chr_dout_b (chr_dout_b), // Special port
 	.chr_allow_b(chr_allow_b),
 	.vram_a10_b (vram_a10_b),
 	.vram_ce_b  (vram_ce_b),

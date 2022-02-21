@@ -1642,7 +1642,7 @@ always @(posedge clk) begin
 				ines[12] <= 8'h00;
 				ines[13] <= 8'h00;
 				ines[14] <= 8'h00;
-				ines[15] <= 8'h00;
+				ines[15] <= 8'h19;//miracle piano; controllers swapped
 				state <= S_COPYPLAY;
 				clearclk <= 4'h0;
 			 end

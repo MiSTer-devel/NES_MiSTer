@@ -600,7 +600,7 @@ wire [15:0] prg_addr = addr;
 wire [7:0] prg_din = dbus & (prg_conflict ? cpumem_din : 8'hFF);
 
 wire prg_read  = mr_int && cart_pre && !apu_cs && !ppu_cs;
-wire prg_write = mw_int && cart_pre && !apu_cs && !ppu_cs;
+wire prg_write = mw_int && cart_pre;
 
 wire prg_allow, prg_bus_write, prg_conflict, vram_a10, vram_ce, chr_allow;
 wire [24:0] prg_linaddr;
