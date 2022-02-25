@@ -18,7 +18,7 @@ This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://git
  * Supports large games such as Legend of Link and Rockman Minus Infinity
 
 ## Installation
-Copy the NES_\*.rbf file in root directory or subdirectory of `/media/fat/`. Create a `games/NES/` directory on the root of the SD card (`/media/fat/games/NES/`), and place NES roms (\*.nes) inside this NES directory. The ROMs must have an iNES or NES2.0 header, which most already do. NES2.0 headers are preferred for the best accuracy. To have an NES or FDS game ROM load automatically upon starting the core, place it in the NES directory named as boot1.rom or boot2.rom, respectively.
+Copy the NES_\*.rbf file to the directory or subdirectory of `/media/fat/`. Create a `games/NES/` directory on the root of the SD card (`/media/fat/games/NES/`), and place NES roms (\*.nes) inside this NES directory. The ROMs must have an iNES or NES2.0 header, which most already do. NES2.0 headers are preferred for the best accuracy. To have an NES or FDS game ROM load automatically upon starting the core, place it in the NES directory named as boot1.rom or boot2.rom, respectively.
 - `boot0.rom` = FDS BIOS file.  Will be used for any FDS images loaded
 - `boot1.rom` = NES Cart file.  Can be used with boot0.rom (BIOS) in place
 - `boot2.rom` = FDS image file.  Requires boot0.rom (BIOS).  Use a blank FDS (header only) to boot the FDS BIOS without a disk image.
