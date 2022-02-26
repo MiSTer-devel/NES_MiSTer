@@ -18,11 +18,11 @@ This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://git
  * Supports large games such as Legend of Link and Rockman Minus Infinity
 
 ## Installation
-Copy the NES_\*.rbf file to the root of the SD card. Create a **NES** folder on the root of the card, and place NES roms (\*.NES) inside this folder. The ROMs must have an iNES or NES2.0 header, which most already do. NES2.0 headers are prefered for the best accuracy. To have a game ROM load automatically upon starting the core and place it in the **NES** folder.
-- boot0.rom = FDS BIOS file.  Will be used for any FDS images loaded
-- boot1.rom = NES Cart file.  Can be used with boot0.rom (BIOS) in place
-- boot2.rom = FDS image file.  Requires boot0.rom (BIOS).  Use a blank FDS (header only) to boot the FDS BIOS without a disk image.
-- boot3.rom = PAL file. It can be used to set your default custom palette. Save the menu option on "Custom" to apply immediately.
+Copy the NES_\*.rbf file to the directory or subdirectory of `/media/fat/`. Create a `games/NES/` directory on the root of the SD card (`/media/fat/games/NES/`), and place NES roms (\*.nes) inside this NES directory. The ROMs must have an iNES or NES2.0 header, which most already do. NES2.0 headers are preferred for the best accuracy. To have an NES or FDS game ROM load automatically upon starting the core, place it in the NES directory named as boot1.rom or boot2.rom, respectively.
+- `boot0.rom` = FDS BIOS file.  Will be used for any FDS images loaded
+- `boot1.rom` = NES Cart file.  Can be used with boot0.rom (BIOS) in place
+- `boot2.rom` = FDS image file.  Requires boot0.rom (BIOS).  Use a blank FDS (header only) to boot the FDS BIOS without a disk image.
+- `boot3.rom` = PAL file. It can be used to set your default custom palette. Save the menu option on "Custom" to apply immediately.
 
 ## Famicom Disk System Usage
 Before loading \*.FDS files, you must first load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom and placed in the same folder as the ROMs (NES).  Alternatively, it can be loaded from the OSD if boot0.rom doesn't exist. After loading the core and the bios you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the FDS button on the player 1 controller. The "Disk Swap" OSD option manually controls the disk side.  Each button press increments the disk side.  Press and hold the fds button to eject and increment the disk side in this mode.  Some games only work correctly in manual disk swap mode, and require holding the FDS button for up to a few seconds (Gall Force,...).
