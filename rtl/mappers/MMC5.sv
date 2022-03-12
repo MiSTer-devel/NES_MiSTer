@@ -24,11 +24,11 @@ module MMC5(
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 	// Special ports
 	input  [7:0] audio_dout,
+	input [13:0] chr_ain_o,
 	input  [7:0] chr_din,     // CHR Data in
 	input        chr_write,   // CHR Write
 	inout  [7:0] chr_dout_b,  // chr data (non standard)
 	input        ppu_ce,
-	input [19:0] ppuflags,
 	// savestates              
 	input       [63:0]  SaveStateBus_Din,
 	input       [ 9:0]  SaveStateBus_Adr,
@@ -90,7 +90,7 @@ reg [7:0] vsplit_scroll, vsplit_bank;
 
 reg [7:0] irq_scanline;
 reg irq_enable;
-reg irq_pending;
+reg irq_pending, irq_pending_clear;
 
 reg [7:0] multiplier_1;
 reg [7:0] multiplier_2;
@@ -100,15 +100,29 @@ reg [7:0] last_read_exattr;
 reg [7:0] last_read_vram;
 reg last_chr_read;
 
-// unpack ppu flags
-//reg display_enable;
-//wire ppu_in_frame = ppuflags[0] & display_enable;
-wire ppu_in_frame = ppuflags[0];
-reg old_ppu_sprite16;
-wire ppu_sprite16 = ppuflags[1];
-//reg ppu_sprite16;
-wire [8:0] ppu_cycle = ppuflags[10:2];
-wire [8:0] ppu_scanline = ppuflags[19:11];
+reg [7:0] vscroll;      // Current y scroll for the split region
+reg in_split_area;
+
+reg rendering_en;
+reg ppu_sprite16_r;
+wire sprite8x16_mode = ppu_sprite16_r & rendering_en;
+
+reg ppu_in_frame, last_ppu_in_frame;
+reg [7:0] ppu_scanline;
+
+reg [11:0] ppu_last_nt_addr;
+reg [1:0] ppu_nt_read_cnt, ppu_no_rd_read_cnt;
+reg [5:0] ppu_tile_cnt;
+
+reg last_chr_a13;
+reg is_sprite_fetch;
+
+// On an original NES these PPU addresses should be latched because the lower 8 bits
+// are overwritten with the read data on the 2nd cycle when PPU_/RD goes low.
+// In the core the address is not changed so latching is not needed.
+wire ppu_is_tile_addr = (~chr_ain_o[13]);
+wire ppu_is_at_addr = (chr_ain_o[13:12] == 2'b10) & (&chr_ain_o[9:6]);
+wire ppu_is_nt_addr = (chr_ain_o[13:12] == 2'b10) & (~&chr_ain_o[9:6]);
 
 // Block RAM, otherwise we need to time multiplex..
 reg [9:0] ram_addrA;
@@ -184,21 +198,19 @@ always @(posedge clk) begin
 		// Remember which set of CHR was written to last.
 		// chr_last is set to 0 when changing bank with sprites set to 8x8
 		if (prg_ain[9:4] == 6'b010010) //(prg_ain[9:0] >= 10'h120 && prg_ain[9:0] < 10'h130)
-			chr_last <= prg_ain[3] & ppu_sprite16;
+			chr_last <= prg_ain[3] & ppu_sprite16_r;
 
 	end
-		//Not currently passing prg_write when ppu_cs
-		//if (prg_write && prg_ain == 16'h2000) begin // $2000
-		//  ppu_sprite16 <= (prg_din[5]);
-		//end
-		//if (prg_write && prg_ain == 16'h2001) begin // $2001
-		//  display_enable <= (prg_din[4:3] != 2'b0);
-		//end
 
-		// chr_last is set to 0 when changing sprite size to 8x8
-		old_ppu_sprite16 <= ppu_sprite16;
-		if (old_ppu_sprite16 != ppu_sprite16 && ~ppu_sprite16)
-			chr_last <= 0;
+		if (prg_write && prg_ain == 16'h2000) begin // $2000
+			ppu_sprite16_r <= prg_din[5];
+			if (~prg_din[5]) // chr_last is set to 0 when changing sprite size to 8x8
+				chr_last <= 0;
+		end
+		if (prg_write && prg_ain == 16'h2001) begin // $2001
+			rendering_en <= |prg_din[4:3];
+		end
+
 	end
 
 	// Mode 0/1 - Not readable (returns open bus), can only be written while the PPU is rendering (otherwise, 0 is written)
@@ -258,7 +270,7 @@ always @(posedge clk) begin
 		multiplier_1        <= SS_MAP4[41:34];
 		multiplier_2        <= SS_MAP4[49:42];
 		chr_last            <= SS_MAP4[   50];
-		old_ppu_sprite16    <= SS_MAP4[   51];
+		ppu_sprite16_r      <= SS_MAP4[   51];
 	end
 end
 
@@ -304,7 +316,7 @@ assign SS_MAP4_BACK[   33] = irq_enable;
 assign SS_MAP4_BACK[41:34] = multiplier_1;
 assign SS_MAP4_BACK[49:42] = multiplier_2;
 assign SS_MAP4_BACK[   50] = chr_last;
-assign SS_MAP4_BACK[   51] = old_ppu_sprite16;
+assign SS_MAP4_BACK[   51] = ppu_sprite16_r;
 assign SS_MAP4_BACK[63:52] = 12'b0; // free to be used
 
 
@@ -328,67 +340,131 @@ always @* begin
 	end
 end
 
-// Determine IRQ handling
-reg last_scanline;
-wire irq_trig = (irq_scanline != 0 && irq_scanline < 240 && ppu_scanline == {1'b0, irq_scanline});
+// Scanline detection
 always @(posedge clk) begin
 	if (SaveStateBus_load) begin
-		last_scanline <= SS_MAP5[    0];
-		irq_pending   <= SS_MAP5[    1];
-	end else if (ce || ppu_ce) begin
-		last_scanline <= ppu_scanline[0];
-	
-		if ((ce && prg_read && prg_ain == 16'h5204) || ~ppu_in_frame)
+		ppu_in_frame       <= SS_MAP5[    0];
+		irq_pending        <= SS_MAP5[    1];
+		in_split_area      <= SS_MAP5[    2];
+		ppu_tile_cnt       <= SS_MAP5[ 8: 3];
+		vscroll            <= SS_MAP5[16: 9];
+		last_ppu_in_frame  <= SS_MAP5[   34];
+		ppu_scanline       <= SS_MAP5[42:35];
+		ppu_nt_read_cnt    <= SS_MAP5[44:43];
+		ppu_no_rd_read_cnt <= SS_MAP5[46:45];
+		ppu_last_nt_addr   <= SS_MAP5[58:47];
+		irq_pending_clear  <= SS_MAP5[   59];
+		is_sprite_fetch    <= SS_MAP5[   60];
+		last_chr_a13       <= SS_MAP5[   61];
+	end else begin
+
+		if (~last_chr_read & chr_read) begin
+			ppu_last_nt_addr <= chr_ain_o[11:0];
+
+			// Detect 3 PPU NT reads ($2xxx) from the same address
+			// In_frame and IRQ will be asserted at the 4th read (address does not matter)
+			// If the 4th and following reads are from the same NT address then
+			// every read will increment the scanline counter.
+			if (~&ppu_nt_read_cnt)
+				ppu_nt_read_cnt <= ppu_nt_read_cnt + 1'b1;
+			else begin
+				if (~ppu_in_frame) begin
+					ppu_in_frame <= 1;
+					ppu_scanline <= 0;
+					ppu_tile_cnt <= 6'd2;
+					vscroll <= vsplit_scroll;
+				end else begin
+					// Testing shows the MMC5 goes out of frame when scanline 240 is detected.
+					// Normally this should not happen because the PPU is idle on that line
+					// but it could happen if the scanline counter is incremented more than
+					// once per line which is what the MMC5 scanline glitch test does.
+					if (ppu_scanline == 8'd239) begin
+						ppu_in_frame <= 0;
+					end else begin
+						ppu_scanline <= ppu_scanline + 1'b1;
+						if (ppu_scanline + 1'b1 == irq_scanline) begin
+							irq_pending <= 1;
+						end
+					end
+
+				end
+			end
+
+			if (chr_ain_o[13:12] != 2'b10 || (|ppu_nt_read_cnt && ppu_last_nt_addr != chr_ain_o[11:0])) begin
+				ppu_nt_read_cnt <= 0;
+			end
+
+			last_chr_a13 <= chr_ain_o[13];
+			if (ppu_in_frame) begin
+				if (last_chr_a13 & ~chr_ain_o[13]) begin
+					if (ppu_tile_cnt == 41) begin // Last sprite tile fetch
+						ppu_tile_cnt <= 0; // First 2 background fetches for the next scanline
+						vscroll <= (vscroll == 239) ? 8'd0 : (vscroll + 1'b1);
+					end else begin
+						ppu_tile_cnt <= ppu_tile_cnt + 1'b1;
+					end
+				end
+
+				if (~last_chr_a13 & chr_ain_o[13]) begin
+					if (ppu_tile_cnt == 34)
+						is_sprite_fetch <= 1;
+
+					if (ppu_tile_cnt == 0)
+						is_sprite_fetch <= 0;
+
+					if (ppu_tile_cnt == 0)
+						in_split_area <= !vsplit_side;
+					else if (ppu_tile_cnt == {1'b0, vsplit_startstop})
+						in_split_area <= vsplit_side;
+					else if (ppu_tile_cnt == 34)
+						in_split_area <= 0;
+
+				end
+			end
+		end
+
+		// The "in-frame" flag is cleared when 3 CPU cycles pass without a PPU read having occurred
+		if (ce) begin
+			if (chr_read) begin
+				ppu_no_rd_read_cnt <= 0;
+			end else if (ppu_in_frame) begin
+				ppu_no_rd_read_cnt <= ppu_no_rd_read_cnt + 1'b1;
+				if (ppu_no_rd_read_cnt == 2'd2) begin
+					ppu_in_frame <= 0;
+				end
+			end
+		end
+
+		if (ce) begin
+			if (prg_read) begin
+				if ({prg_ain[15:1], 1'b0} == 16'hFFFA) begin // $FFFA/FFFB
+					ppu_in_frame <= 0;
+				end
+				if (prg_ain == 16'h5204) begin
+					// MMC5 scanline glitch test expects irq_pending to be cleared after the read.
+					irq_pending_clear <= 1;
+				end
+			end
+
+			if (irq_pending_clear) begin
+				if (irq_pending) irq_pending <= 0;
+				irq_pending_clear <= 0;
+			end
+		end
+
+		last_ppu_in_frame <= ppu_in_frame;
+		if (last_ppu_in_frame & ~ppu_in_frame) begin
+			ppu_nt_read_cnt <= 0;
+			ppu_no_rd_read_cnt <= 0;
 			irq_pending <= 0;
-		else if (ppu_scanline[0] != last_scanline && irq_trig)
-			irq_pending <= 1;
-			
+			in_split_area <= 0;
+			is_sprite_fetch <= 0;
+		end
+
 	end
 end
 
 assign irq = irq_pending && irq_enable;
-
-// Determine if vertical split is active.
-reg [5:0] cur_tile;     // Current tile the PPU is fetching
-reg [5:0] new_cur_tile; // New value for |cur_tile|
-reg [7:0] vscroll;      // Current y scroll for the split region
-reg last_in_split_area, in_split_area;
-
-// Compute if we're in the split area right now by counting PPU tiles.
-always @* begin
-	new_cur_tile = (ppu_cycle[8:3] == 40) ? 6'd0 : (cur_tile + 6'b1);
-	in_split_area = last_in_split_area;
-	if (ppu_cycle[2:0] == 0 && ppu_cycle < 336) begin
-	if (new_cur_tile == 0)
-		in_split_area = !vsplit_side;
-	else if (new_cur_tile == {1'b0, vsplit_startstop})
-		in_split_area = vsplit_side;
-	else if (new_cur_tile == 34)
-		in_split_area = 0;
-	end
-end
-
-always @(posedge clk) begin
-	if (SaveStateBus_load) begin
-		last_in_split_area <= SS_MAP5[    2];
-		cur_tile           <= SS_MAP5[ 8: 3];
-	end else if (ppu_ce) begin
-		last_in_split_area <= in_split_area;
-		if (ppu_cycle[2:0] == 0 && ppu_cycle < 336)
-			cur_tile <= new_cur_tile;
-	end
-end
-
-// Keep track of scroll
-always @(posedge clk) begin
-	if (SaveStateBus_load) begin
-		vscroll <= SS_MAP5[16: 9];
-	end else if (ppu_ce) begin
-		if (ppu_cycle == 319)
-			vscroll <= ppu_scanline[8] ? vsplit_scroll :
-			(vscroll == 239) ? 8'b0 : vscroll + 8'b1;
-	end
-end
 
 // Mirroring bits
 // %00 = NES internal NTA
@@ -405,9 +481,10 @@ wire [1:0] mirrbits = (chr_ain[11:10] == 0) ? mirroring[1:0] :
 // Cycle 0, 1 = nametable
 // Cycle 2, 3 = attribute
 // Named it loopy so I can copypaste from PPU code :)
-wire [9:0] loopy = {vscroll[7:3], cur_tile[4:0]};
-wire [9:0] split_addr = (ppu_cycle[1] == 0) ? loopy :                            // name table
-												{4'b1111, loopy[9:7], loopy[4:2]}; // attribute table
+wire [9:0] loopy = {vscroll[7:3], ppu_tile_cnt[4:0]};
+
+wire [9:0] split_addr = (ppu_is_nt_addr) ? loopy :                             // name table
+											{4'b1111, loopy[9:7], loopy[4:2]}; // attribute table
 // Selects 2 out of the attr bits read from exram.
 wire [1:0] split_attr = (!loopy[1] && !loopy[6]) ? last_read_ram[1:0] :
 						( loopy[1] && !loopy[6]) ? last_read_ram[3:2] :
@@ -417,14 +494,14 @@ wire [1:0] split_attr = (!loopy[1] && !loopy[6]) ? last_read_ram[1:0] :
 wire insplit = in_split_area && vsplit_enable;
 
 // Currently reading the attribute byte?
-wire exattr_read = (extended_ram_mode == 1) && (ppu_cycle[2:1]==1) && ppu_in_frame;
+wire exattr_read = (extended_ram_mode == 1) && ppu_is_at_addr && ppu_in_frame;
 
 // If the current chr read should be redirected from |chr_dout| instead.
 assign has_chr_dout = chr_ain[13] && (mirrbits[1] || insplit || exattr_read);
 wire [1:0] override_attr = insplit ? split_attr : (extended_ram_mode == 1) ? last_read_exattr[7:6] : fill_attr;
 always @* begin
 	if (ppu_in_frame) begin
-		if (ppu_cycle[1] == 0) begin
+		if (ppu_is_nt_addr) begin
 			// Name table fetch
 			if (insplit || mirrbits[0] == 0)
 				chr_dout = (extended_ram_mode[1] ? 8'b0 : last_read_ram);
@@ -457,27 +534,36 @@ always @(posedge clk) begin
 		last_read_vram   <= SS_MAP5[32:25];
 		last_chr_read    <= SS_MAP5[   33];
 	end else begin
-		if ((ppu_cycle[2] == 0) && (ppu_cycle[1] == 0) && ppu_in_frame) begin
-			last_read_exattr <= last_read_ram;
-		end
-	
+
 		last_chr_read <= chr_read;
-	
-		if (!chr_read && last_chr_read)
+
+		if (~last_chr_read & chr_read) begin
 			last_read_vram <= extended_ram_mode[1] ? 8'b0 : last_read_ram;
+
+			if (ppu_is_nt_addr & ppu_in_frame) begin
+				last_read_exattr <= last_read_ram;
+			end
+		end
 	end
 end
 
-assign SS_MAP5_BACK[    0] = last_scanline;
+assign SS_MAP5_BACK[    0] = ppu_in_frame;
 assign SS_MAP5_BACK[    1] = irq_pending;
-assign SS_MAP5_BACK[    2] = last_in_split_area;
-assign SS_MAP5_BACK[ 8: 3] = cur_tile;
+assign SS_MAP5_BACK[    2] = in_split_area;
+assign SS_MAP5_BACK[ 8: 3] = ppu_tile_cnt;
 assign SS_MAP5_BACK[16: 9] = vscroll;
 assign SS_MAP5_BACK[24:17] = last_read_exattr;
 assign SS_MAP5_BACK[32:25] = last_read_vram;
 assign SS_MAP5_BACK[   33] = last_chr_read;
-assign SS_MAP5_BACK[63:34] = 30'b0; // free to be used
-
+assign SS_MAP5_BACK[   34] = last_ppu_in_frame;
+assign SS_MAP5_BACK[42:35] = ppu_scanline;
+assign SS_MAP5_BACK[44:43] = ppu_nt_read_cnt;
+assign SS_MAP5_BACK[46:45] = ppu_no_rd_read_cnt;
+assign SS_MAP5_BACK[58:47] = ppu_last_nt_addr;
+assign SS_MAP5_BACK[   59] = irq_pending_clear;
+assign SS_MAP5_BACK[   60] = is_sprite_fetch;
+assign SS_MAP5_BACK[   61] = last_chr_a13;
+assign SS_MAP5_BACK[63:62] = 0; // free to be used
 
 // Compute PRG address to read from.
 reg [7:0] prgsel;
@@ -515,8 +601,7 @@ assign prg_aout = {prgsel[7] ? {2'b00, prgsel[6:0]} : {6'b11_1100, prgsel[2:0]},
 // Otherwise, the last set of registers written to (either $5120-$5127 or $5128-$512B) will be used for all graphics.
 // 0 if using $5120-$5127, 1 if using $5128-$512F
 
-wire is_bg_fetch = !(ppu_cycle[8] && !ppu_cycle[6]);
-wire chrset = (ppu_sprite16 && ppu_in_frame) ? is_bg_fetch : chr_last;
+wire chrset = (~sprite8x16_mode) ? 1'd0 : (ppu_in_frame) ? ~is_sprite_fetch : chr_last;
 reg [9:0] chrsel;
 
 always @* begin
@@ -556,7 +641,7 @@ always @* begin
 		//$write("In vertical split!\n");
 //		chr_aout = {2'b10, vsplit_bank, chr_ain[11:3], vscroll[2:0]}; // SL
 		chr_aout = {2'b10, vsplit_bank, chr_ain[11:3], chr_ain[2:0]}; // CL
-	end else if (ppu_in_frame && extended_ram_mode == 1 && is_bg_fetch && (ppu_cycle[2:1]!=0)) begin
+	end else if (ppu_in_frame && extended_ram_mode == 1 && ~is_sprite_fetch && ppu_is_tile_addr) begin
 		//$write("In exram thingy!\n");
 		// Extended attribute mode. Replace the page with the page from exram.
 		chr_aout = {2'b10, upper_chr_bank_bits, last_read_exattr[5:0], chr_ain[11:0]};
