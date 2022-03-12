@@ -1393,7 +1393,7 @@ always_comb begin
 		else
 			vram_r_ex = 0;
 
-		if (cycle[2:1] == 0)
+		if (cycle[2:1] == 0 || at_last_cycle_group)
 			vram_a = {2'b10, loopy[11:0]};                                   // Name Table
 		else if (cycle[2:1] == 1)
 			vram_a = {2'b10, loopy[11:10], 4'b1111, loopy[9:7], loopy[4:2]}; // Attribute table
@@ -1407,7 +1407,7 @@ end
 // Read from VRAM, either when user requested a manual read, or when we're generating pixels.
 wire vram_r_ppudata = read && (ain == 7);
 
-assign vram_r = vram_r_ppudata || is_rendering && cycle[0] == 0 && !end_of_line;
+assign vram_r = vram_r_ppudata || is_rendering && cycle[0] == 1;
 
 // Write to VRAM?
 assign vram_w = write && (ain == 7) && !is_pal_address && !is_rendering;
