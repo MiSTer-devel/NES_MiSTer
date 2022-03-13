@@ -423,11 +423,11 @@ MMC5 mmc5(
 	.audio_b    (audio_out_b),
 	// Special ports
 	.audio_dout	(mmc5_data),
+	.chr_ain_o  (chr_ain_orig),
 	.chr_din    (chr_din),
 	.chr_write  (chr_write),
 	.chr_dout_b (chr_dout_b),
 	.ppu_ce     (ppu_ce),
-	.ppuflags   (ppuflags),
 		// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ), 
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),
