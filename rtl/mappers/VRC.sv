@@ -46,7 +46,7 @@ assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
 wire chr_allow;
-reg vram_a10;
+wire vram_a10;
 wire vram_ce;
 reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
@@ -305,7 +305,7 @@ assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
 wire [21:0] prg_aout, chr_aout;
 wire prg_allow;
 wire chr_allow;
-reg vram_a10;
+wire vram_a10;
 wire vram_ce;
 wire irq;
 reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
@@ -447,7 +447,7 @@ wire irqout;
 assign irq = irqout & mapperVRC4;
 vrcIRQ vrc4irq
 (
-	clk,enable,prg_write,{irqlh,irqll},irqc,irqa,prg_din,irqout,ce,
+	clk,1'b0,enable,prg_write,{irqlh,irqll},irqc,irqa,prg_din,irqout,ce,
 	// savestates
 	SaveStateBus_Din, 
 	SaveStateBus_Adr,
@@ -692,7 +692,7 @@ wire irql = {prg_ain[15:12],prg_ain43}==5'b11101; // 0xE008 or 0xE010
 wire irqc = {prg_ain[15:12],prg_ain43}==5'b11110; // 0xF000
 wire irqa = {prg_ain[15:12],prg_ain43}==5'b11111; // 0xF008 or 0xF010
 
-vrcIRQ vrc7irq(clk,enable,prg_write,{irql,irql},irqc,irqa,prg_din,irq,ce);
+vrcIRQ vrc7irq(clk,1'b0,enable,prg_write,{irql,irql},irqc,irqa,prg_din,irq,ce);
 
 endmodule
 
@@ -839,7 +839,7 @@ module MAPVRC6(     //signal descriptions in powerpak.v
 
 	vrcIRQ vrc6irq
 	(
-		clk20,enable,nesprg_we,{irql,irql},irqc,irqa,nesprgdin,irq,ce,
+		clk20,1'b0,enable,nesprg_we,{irql,irql},irqc,irqa,nesprgdin,irq,ce,
 		// savestates
 		SaveStateBus_Din, 
 		SaveStateBus_Adr,
@@ -891,6 +891,7 @@ endmodule
 
 module vrcIRQ(
 	input clk20,
+	input vrc5,
 	input enable,
 	input nesprg_we,
 	input [1:0] irqlatch_add,
@@ -908,18 +909,23 @@ module vrcIRQ(
 	output      [63:0]  SaveStateBus_Dout
 );
 
+//Could count up with scalar instead of down and use for both scalar and VRC5 low 8-bits latch/counter
 reg [7:0] irqlatch;
+reg [7:0] irqlatchL;
 reg irqM,irqE,irqA;
 always@(posedge clk20) begin
 	if (~enable) begin
-		{irqM, irqA, irqlatch} <= 0;
+		{irqM, irqA, irqlatch, irqlatchL} <= 0;
 	end else if (SaveStateBus_load) begin
 		irqM     <= SS_MAP1[    0];
 		irqA     <= SS_MAP1[    1];
 		irqlatch <= SS_MAP1[ 9: 2];
+		irqlatchL<= SS_MAP1[36:29];
 	end else if(ce && nesprg_we) begin
 		if (irqlatch_add == 2'b11)
-			irqlatch<=nesprgdin;                      //F000
+			irqlatch<=nesprgdin;                      //F000/D700
+		else if (vrc5 && irqlatch_add == 2'b10)
+			irqlatchL<=nesprgdin;                     //D600
 		else if (irqlatch_add == 2'b10)
 			irqlatch[7:4]<=nesprgdin[3:0];            //F000h
 		else if (irqlatch_add == 2'b01)
@@ -931,22 +937,25 @@ end
 
 //IRQ
 reg [7:0] irqcnt;
+reg [7:0] irqcntL;
 reg timeout;
 reg [6:0] scalar;
 reg [1:0] line;
-wire irqclk=irqM|(scalar==0);
+wire irqclk=vrc5|irqM|(scalar==0);
 wire setE=nesprg_we & irqctrl_add & nesprgdin[1];
 always@(posedge clk20) begin
 	if (~enable) begin
-		{irqcnt, scalar, line} <= 0;
+		{irqcnt, irqcntL, scalar, line} <= 0;
 	end else if (SaveStateBus_load) begin
 		irqcnt <= SS_MAP1[17:10];
 		scalar <= SS_MAP1[24:18];
 		line   <= SS_MAP1[26:25];
+		irqcnt <= SS_MAP1[44:37];
 	end else if(setE) begin
 		scalar<=113;
 		line<=0;
 		irqcnt<=irqlatch;
+		irqcntL<=irqlatchL;
 	end else if(ce && irqE) begin
 		if(scalar!=0)
 			scalar<=scalar-1'd1;
@@ -955,9 +964,12 @@ always@(posedge clk20) begin
 			line<=line[1]?2'd0:line+1'd1;
 		end
 		if(irqclk) begin
-			if(irqcnt==255)
+			if(irqcnt==255 && (!vrc5 | irqcntL==255)) begin
 				irqcnt<=irqlatch;
-			else
+				irqcntL<=irqlatchL;
+			end else if (vrc5) begin
+				{irqcnt,irqcntL}<={irqcnt,irqcntL}+1'd1;
+			end else
 				irqcnt<=irqcnt+1'd1;
 		end
 	end
@@ -973,7 +985,7 @@ always@(posedge clk20) begin
 	end else if (ce) begin
 		if(nesprg_we & (irqctrl_add | irqack_add)) //write Fxx1 or Fxx2
 			timeout<=0;
-		else if(irqclk & irqcnt==255)
+		else if(irqclk & irqcnt==255 && (!vrc5 | irqcntL==255))
 			timeout<=1;
 
 		if(nesprg_we & irqctrl_add) //write Fxx1
@@ -994,7 +1006,9 @@ assign SS_MAP1_BACK[24:18] = scalar;
 assign SS_MAP1_BACK[26:25] = line;
 assign SS_MAP1_BACK[   27] = irqE;
 assign SS_MAP1_BACK[   28] = timeout;
-assign SS_MAP1_BACK[63:29] = 35'b0; // free to be used
+assign SS_MAP1_BACK[36:29] = irqlatchL;
+assign SS_MAP1_BACK[44:37] = irqcntL;
+assign SS_MAP1_BACK[63:45] = 19'b0; // free to be used
 
 wire [63:0] SS_MAP1;
 wire [63:0] SS_MAP1_BACK;	
@@ -1267,6 +1281,277 @@ wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_w
 	
 eReg_SavestateV #(SSREG_INDEX_SNDMAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
 eReg_SavestateV #(SSREG_INDEX_SNDMAP2, 64'h0000000000000000) iREG_SAVESTATE_MAP2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_MAP2_BACK, SS_MAP2);  
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
+
+endmodule
+
+// VRC5
+module VRC5(
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// Special ports
+	input  [7:0] chr_din,     // CHR Data in
+	input        chr_write,   // CHR Write
+	inout  [7:0] chr_dout_b,  // chr data (non standard)
+	input        ppu_ce,
+	// savestates              
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout,
+
+	input         Savestate_MAPRAMactive, 
+	input [10:0]  Savestate_MAPRAMAddr,     
+	input         Savestate_MAPRAMRdEn,    
+	input         Savestate_MAPRAMWrEn,    
+	input  [7:0]  Savestate_MAPRAMWriteData,
+	output [7:0]  Savestate_MAPRAMReadData
+);
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? prg_dout : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_dout_b   = enable ? chr_dout : 8'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? irq : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire [7:0] prg_dout;
+wire prg_allow;
+wire chr_allow;
+wire [7:0] chr_dout;
+wire vram_a10;
+wire vram_ce;
+wire irq;
+wire [15:0] flags_out = {12'h0, 1'b1, 1'b0, prg_bus_write, has_chr_dout};
+wire prg_bus_write, has_chr_dout;
+
+
+reg [6:0] prg_bank[2:0];
+reg chr_bank;
+reg [1:0] wram_bank [1:0];
+reg [1:0] mirroring;
+reg ppu_bkg;
+reg [2:0] attributes;
+reg [6:0] JIS_col;
+reg [6:0] JIS_row;
+wire [6:0] prg_tmp;
+wire overdump = (flags[13:11] == 3'd5); // 256KB chr is an overdump; use alternate mapping
+
+// Block RAM, otherwise we need to time multiplex..
+wire [10:0] ram_addrA;
+wire        ram_wrenA;
+wire [7:0]  ram_dataA;
+
+reg  [10:0] qtram_read_addr;
+wire [10:0] ram_addrB = Savestate_MAPRAMactive ? Savestate_MAPRAMAddr      : qtram_read_addr;
+wire        ram_wrenB = Savestate_MAPRAMactive ? Savestate_MAPRAMWrEn      : 1'b0;
+wire [7:0]  ram_dataB = Savestate_MAPRAMactive ? Savestate_MAPRAMWriteData : 8'b0;
+wire [7:0]  last_read_ram;
+
+dpram #(.widthad_a(11)) qt_ram
+(
+	.clock_a   (clk),
+	.address_a (ram_addrA),
+	.wren_a    (ram_wrenA),
+	.byteena_a (1),
+	.data_a    (ram_dataA),
+
+	.clock_b   (clk),
+	.address_b (ram_addrB),
+	.wren_b    (ram_wrenB),
+	.byteena_b (1),
+	.data_b    (ram_dataB),
+	.q_b       (last_read_ram)
+);
+
+
+always @(posedge clk) begin
+	if (~enable) begin
+		// Set value for mirroring
+		mirroring[1:0] <= {1'b0, !flags[14]};
+		prg_bank[0]<= 5'd0;
+		prg_bank[1]<= 5'd1;
+		chr_bank   <= 1'd0;
+	end else if (SaveStateBus_load) begin
+		prg_bank[0] <= SS_MAP1[ 6: 0];
+		prg_bank[1] <= SS_MAP1[13: 7];
+		prg_bank[2] <= SS_MAP1[20:14];
+		chr_bank    <= SS_MAP1[   21];
+		wram_bank[0]<= SS_MAP1[23:22];
+		wram_bank[1]<= SS_MAP1[25:24];
+		mirroring   <= SS_MAP1[27:26];
+		ppu_bkg     <= SS_MAP1[   28];
+		qtram_read_addr<= SS_MAP1[39:29];
+		attributes  <= SS_MAP1[42:40];
+		JIS_col     <= SS_MAP1[49:43];
+		JIS_row     <= SS_MAP1[56:50];
+	end else if (ce) begin
+		if (prg_ain[15:12]==4'hD & prg_write) begin
+			casez ({prg_ain[11:8]})
+				4'h0:  {wram_bank[prg_ain[8]]}      <= {prg_din[3],prg_din[0]};  // WRAM Bank 0x6000-0x6FFF
+				4'h1:  {wram_bank[prg_ain[8]]}      <= {prg_din[3],prg_din[0]};  // WRAM Bank 0x7000-0x7FFF
+				4'h2:  prg_bank[prg_ain[9:8]^2'b10] <= prg_din[6:0];             // PRG  Bank 0x8000-0x9FFF
+				4'h3:  prg_bank[prg_ain[9:8]^2'b10] <= prg_din[6:0];             // PRG  Bank 0xA000-0xBFFF
+				4'h4:  prg_bank[prg_ain[9:8]^2'b10] <= prg_din[6:0];             // PRG  Bank 0xC000-0xDFFF
+				4'h5:  chr_bank                     <= prg_din[0];               // CHR  Bank 0x0000-0x0FFF
+				//4'h6:  IRQ Stuff;  // IRQ
+				//4'h7:  IRQ Stuff;  // IRQ
+				//4'h8:  IRQ Stuff;  // IRQ
+				//4'h9:  IRQ Stuff;  // IRQ
+				4'hA:  mirroring                    <= prg_din[1:0];
+				4'hB:  attributes                   <= prg_din[2:0];
+				4'hC:  JIS_col                      <= prg_din[6:0];
+				4'hD:  JIS_row                      <= prg_din[6:0];
+				//4'hE:  Nothing
+				//4'hF:  Nothing
+			endcase
+		end
+		if (prg_write && prg_ain == 16'h2000) begin // $2000
+		  ppu_bkg <= (prg_din[4]);
+		end
+	end
+
+	if (ppu_ce && chr_read && (chr_ain[13:12] == 2'b10) && (~&chr_ain[9:6])) begin
+		qtram_read_addr <= {vram_a10,chr_ain[9:0]};
+	end
+end
+	
+assign SS_MAP1_BACK[ 6: 0] = prg_bank[0];
+assign SS_MAP1_BACK[13: 7] = prg_bank[1];
+assign SS_MAP1_BACK[20:14] = prg_bank[2];
+assign SS_MAP1_BACK[   21] = chr_bank;
+assign SS_MAP1_BACK[23:22] = wram_bank[0];
+assign SS_MAP1_BACK[25:24] = wram_bank[1];
+assign SS_MAP1_BACK[27:26] = mirroring;
+assign SS_MAP1_BACK[   28] = ppu_bkg;
+assign SS_MAP1_BACK[39:29] = qtram_read_addr;
+assign SS_MAP1_BACK[42:40] = attributes;
+assign SS_MAP1_BACK[49:43] = JIS_col;
+assign SS_MAP1_BACK[56:50] = JIS_row;
+assign SS_MAP1_BACK[63:57] = 7'b0; // free to be used
+assign SS_MAP2_BACK[63: 0] = 64'b0; // free to be used
+
+always begin
+	// mirroring mode
+	casez(mirroring[1])
+		1'b0   :   vram_a10 = {chr_ain[10]};    // vertical
+		1'b1   :   vram_a10 = {chr_ain[11]};    // horizontal
+	endcase
+
+	// PRG ROM bank size select
+	casez({prg_ain[14:13]})
+		2'b00 : prg_tmp = prg_bank[0];
+		2'b01 : prg_tmp = prg_bank[1];
+		2'b10 : prg_tmp = prg_bank[2];
+		2'b11 : prg_tmp = 7'b1111111;
+	endcase
+
+end
+
+logic [3:0] pageTable [64]; //0x24
+assign pageTable = '{
+	4'h0,4'h0,4'h0,4'h0,4'h0,4'h0,4'h0,4'h0,4'h0,4'h0,4'h0,4'h0,4'h0,4'h0,4'h0,4'h0,
+	4'h0,4'h0,4'h0,4'h0,4'h2,4'h2,4'h1,4'h1,4'h0,4'h0,4'h4,4'h5,4'h6,4'h7,4'h8,4'h9,4'h0,4'h0,4'hA,4'hB,4'hC,4'hD,4'hE,4'hF, // JIS X 0208 rows $20-$4F. $20 is not a valid row number.
+	4'h0,4'h0,4'h0,4'h1,4'h2,4'h3,4'h4,4'h5,4'h0,4'h0,4'h6,4'h7,4'h8,4'h9,4'hA,4'hB,4'h0,4'h0,4'hC,4'hD,4'hE,4'hF,4'hD,4'hD  // JIS X 0208 rows $50-$7F. $7F is not a valid row number.
+};
+//wire [13:0] code = {{JIS_row[6:4],JIS_col[6:5]}-{2'd0,JIS_row[6:4]},JIS_row[3:0],JIS_col[4:0]};
+wire [13:0] code = {JIS_row[6:4],JIS_col[6:5],JIS_row[3:0],JIS_col[4:0]};
+wire [11:0] glyph = {pageTable[code[13:8]],code[7:0]};
+wire [7:0] ciramByte = {glyph[5:0],attributes[1:0]};
+wire [7:0] qtramByte = {attributes[2],1'b1,glyph[11:6]};
+
+wire [2:0] adj_prg_tmp = !prg_tmp[6] ? 3'b0 : (prg_tmp[6:4] - 3'd3);
+wire [21:12] prg_aout_tmp = {2'b00, adj_prg_tmp[2:0], prg_tmp[3:0], prg_ain[12]};
+wire [21:12] prg_ram = {8'b11_1100_00,wram_bank[prg_ain[12]]};
+wire prg_is_ram = (prg_ain[15:13] == 3'b011);//prg_ain >= 'h6000 && prg_ain < 'h8000;
+assign prg_aout[21:12] = prg_is_ram ? prg_ram : prg_aout_tmp;
+assign prg_aout[11:0] = prg_ain[11:0];
+assign prg_allow = (prg_ain[15] && !prg_write && !prg_bus_write) || prg_is_ram;
+assign prg_dout = prg_ain[15:8] == 8'hDC ? ciramByte : prg_ain[15:8] == 8'hDD ? qtramByte : 8'hFF;
+assign prg_bus_write = !prg_write && ({prg_ain[15:9],1'b0} == 8'hDC); //DC or DD
+
+assign vram_ce = chr_ain[13] && (chr_ain[12] | !mirroring[0] | !chr_write);
+wire sprites = chr_ain[13:12] == {1'b0,!ppu_bkg};
+wire bkg = chr_ain[13:12] == {1'b0,ppu_bkg};
+wire bkg_ram = !last_read_ram[6] || chr_write || sprites;
+wire [21:0] bkg_ram_add = {9'b11_1100_010,chr_write||sprites?chr_bank||chr_ain[12]:last_read_ram[0],chr_ain[11:0]};
+wire [21:0] bkg_over_add = {4'b10_00,last_read_ram[5:0],chr_ain[11:0]};
+wire [21:0] bkg_add = bkg_ram ? bkg_ram_add : !overdump ? {5'b10_000,last_read_ram[5:0],chr_ain[11:5],chr_ain[2:0],chr_ain[4]} : bkg_over_add;
+
+assign has_chr_dout = bkg && chr_ain[3] && !bkg_ram;
+assign chr_dout = last_read_ram[7] ? 8'hFF : 8'h00;
+assign chr_allow = 1'b1;
+assign chr_aout = bkg || sprites ? bkg_add : {8'b10_0000_00, chr_ain[13:0]};
+
+assign ram_addrA = {vram_a10,chr_ain[9:0]};
+assign ram_wrenA = chr_write && chr_ain[13:12]==2'b10 && mirroring[0];
+assign ram_dataA = chr_din;
+
+wire irqll = prg_ain[15:8]==8'hD6; // 0xF000<=0xD600
+wire irqlh = prg_ain[15:8]==8'hD7; // 0xF001<=0xD700
+wire irqc  = prg_ain[15:8]==8'hD9; // 0xF002<=0xD900
+wire irqa  = prg_ain[15:8]==8'hD8; // 0xF003<=0xD800
+wire irqout;
+assign irq = irqout;
+vrcIRQ vrc5irq
+(
+	clk,1'b1,enable,prg_write,{irqlh|irqll,irqlh},irqc,irqa,prg_din,irqout,ce,
+	// savestates
+	SaveStateBus_Din, 
+	SaveStateBus_Adr,
+	SaveStateBus_wren,
+	SaveStateBus_rst,
+	SaveStateBus_load,
+	SaveStateBus_wired_or[2]
+);
+
+// savestate
+always@(posedge clk) begin
+	if (enable) begin
+		if (Savestate_MAPRAMRdEn) begin
+			Savestate_MAPRAMReadData <= last_read_ram;
+		end
+	end else begin
+		Savestate_MAPRAMReadData <= 8'd0;
+	end
+end
+
+localparam SAVESTATE_MODULES    = 3;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+wire [63:0] SS_MAP1, SS_MAP2;
+wire [63:0] SS_MAP1_BACK, SS_MAP2_BACK;	
+wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1] | SaveStateBus_wired_or[2];
+	
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
+eReg_SavestateV #(SSREG_INDEX_MAP2, 64'h0000000000000000) iREG_SAVESTATE_MAP2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_MAP2_BACK, SS_MAP2);  
 
 assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 

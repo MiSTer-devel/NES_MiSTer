@@ -2195,7 +2195,7 @@ always @(posedge clk) begin
 		nsf_reg[4'hE] <= 8'h06;
 		nsf_reg[4'hF] <= 8'hFF;
 		for (i=0;i<32;i++)
-			apu_reg[i] <= i;
+			apu_reg[i] <= i[7:0];
 		for (i=0;i<32;i++)
 			midi_reg[i] <= 8'h00;
 		for (i=0;i<16;i++)
@@ -2417,7 +2417,7 @@ wire use_v6saw = (find_idx==5'd7);
 wire use_fds = (find_idx==5'd12);
 wire use78 = use_v6saw || use_vrc7;
 wire use1615 = use_n163;
-wire [11:0] period_use = use_n163? period1615 : use78 ? period78 : period[find_idx];
+wire [11:0] period_use = use1615? period1615 : use78 ? period78 : period[find_idx];
 
 wire [17:0] find_bits;
 	logic [10:0] find_note_lut[80];  //not used; done in asm
@@ -2466,7 +2466,7 @@ always @(posedge clk) begin
 	find_count <= find_count + 1'b1;
 	if ((find_bits[9:0]>find_steps_lut[find_count[4:0]]) || (find_count[4:3] == 2'b11)) begin
 		spot[find_idx] <= (use_fds) || (use_vrc7) || (use_n163) ? (find_bits[17:14]==4'hF) ? 5'd0 : 5'd24 - find_count : find_count;
-		oct_no[find_idx] <= ((use_fds) || (use_vrc7) || (use_n163) ? (find_bits[17:14]==4'hF) ? 4'd0: find_bits[17:14] : find_bits[13:10]) - ((use_vrc7) ? 5'd8 - vrc7_reg[{2'b10,!find_idx[2],find_idx[1:0]}][3:1] : 5'd0);
+		oct_no[find_idx] <= ((use_fds) || (use_vrc7) || (use_n163) ? (find_bits[17:14]==4'hF) ? 4'd0: find_bits[17:14] : find_bits[13:10]) - ((use_vrc7) ? 4'd8 - vrc7_reg[{2'b10,!find_idx[2],find_idx[1:0]}][3:1] : 4'd0);
 		find_count <= 0;
 		find_idx <= (find_idx == 5'd25) ? 5'd0 : find_idx + 1'b1;
 	end
@@ -2479,9 +2479,9 @@ always begin
 	end else if (prg_ain == 16'h5206) begin
 		prg_dout = multiply_result[15:8];
 	end else if (prg_ain == 16'h4029) begin
-		prg_dout = find_note_lut[{midi_reg[5'h09][2:0],midi_reg[5'h08]}][1:0];
+		prg_dout = {5'h0,find_note_lut[{midi_reg[5'h09][2:0],midi_reg[5'h08]}][10:8]};
 	end else if (prg_ain == 16'h4028) begin
-		prg_dout = {5'h0,find_note_lut[{midi_reg[5'h09][2:0],midi_reg[5'h08]}][7:0]};
+		prg_dout = {find_note_lut[{midi_reg[5'h09][2:0],midi_reg[5'h08]}][7:0]};
 	end else if (prg_ain[15:5]==11'b0100_0000_001) begin
 		prg_dout = midi_reg[prg_ain[4:0]];
 	end else if (prg_ain[15:8] == 8'h40) begin
@@ -2494,6 +2494,14 @@ always begin
 	end
 end
 
+logic [7:0] exp_strs [28];
+assign exp_strs = '{8'h56,8'h43,8'h36,8'h20,  // 0 = VC6
+                    8'h56,8'h43,8'h37,8'h20,  // 1 = VC7
+                    8'h46,8'h44,8'h53,8'h20,  // 2 = FDS
+                    8'h4D,8'h43,8'h35,8'h20,  // 3 = MC5
+                    8'h4E,8'h41,8'h4D,8'h20,  // 4 = NAM
+                    8'h53,8'h35,8'h42,8'h20,  // 5 = S5B
+                    8'h41,8'h50,8'h55,8'h20}; //default = APU
 
 assign prg_aout = ((submapper == 4'hF) && ({prg_ain[15:1],1'b0} == 16'hFFFC)) ? {10'h0, prg_ain[11:0]} : {prg_bank, prg_ain[11:0]};
 assign prg_allow = (((prg_ain[15] || ((prg_ain>=16'h4080) && (prg_ain<16'h4FFF))) && !prg_write) || (prg_ain[15:13]==3'b011)
@@ -2514,15 +2522,18 @@ wire       last16 = chr_ain[4] == 1'b1;         // second half d16-31
 wire       last1 = chr_ain[4:0] == 5'd31;       // char d31
 wire       last2 = chr_ain[4:0] == 5'd30;       // char d30
 wire       last3 = chr_ain[4:0] == 5'd29;       // char d29
+wire       first4 = chr_ain[4:2] == 3'b000;     // char d0-3
 wire       print_reg = nt0 && alt4 && reg_line;
+wire       print_exp = nt0 && first4 && ((line_no==5'b11_010 && (!n163_max || !exp_audioe[4])) || ((line_no==5'b11_100) && (!exp_audioe[1] && !exp_audioe[4])));
 wire       print_midi = nt0 && midi_line && last16;
 wire       print_spot = nt0 && !print_midi && (apu_type || mmc5_type || fds_type || vrc6_type || vrc7_type || n163_type || ssb5_type);
 wire       print_oct = nt0 && !midi_line && !use_freq && print_spot && last1;
 wire       print_let = nt0 && !midi_line && !use_freq && print_spot && last2;
 wire       print_shp = nt0 && !midi_line && !use_freq && print_spot && last3 && sharp;
+wire [7:0] exp_letter = exp_strs[{(line_no[2] || !(|exp_audioe)) ? 3'd6 : exp_audioe[3]?3'd3:exp_audioe[4]?3'd4:exp_audioe[2]?3'd2:exp_audioe[1]?3'd1:exp_audioe[0]?3'd0:exp_audioe[5]?3'd5:3'd6,chr_ain[1:0]}];
 wire [4:0] reg_ind = {!chr_ain[6],chr_ain[5:3],!chr_ain[1]}; // inverted1 means MSB first. lines up with d4,5,6
 wire [4:0] midi_ind = {!chr_ain[6],chr_ain[5],chr_ain[3:1]}; // last16 means ignore 4
-wire [7:0] chr_num = print_reg ? exp_audioe[3] ? mmc5_reg[reg_ind] : exp_audioe[4] ? n163_reg[{~reg_ind[4:2],~reg_ind[1],reg_ind[0],reg_ind[1:0]==2'b01}] : exp_audioe[2] ? fds_reg[reg_ind] : exp_audioe[1] ? vrc7_reg[reg_ind] : exp_audioe[0] ? vrc6_reg[{reg_ind[3:2],reg_ind[1]^reg_ind[0],!reg_ind[0]}] : exp_audioe[5] ? ssb5_reg[reg_ind] : apu_reg[reg_ind] : print_midi ? (n163_max && exp_audioe[4] && (midi_reg[5'd7]==8'd0)) ? n163_reg[{~midi_ind[4:2],~midi_ind[1],midi_ind[0],midi_ind[1:0]==2'b01}] : midi_reg[midi_ind] : oct_no[voi_tab_idx] + (inc_oct ? 1'b1 : 1'b0);
+wire [7:0] chr_num = print_reg ? exp_audioe[3] ? !reg_ind[4] ? mmc5_reg[reg_ind] : apu_reg[{1'b0,reg_ind[3:0]}] : exp_audioe[4] ? n163_reg[{~reg_ind[4:2],~reg_ind[1],reg_ind[0],reg_ind[1:0]==2'b01}] : exp_audioe[2] ? !reg_ind[4] ? fds_reg[reg_ind] : apu_reg[{1'b0,reg_ind[3:0]}] : exp_audioe[1] ? vrc7_reg[reg_ind] : exp_audioe[0] ? !reg_ind[4] ? vrc6_reg[{reg_ind[3:2],reg_ind[1]^reg_ind[0],!reg_ind[0]}] : apu_reg[{1'b0,reg_ind[3:0]}] : exp_audioe[5] ? !reg_ind[4] ? ssb5_reg[reg_ind] : apu_reg[{1'b0,reg_ind[3:0]}] : apu_reg[reg_ind] : print_midi ? (n163_max && exp_audioe[4] && (midi_reg[5'd7]==8'd0)) ? n163_reg[{~midi_ind[4:2],~midi_ind[1],midi_ind[0],midi_ind[1:0]==2'b01}] : midi_reg[midi_ind] : oct_no[voi_tab_idx] + (inc_oct ? 1'b1 : 1'b0);
 wire [4:0] oct_idx = {1'b0,oct_no[voi_tab_idx]} + {oct_no[voi_tab_idx],1'b0}; // 3 * oct_no[voi_idx[1:0]]
 wire [4:0] spot_chr = use_freq ? freq : oct_idx + {3'b000,spot[voi_tab_idx][4:3]}; // noise+sample=d0-15, tri=d0-24 (25-27->24), puls=d3-27 (28-30->27)
 wire [3:0] spot_vol = voi_off ? 4'h0 : voi_vol;
@@ -2538,8 +2549,8 @@ wire [7:0] letter = {5'b0100_0,note_no[4:2]}; // A=$41,G=$47
 wire       sharp = note_no[1];    // #=$23
 
 wire cpu_ppu_write = prg_write && prg_ain[15:12]==4'h2; // 'h2000-2FFF
-assign has_chr_dout = !(cpu_ppu_write) && (print_reg || print_spot || skip_vol || print_midi || print_oct || print_let || print_shp);
-assign chr_dout = skip_vol ? {8'h00} : print_let ? letter : print_shp ? 8'h23 : (print_spot && !print_oct) ? has_spot_chr ? {spot_val,use_freq?3'b000:spot[voi_tab_idx][2:0]} : {8'h20} : {4'h0, chr_ain[0] ? chr_num[3:0] : chr_num[7:4]};
+assign has_chr_dout = !(cpu_ppu_write) && (print_reg || print_exp || print_spot || skip_vol || print_midi || print_oct || print_let || print_shp);
+assign chr_dout = skip_vol ? {8'h00} : print_exp ? exp_letter : print_let ? letter : print_shp ? 8'h23 : (print_spot && !print_oct) ? has_spot_chr ? {spot_val,use_freq?3'b000:spot[voi_tab_idx][2:0]} : {8'h20} : {4'h0, chr_ain[0] ? chr_num[3:0] : chr_num[7:4]};
 
 endmodule
 

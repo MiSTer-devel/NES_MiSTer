@@ -348,12 +348,14 @@ reg [7:0] irq_latch, counter;      // IRQ latch value and current counter
 reg [3:0] ram_enable, ram_protect;       // RAM protection bits
 reg ram6_enabled, ram6_enable, ram6_protect; //extra bits for mmc6
 reg [7:0] chr_bank_0, chr_bank_1;  // Selected CHR banks
+reg chr_bank_0_0, chr_bank_1_0;    // Keep extra bit
 reg [7:0] chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5;
-reg [5:0] prg_bank_0, prg_bank_1, prg_bank_2;  // Selected PRG banks
+reg [7:0] prg_bank_0, prg_bank_1, prg_bank_2;  // Selected PRG banks
 reg last_a12;
 wire prg_is_ram;
 reg [6:0] irq_reg;
 assign irq = mapper48 ? irq_reg[6] & irq_enable : irq_reg[0];
+reg [7:0] m268_reg [5:0];
 
 // The alternative behavior has slightly different IRQ counter semantics.
 wire mmc3_alt_behavior = acclaim;
@@ -382,6 +384,14 @@ wire mapper196 = (flags[7:0] == 196);   // PRG A0 line switcheroo
 wire mapper189 = (flags[7:0] == 189);
 wire MMC6 = ((flags[7:0] == 4) && (flags[24:21] == 1)); // mapper 4, submapper 1 = MMC6
 wire acclaim = ((flags[7:0] == 4) && (flags[24:21] == 3)); // Acclaim mapper
+wire mapper268 = ({flags[20:17],flags[7:0]} == 268); // Coolboy/Mindkids; Note: if mapper 268-256=12 was in this driver, it would need to check upper mapper bits
+wire mapper268_5k = (flags[24:21] == 1);
+wire oversized = mapper268;
+wire gnrom;
+wire lockout;
+wire gnrom_lock;
+wire mega_unrom;
+wire weird_mode;
 
 wire four_screen_mirroring = flags[16];// | DxROM; // not all DxROM are 4-screen
 reg mapper47_multicart;
@@ -411,10 +421,11 @@ if (~enable) begin
 	{chr_bank_0, chr_bank_1} <= 0;
 	{chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5} <= 0;
 	{prg_bank_0, prg_bank_1} <= 0;
-	prg_bank_2 <= 6'b111110;
+	prg_bank_2 <= 8'b11111110;
 	a12_ctr <= 0;
 	last_a12 <= 0;
 	mapper37_multicart <= 3'b000;
+	{m268_reg[0],m268_reg[1],m268_reg[2],m268_reg[3],m268_reg[4],m268_reg[5]} <= 0;
 end else if (SaveStateBus_load) begin
 	irq_reg            <= SS_MAP1[ 6: 0];
 	bank_select        <= SS_MAP1[ 9: 7];
@@ -433,9 +444,9 @@ end else if (SaveStateBus_load) begin
 	chr_bank_3         <= SS_MAP2[ 7: 0];
 	chr_bank_4         <= SS_MAP2[15: 8];
 	chr_bank_5         <= SS_MAP2[23:16];
-	prg_bank_0         <= SS_MAP2[29:24];
-	prg_bank_1         <= SS_MAP2[35:30];
-	prg_bank_2         <= SS_MAP2[41:36];
+	prg_bank_0[5:0]    <= SS_MAP2[29:24];
+	prg_bank_1[5:0]    <= SS_MAP2[35:30];
+	prg_bank_2[5:0]    <= SS_MAP2[41:36];
 	a12_ctr            <= SS_MAP2[45:42];
 	last_a12           <= SS_MAP2[   46];
 	mapper37_multicart <= SS_MAP2[49:47];
@@ -444,6 +455,17 @@ end else if (SaveStateBus_load) begin
 	ram6_enabled       <= SS_MAP2[   55];
 	ram6_enable        <= SS_MAP2[   56];
 	ram6_protect       <= SS_MAP2[   57];
+	prg_bank_0[7:6]    <= SS_MAP2[59:58];
+	prg_bank_1[7:6]    <= SS_MAP2[61:60];
+	prg_bank_2[7:6]    <= SS_MAP2[63:62];
+	m268_reg[0]        <= SS_MAP3[ 7: 0];
+	m268_reg[1]        <= SS_MAP3[15: 8];
+	m268_reg[2]        <= SS_MAP3[23:16];
+	m268_reg[3]        <= SS_MAP3[31:24];
+	m268_reg[4]        <= SS_MAP3[39:32];
+	m268_reg[5]        <= SS_MAP3[47:40];
+	chr_bank_0_0       <= SS_MAP1[   48];
+	chr_bank_1_0       <= SS_MAP1[   49];
 end else if (ce) begin
 	irq_reg[6:1] <= irq_reg[5:0]; // 6 cycle delay
 	if (!regs_7e && prg_write && prg_ain[15]) begin
@@ -452,14 +474,14 @@ end else if (ce) begin
 				3'b00_0: {chr_a12_invert, prg_rom_bank_mode, ram6_enabled, bank_select} <= {prg_din[7:5], prg_din[2:0]}; // Bank select ($8000-$9FFE, even)
 				3'b00_1: begin // Bank data ($8001-$9FFF, odd)
 					case (bank_select)
-						0: chr_bank_0 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
-						1: chr_bank_1 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
+						0: {chr_bank_0,chr_bank_0_0} <= {1'b0,prg_din};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
+						1: {chr_bank_1,chr_bank_1_0} <= {1'b0,prg_din};  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
 						2: chr_bank_2 <= prg_din;       // Select 1 KB CHR bank at PPU $1000-$13FF (or $0000-$03FF);
 						3: chr_bank_3 <= prg_din;       // Select 1 KB CHR bank at PPU $1400-$17FF (or $0400-$07FF);
 						4: chr_bank_4 <= prg_din;       // Select 1 KB CHR bank at PPU $1800-$1BFF (or $0800-$0BFF);
 						5: chr_bank_5 <= prg_din;       // Select 1 KB CHR bank at PPU $1C00-$1FFF (or $0C00-$0FFF);
-						6: prg_bank_0 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF (or $C000-$DFFF);
-						7: prg_bank_1 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
+						6: prg_bank_0 <= prg_din;       // Select 8 KB PRG ROM bank at $8000-$9FFF (or $C000-$DFFF);
+						7: prg_bank_1 <= prg_din;       // Select 8 KB PRG ROM bank at $A000-$BFFF
 					endcase
 				end
 				3'b01_0: mirroring <= !prg_din[0];                   // Mirroring ($A000-$BFFE, even)
@@ -471,9 +493,9 @@ end else if (ce) begin
 			endcase
 		end else if (!mapper112) begin
 			casez({prg_ain[14:13], prg_ain[1:0], mapper48})
-				5'b00_00_0: {mirroring, prg_bank_0} <= prg_din[6:0] ^ 7'h40; // Select 8 KB PRG ROM bank at $8000-$9FFF
-				5'b00_00_1: prg_bank_0 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF
-				5'b00_01_?: prg_bank_1 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
+				5'b00_00_0: {mirroring, prg_bank_0[5:0]} <= prg_din[6:0] ^ 7'h40; // Select 8 KB PRG ROM bank at $8000-$9FFF
+				5'b00_00_1: prg_bank_0[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF
+				5'b00_01_?: prg_bank_1[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
 				5'b00_10_?: chr_bank_0 <= prg_din;  // Select 2 KB CHR bank at PPU $0000-$07FF
 				5'b00_11_?: chr_bank_1 <= prg_din;  // Select 2 KB CHR bank at PPU $0800-$0FFF
 				5'b01_00_?: chr_bank_2 <= prg_din;  // Select 1 KB CHR bank at PPU $1000-$13FF
@@ -494,8 +516,8 @@ end else if (ce) begin
 
 				3'b01_0: begin // Bank data ($A000-$BFFF)
 					case (bank_select)
-					0: prg_bank_0 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF (or $C000-$DFFF);
-					1: prg_bank_1 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
+					0: prg_bank_0 <= prg_din;       // Select 8 KB PRG ROM bank at $8000-$9FFF (or $C000-$DFFF);
+					1: prg_bank_1 <= prg_din;       // Select 8 KB PRG ROM bank at $A000-$BFFF
 					2: chr_bank_0 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
 					3: chr_bank_1 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
 					4: chr_bank_2 <= prg_din;       // Select 1 KB CHR bank at PPU $1000-$13FF (or $0000-$03FF);
@@ -528,13 +550,23 @@ end else if (ce) begin
 			5'b0111_1: {ram_enable[0], ram_protect[0]} <= {(prg_din==8'hCA),!(prg_din==8'hCA)};  // Enable RAM at $6000-$67FF
 			5'b1000_1: {ram_enable[1], ram_protect[1]} <= {(prg_din==8'h69),!(prg_din==8'h69)};  // Enable RAM at $6F00-$6FFF
 			5'b1001_1: {ram_enable[2], ram_protect[2]} <= {(prg_din==8'h84),!(prg_din==8'h84)};  // Enable RAM at $7000-$73FF  //Using 6K; Require 5K instead?
-			5'b101?_0: prg_bank_0 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF
-			5'b110?_0: prg_bank_1 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
-			5'b111?_0: prg_bank_2 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $C000-$DFFF
-			5'b1010_1: prg_bank_0 <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $8000-$9FFF
-			5'b1011_1: prg_bank_1 <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $A000-$BFFF
-			5'b1100_1: prg_bank_2 <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $C000-$DFFF
+			5'b101?_0: prg_bank_0[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF
+			5'b110?_0: prg_bank_1[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
+			5'b111?_0: prg_bank_2[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $C000-$DFFF
+			5'b1010_1: prg_bank_0[5:0] <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $8000-$9FFF
+			5'b1011_1: prg_bank_1[5:0] <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $A000-$BFFF
+			5'b1100_1: prg_bank_2[5:0] <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $C000-$DFFF
 		endcase
+	end
+
+	if (mapper268 && prg_write && ({mapper268_5k,prg_ain[15:12]}==5'h6 || {mapper268_5k,prg_ain[15:12]}==5'h15)) begin
+		if (prg_ain[2:0]==3'h2) begin
+			m268_reg[2][3:0] <= prg_din[3:0];
+			if (!gnrom_lock)
+				m268_reg[2][7:4] <= prg_din[7:4];
+		end else if ((prg_ain[2:1]!=2'b11) && !lockout) begin
+			m268_reg[prg_ain[2:0]] <= prg_din;
+		end
 	end
 
 	// For Mapper 47
@@ -601,9 +633,9 @@ assign SS_MAP1_BACK[   63] = 1'b0; // free to be used
 assign SS_MAP2_BACK[ 7: 0] = chr_bank_3;
 assign SS_MAP2_BACK[15: 8] = chr_bank_4;
 assign SS_MAP2_BACK[23:16] = chr_bank_5;
-assign SS_MAP2_BACK[29:24] = prg_bank_0;
-assign SS_MAP2_BACK[35:30] = prg_bank_1;
-assign SS_MAP2_BACK[41:36] = prg_bank_2;
+assign SS_MAP2_BACK[29:24] = prg_bank_0[5:0];
+assign SS_MAP2_BACK[35:30] = prg_bank_1[5:0];
+assign SS_MAP2_BACK[41:36] = prg_bank_2[5:0];
 assign SS_MAP2_BACK[45:42] = a12_ctr;
 assign SS_MAP2_BACK[   46] = last_a12;
 assign SS_MAP2_BACK[49:47] = mapper37_multicart;
@@ -612,10 +644,23 @@ assign SS_MAP2_BACK[54:51] = mapper189_prgsel;
 assign SS_MAP2_BACK[   55] = ram6_enabled;
 assign SS_MAP2_BACK[   56] = ram6_enable;
 assign SS_MAP2_BACK[   57] = ram6_protect;
-assign SS_MAP2_BACK[63:58] = 6'b0; // free to be used
+assign SS_MAP2_BACK[59:58] = prg_bank_0[7:6];
+assign SS_MAP2_BACK[61:60] = prg_bank_1[7:6];
+assign SS_MAP2_BACK[63:62] = prg_bank_2[7:6];
+//assign SS_MAP2_BACK[64:64] = 0'b0; // full
+
+assign SS_MAP3_BACK[ 7: 0] = m268_reg[0];
+assign SS_MAP3_BACK[15: 8] = m268_reg[1];
+assign SS_MAP3_BACK[23:16] = m268_reg[2];
+assign SS_MAP3_BACK[31:24] = m268_reg[3];
+assign SS_MAP3_BACK[39:32] = m268_reg[4];
+assign SS_MAP3_BACK[47:40] = m268_reg[5];
+assign SS_MAP3_BACK[   48] = chr_bank_0_0;
+assign SS_MAP3_BACK[   49] = chr_bank_1_0;
+assign SS_MAP3_BACK[63:50] = 14'b0; // free to be used
 
 // The PRG bank to load. Each increment here is 8kb. So valid values are 0..63.
-reg [5:0] prgsel;
+reg [7:0] prgsel;
 always @* begin
 	casez({prg_ain[14:13], prg_rom_bank_mode && prg_invert_support})
 		3'b00_0: prgsel = prg_bank_0;  // $8000 mode 0
@@ -623,27 +668,29 @@ always @* begin
 		3'b01_?: prgsel = prg_bank_1;  // $A000 mode 0,1
 		3'b10_0: prgsel = prg_bank_2;  // $C000 fixed to second last bank
 		3'b10_1: prgsel = prg_bank_0;  // $C000 mode 1
-		3'b11_?: prgsel = 6'b111111;   // $E000 fixed to last bank
+		3'b11_?: prgsel = 8'b11111111; // $E000 fixed to last bank
 	endcase
 
 	// mapper47 is limited to 128k PRG, the top bits are controlled by mapper47_multicart instead.
-	if (mapper47) prgsel[5:4] = {1'b0, mapper47_multicart};
+	if (mapper47) prgsel[7:4] = {3'b000, mapper47_multicart};
 	if (mapper37) begin
-	prgsel[5:4] = {1'b0, mapper37_multicart[2]};
+	prgsel[7:4] = {3'b000, mapper37_multicart[2]};
 		if (mapper37_multicart[1:0] == 3'd3)
 			prgsel[3] = 1'b1;
 		else if (mapper37_multicart[2] == 1'b0)
 			prgsel[3] = 1'b0;
 	end
 
-	if (mapper189) prgsel = {mapper189_prgsel,prg_ain[14:13]};
+	if (mapper189) prgsel = {2'b00,mapper189_prgsel,prg_ain[14:13]};
+	if (!oversized) prgsel[7:6] = 2'b00;
 end
 
 // The CHR bank to load. Each increment here is 1kb. So valid values are 0..255.
 reg [8:0] chrsel;
+wire use_chr_ain_12 = chr_ain[12] ^ (chr_a12_invert && chr_invert_support);
 always @* begin
 	if (!mapper76) begin
-		casez({chr_ain[12] ^ (chr_a12_invert && chr_invert_support), chr_ain[11], chr_ain[10]})
+		casez({use_chr_ain_12, chr_ain[11], chr_ain[10]})
 			3'b00?: chrsel = {chr_bank_0, chr_ain[10]};
 			3'b01?: chrsel = {chr_bank_1, chr_ain[10]};
 			3'b100: chrsel = {1'b0, chr_bank_2};
@@ -665,7 +712,30 @@ always @* begin
 	end
 end
 
-wire [21:0] prg_aout_tmp = {3'b00_0,  prgsel, prg_ain[12:0]};
+assign gnrom = m268_reg[3][4];
+assign lockout = m268_reg[3][7] && !gnrom;
+assign gnrom_lock = m268_reg[2][7];
+assign mega_unrom = m268_reg[5][4];
+assign weird_mode = m268_reg[3][6];
+wire [24:13] map268p; //only [20:13] used below => max size is 2MB
+wire [17:10] map268c;
+assign map268p[24:21] = {m268_reg[0][5:4],m268_reg[1][3:2]};
+assign map268p[20] = m268_reg[1][5]?prgsel[7]:m268_reg[1][4];
+assign map268p[19] = mega_unrom ? (prg_ain[14] | map268c[17]): m268_reg[1][6]?prgsel[6]:m268_reg[0][2];
+assign map268p[18] = mega_unrom ? (prg_ain[14] | map268c[16]): !m268_reg[1][7]?prgsel[5]:m268_reg[0][1];
+assign map268p[17] = !m268_reg[0][6]?prgsel[4]:m268_reg[0][0];
+assign map268p[16:15] = gnrom ? m268_reg[3][3:2] : weird_mode && !prg_rom_bank_mode && prg_ain[14]?2'b00:prgsel[3:2];
+assign map268p[14] = gnrom ? m268_reg[1][1]?prg_ain[14]:m268_reg[3][1] : weird_mode && !prg_rom_bank_mode && prg_ain[14]?1'b0:prgsel[1];
+assign map268p[13] = gnrom ? prg_ain[13]: weird_mode && !prg_rom_bank_mode && prg_ain[14]?1'b0:prgsel[0];
+
+assign map268c[17] = !m268_reg[0][7]?chrsel[7]:m268_reg[0][3];
+assign map268c[16:13] = gnrom ? ({~m268_reg[2][6:4],1'b1} & m268_reg[2][3:0]): weird_mode && chr_ain[10] ? 4'h0 : chrsel[6:3];
+assign map268c[12:11] = (weird_mode && chr_ain[10]) ? 2'h0 : chrsel[2:1];
+assign map268c[10] = (weird_mode && chr_ain[10]) ? 1'b0 : (use_chr_ain_12 || !weird_mode) ? chrsel[0] : chr_ain[12] ? chr_bank_1_0 : chr_bank_0_0 ;
+
+wire m268_chr_ram = {map268c[17:11],1'b1} == m268_reg[4];
+
+wire [21:0] prg_aout_tmp = {1'b0, mapper268 ? map268p[20:13] : prgsel, prg_ain[12:0]};
 
 wire ram_enable_a = !MMC6 ? (ram_enable[prg_ain[12:11]])
 						:   (ram6_enabled && ram6_enable && prg_ain[12] == 1'b1 && prg_ain[9] == 1'b0)
@@ -694,12 +764,15 @@ assign chr_aout =
 		(mapper194 & chr_ram_cs)             ? {11'b11_1111_1111_1,chrsel[0],   chr_ain[9:0]} :   // 2kb CHR-RAM
 		(mapper195 & chr_ram_cs)             ? {10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
 		(four_screen_mirroring & chr_ram_cs) ? {9'b11_1111_111,   chr_ain[13], chr_ain[11:0]} :   // DxROM 8kb CHR-RAM
+		(m268_chr_ram)                       ? {11'b11_1111_1111_1,            chr_ain[10:0]} :   // 2kb CHR-RAM
+		(mapper268)                          ? {4'b10_00,              map268c, chr_ain[9:0]} :   // Mapper 268 override
 		                                       {3'b10_0,                chrsel, chr_ain[9:0]};    // Standard MMC3
 
-assign prg_is_ram = (prg_ain[15:13] == 3'b011) && ((prg_ain[12:8] == 5'b1_1111) | ~internal_128) //(>= 'h6000 && < 'h8000) && (==7Fxx or external_ram)
+wire ram_a13 = mapper268 && m268_reg[3][5] && (prg_ain[15:12] == 4'h5);
+assign prg_is_ram = (ram_a13 || (prg_ain[15:13] == 3'b011) && ((prg_ain[12:8] == 5'b1_1111) | ~internal_128)) //(>= 'h6000 && < 'h8000) && (==7Fxx or external_ram)
 					&& ram_enable_a && !(ram_protect_a && prg_write);
 assign prg_allow = prg_ain[15] && !prg_write || prg_is_ram && !mapper47;
-wire [21:0] prg_ram = {9'b11_1100_000, internal_128 ? 6'b000000 : MMC6 ? {3'b000, prg_ain[9:7]} : prg_ain[12:7], prg_ain[6:0]};
+wire [21:0] prg_ram = {8'b11_1100_00, ram_a13, internal_128 ? 6'b000000 : MMC6 ? {3'b000, prg_ain[9:7]} : prg_ain[12:7], prg_ain[6:0]};
 assign prg_aout = prg_is_ram  && !mapper47 && !DxROM && !mapper95 && !mapper88 ? prg_ram : prg_aout_tmp;
 assign vram_a10 = TxSROM ? chrsel[7] :              // TxSROM do not support mirroring
 					mapper95 ? chrsel[5] :          // mapper95 does not support mirroring
@@ -709,14 +782,15 @@ assign vram_a10 = TxSROM ? chrsel[7] :              // TxSROM do not support mir
 assign vram_ce = chr_ain[13] && !four_screen_mirroring;
 
 // savestate
-localparam SAVESTATE_MODULES    = 2;
+localparam SAVESTATE_MODULES    = 3;
 wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
-wire [63:0] SS_MAP1, SS_MAP2;
-wire [63:0] SS_MAP1_BACK, SS_MAP2_BACK;	
-wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1];
+wire [63:0] SS_MAP1, SS_MAP2, SS_MAP3;
+wire [63:0] SS_MAP1_BACK, SS_MAP2_BACK, SS_MAP3_BACK;	
+wire [63:0] SaveStateBus_Dout_active = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1] | SaveStateBus_wired_or[2];
 	
 eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[0], SS_MAP1_BACK, SS_MAP1);  
 eReg_SavestateV #(SSREG_INDEX_MAP2, 64'h0000000000000000) iREG_SAVESTATE_MAP2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[1], SS_MAP2_BACK, SS_MAP2);  
+eReg_SavestateV #(SSREG_INDEX_MAP3, 64'h0000000000000000) iREG_SAVESTATE_MAP3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[2], SS_MAP3_BACK, SS_MAP3);  
 
 assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
 
