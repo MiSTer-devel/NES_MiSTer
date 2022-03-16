@@ -438,7 +438,7 @@ end
 assign SS_MAP1_BACK[ 5: 0] = prg_bank;
 assign SS_MAP1_BACK[ 9: 6] = chr_bank_0;
 assign SS_MAP1_BACK[13:10] = chr_bank_1;
-assign SS_MAP1_BACK[63:14] = 60'b0; // free to be used
+assign SS_MAP1_BACK[63:14] = 50'b0; // free to be used
 
 wire [21:0] prg_aout_tmp = {1'b0, prg_bank, prg_ain[14:0]};
 assign chr_allow = flags[15];

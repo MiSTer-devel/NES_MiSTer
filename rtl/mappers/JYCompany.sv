@@ -311,7 +311,7 @@ assign SS_MAP6_BACK[ 7: 0] = irq_mode;
 assign SS_MAP6_BACK[    8] = irq_pending;
 assign SS_MAP6_BACK[    9] = irq_dis;
 assign SS_MAP6_BACK[11:10] = chr_latch;
-assign SS_MAP6_BACK[63:13] = 52'b0; // free to be used
+assign SS_MAP6_BACK[63:12] = 52'b0; // free to be used
 
 wire prg_6xxx = prg_ain[15:13] == 2'b011; // $6000-$7FFF
 wire prg_ram = prg_6xxx && !bank_mode[7];
