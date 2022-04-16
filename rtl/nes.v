@@ -86,8 +86,10 @@ module NES(
 	input   [4:0] joypad2_data,   // Port2
 	input         fds_busy,       // FDS Disk Swap Busy
 	input         fds_eject,      // FDS Disk Swap Pause
-	output  [1:0] diskside_req,
-	input   [1:0] diskside,
+	input         fds_auto_eject,
+	input   [1:0] max_diskside,
+	output  [1:0] diskside,
+
 	input   [4:0] audio_channels, // Enabled audio channels
 	input         ex_sprites,
 	input   [1:0] mask,
@@ -660,8 +662,10 @@ cart_top multi_mapper (
 	// User input/FDS controls
 	.fds_eject         (fds_eject),               // Used to trigger FDS disk changes
 	.fds_busy          (fds_busy),                // Used to trigger FDS disk changes
-	.diskside_auto     (diskside_req),
 	.diskside          (diskside),
+	.max_diskside      (max_diskside),
+	.fds_auto_eject    (fds_auto_eject),
+
 	// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ), 
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),

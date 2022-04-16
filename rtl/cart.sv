@@ -55,10 +55,11 @@ module cart_top (
 	output reg        irq,
 	input      [15:0] audio_in,
 	output reg [15:0] audio,          // External Audio
-	output reg  [1:0] diskside_auto,
-	input       [1:0] diskside,
+	output reg  [1:0] diskside,
 	input             fds_busy,       // FDS Disk Swap Busy
 	input             fds_eject,      // FDS Disk Swap Pause
+	input             fds_auto_eject,
+	input       [1:0] max_diskside,
 	// savestates              
 	input       [63:0]  SaveStateBus_Din,
 	input       [ 9:0]  SaveStateBus_Adr,
@@ -2106,7 +2107,7 @@ Mapper413 map413 (
 // Notes  : Uses a special wire to signal disk changes. Req. modified BIOS.    //
 // Games  : Bio Miracle for audio, Various unlicensed games for compatibility. //
 //*****************************************************************************//
-tri0 [1:0] fds_diskside_auto;
+tri0 [1:0] fds_diskside;
 MapperFDS mapfds(
 	.clk        (clk),
 	.ce         (ce),
@@ -2130,11 +2131,13 @@ MapperFDS mapfds(
 	.audio_in   (fds_audio),
 	.audio_b    (audio_out_b),
 	// Special ports
+	.prg_dbus   (prg_from_ram),
 	.audio_dout	(fds_data),
-	.diskside_auto_b (fds_diskside_auto),
-	.diskside   (diskside),
+	.diskside_b (fds_diskside),
+	.max_diskside (max_diskside),
 	.fds_busy   (fds_busy),
-	.fds_eject  (fds_eject)
+	.fds_eject_btn (fds_eject),
+	.fds_auto_eject_en (fds_auto_eject)
 );
 
 //*****************************************************************************//
@@ -2312,7 +2315,7 @@ always @* begin
 	// Currently only used for Mapper 413 Misc ROM. Expand if needed.
 	prg_aout[24:22] = me[413] ? prg_aoute_m413 : 3'd0;
 
-	{diskside_auto} = {fds_diskside_auto};
+	{diskside} = {fds_diskside};
 
 	// Behavior helper flags
 	{has_savestate, prg_conflict, prg_bus_write, has_chr_dout} = {flags_out_b[3], flags_out_b[2], flags_out_b[1], flags_out_b[0]};
