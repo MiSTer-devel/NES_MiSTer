@@ -24,6 +24,7 @@ module MMC2(
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 	input [13:0] chr_ain_o,
+	input        paused,
 	// savestates              
 	input       [63:0]  SaveStateBus_Din,
 	input       [ 9:0]  SaveStateBus_Adr,
@@ -140,7 +141,7 @@ if (~enable) begin
 end else if (SaveStateBus_load) begin
 	latch_0 <= SS_MAP1[   25];
 	latch_1 <= SS_MAP1[   26];
-end else if (ce && chr_read) begin
+end else if (~paused && chr_read) begin
 	latch_0 <= (chr_ain_o & 14'h3fff) == 14'h0fd8 ? 1'd0 : (chr_ain_o & 14'h3fff) == 14'h0fe8 ? 1'd1 : latch_0;
 	latch_1 <= (chr_ain_o & 14'h3ff8) == 14'h1fd8 ? 1'd0 : (chr_ain_o & 14'h3ff8) == 14'h1fe8 ? 1'd1 : latch_1;
 end
@@ -220,6 +221,7 @@ module MMC4(
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 	input [13:0] chr_ain_o,
+	input        paused,
 	// savestates              
 	input       [63:0]  SaveStateBus_Din,
 	input       [ 9:0]  SaveStateBus_Adr,
@@ -334,7 +336,7 @@ always @(posedge clk)
 if (SaveStateBus_load) begin
 	latch_0 <= SS_MAP1[   25];
 	latch_1 <= SS_MAP1[   26];
-end else if (ce & chr_read) begin
+end else if (~paused & chr_read) begin
 	latch_0 <= (chr_ain_o & 14'h3ff8) == 14'h0fd8 ? 1'd0 : (chr_ain_o & 14'h3ff8) == 14'h0fe8 ? 1'd1 : latch_0;
 	latch_1 <= (chr_ain_o & 14'h3ff8) == 14'h1fd8 ? 1'd0 : (chr_ain_o & 14'h3ff8) == 14'h1fe8 ? 1'd1 : latch_1;
 end

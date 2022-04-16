@@ -1313,7 +1313,7 @@ module VRC5(
 	input  [7:0] chr_din,     // CHR Data in
 	input        chr_write,   // CHR Write
 	inout  [7:0] chr_dout_b,  // chr data (non standard)
-	input        ppu_ce,
+	input        paused,
 	// savestates              
 	input       [63:0]  SaveStateBus_Din,
 	input       [ 9:0]  SaveStateBus_Adr,
@@ -1439,7 +1439,7 @@ always @(posedge clk) begin
 		end
 	end
 
-	if (ppu_ce && chr_read && (chr_ain[13:12] == 2'b10) && (~&chr_ain[9:6])) begin
+	if (~paused && chr_read && (chr_ain[13:12] == 2'b10) && (~&chr_ain[9:6])) begin
 		qtram_read_addr <= {vram_a10,chr_ain[9:0]};
 	end
 end

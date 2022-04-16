@@ -1755,8 +1755,7 @@ module Nanjing(
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
-	input [19:0] ppuflags,
-	input        ppu_ce
+	input        paused
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -1787,8 +1786,7 @@ reg trig_comp;
 
 reg [7:0] security[4];
 
-wire [8:0] scanline = ppuflags[19:11];
-wire [8:0] cycle = ppuflags[10:2];
+reg old_a13;
 
 always @(posedge clk) begin
 	if (~enable) begin
@@ -1797,50 +1795,52 @@ always @(posedge clk) begin
 		security <= '{8'h00, 8'h00, 8'h00, 8'h00};
 		chr_switch <= 0;
 		trig_comp <= 1; // Initial value 1
-	end else if (ce) begin
-		prg_dout <= prg_din;
-		prg_bus_write <= 0;
-		if (prg_write) begin
-			if (prg_ain == 16'h5101) begin
-				if (trig_comp && ~|prg_din)
-					trigger <= ~trigger;
-				trig_comp <= |prg_din;
-			end else begin
-				case (prg_ain & 16'h7300)
-					// If the most significant bit of this register is set, it does automatic CHR RAM switching
-					'h5000: begin
-						prg_bank[3:0] <= prg_din[3:0];
-						chr_switch <= prg_din[7];
-						security[0] <= prg_din;
+		old_a13 <= 0;
+	end else begin
+		if (ce) begin
+			prg_dout <= prg_din;
+			prg_bus_write <= 0;
+			if (prg_write) begin
+				if (prg_ain == 16'h5101) begin
+					if (trig_comp && ~|prg_din)
+						trigger <= ~trigger;
+					trig_comp <= |prg_din;
+				end else begin
+					case (prg_ain & 16'h7300)
+						// If the most significant bit of this register is set, it does automatic CHR RAM switching
+						'h5000: begin
+							prg_bank[3:0] <= prg_din[3:0];
+							chr_switch <= prg_din[7];
+							security[0] <= prg_din;
+						end
+	
+						'h5100: begin
+							security[1] <= prg_din;
+							if (prg_din == 6)
+								prg_bank <= 8'h3;
+						end
+	
+						'h5200: begin
+							prg_bank[7:4] <= prg_din[3:0];
+							security[2] <= prg_din;
+						end
+	
+						'h5300: security[3] <= prg_din;
+					endcase
+				end
+			end else if (prg_read) begin // Security stuff as Mesen does it
+				prg_bus_write <= 1'b1;
+				case (prg_ain & 16'h7700)
+					'h5100: prg_dout <= security[0] | security[1] | security[3] | (security[2] ^ 8'hFF);
+					'h5500: prg_dout <= trigger ? (security[3] | security[0]) : 8'h0;
+					default: begin
+						prg_dout <= 8'hFF;
+						prg_bus_write <= 0;
 					end
-
-					'h5100: begin
-						security[1] <= prg_din;
-						if (prg_din == 6)
-							prg_bank <= 8'h3;
-					end
-
-					'h5200: begin
-						prg_bank[7:4] <= prg_din[3:0];
-						security[2] <= prg_din;
-					end
-
-					'h5300: security[3] <= prg_din;
 				endcase
 			end
-		end else if (prg_read) begin // Security stuff as Mesen does it
-			prg_bus_write <= 1'b1;
-			case (prg_ain & 16'h7700)
-				'h5100: prg_dout <= security[0] | security[1] | security[3] | (security[2] ^ 8'hFF);
-				'h5500: prg_dout <= trigger ? (security[3] | security[0]) : 8'h0;
-				default: begin
-					prg_dout <= 8'hFF;
-					prg_bus_write <= 0;
-				end
-			endcase
 		end
 	end
-
 	// The exact way this works is unknown but is conjectured
 	// to resemble iNES Mapper 096, latching PA9 at start of nametable reads.
 	// When turned on, both 4K CHR RAM banks 0000-0FFF and 1000-1FFF map to 0000-0FFF 
@@ -1848,13 +1848,11 @@ always @(posedge clk) begin
 	// point to 1000-1FFF.
 	if(~enable) begin
 		chr_bank <= 0;
-	end else if (ppu_ce) begin
-		if (cycle > 254) begin
-			if (scanline == 239)
-				chr_bank <= 0;
-			else if(scanline == 127)
-				chr_bank <= 1;
-		end
+	end else if (~paused) begin
+	
+	old_a13 <= chr_ain[13];
+	if (~old_a13 && chr_ain[13])
+		chr_bank <= chr_ain[9];
 	end
 end
 

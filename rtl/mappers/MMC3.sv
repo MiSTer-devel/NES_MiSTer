@@ -310,6 +310,8 @@ module MMC3 (
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 	input [13:0] chr_ain_o,
+	input        m2_inv,
+	input        paused,
 	// savestates              
 	input       [63:0]  SaveStateBus_Din,
 	input       [ 9:0]  SaveStateBus_Adr,
@@ -354,7 +356,7 @@ reg [7:0] prg_bank_0, prg_bank_1, prg_bank_2;  // Selected PRG banks
 reg last_a12;
 wire prg_is_ram;
 reg [6:0] irq_reg;
-assign irq = mapper48 ? irq_reg[6] & irq_enable : irq_reg[0];
+assign irq = mapper48 ? irq_reg[3] & irq_enable : irq_reg[0];
 reg [7:0] m268_reg [5:0];
 
 // The alternative behavior has slightly different IRQ counter semantics.
@@ -466,151 +468,161 @@ end else if (SaveStateBus_load) begin
 	m268_reg[5]        <= SS_MAP3[47:40];
 	chr_bank_0_0       <= SS_MAP1[   48];
 	chr_bank_1_0       <= SS_MAP1[   49];
-end else if (ce) begin
-	irq_reg[6:1] <= irq_reg[5:0]; // 6 cycle delay
-	if (!regs_7e && prg_write && prg_ain[15]) begin
-		if (!mapper33 && !mapper48 && !mapper112) begin
-			casez({prg_ain[14:13], prg_reg_odd})
-				3'b00_0: {chr_a12_invert, prg_rom_bank_mode, ram6_enabled, bank_select} <= {prg_din[7:5], prg_din[2:0]}; // Bank select ($8000-$9FFE, even)
-				3'b00_1: begin // Bank data ($8001-$9FFF, odd)
-					case (bank_select)
-						0: {chr_bank_0,chr_bank_0_0} <= {1'b0,prg_din};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
-						1: {chr_bank_1,chr_bank_1_0} <= {1'b0,prg_din};  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
-						2: chr_bank_2 <= prg_din;       // Select 1 KB CHR bank at PPU $1000-$13FF (or $0000-$03FF);
-						3: chr_bank_3 <= prg_din;       // Select 1 KB CHR bank at PPU $1400-$17FF (or $0400-$07FF);
-						4: chr_bank_4 <= prg_din;       // Select 1 KB CHR bank at PPU $1800-$1BFF (or $0800-$0BFF);
-						5: chr_bank_5 <= prg_din;       // Select 1 KB CHR bank at PPU $1C00-$1FFF (or $0C00-$0FFF);
-						6: prg_bank_0 <= prg_din;       // Select 8 KB PRG ROM bank at $8000-$9FFF (or $C000-$DFFF);
-						7: prg_bank_1 <= prg_din;       // Select 8 KB PRG ROM bank at $A000-$BFFF
-					endcase
-				end
-				3'b01_0: mirroring <= !prg_din[0];                   // Mirroring ($A000-$BFFE, even)
-				3'b01_1: {ram_enable, ram_protect, ram6_enable, ram6_protect} <= {{4{prg_din[7]}},{4{prg_din[6]}}, prg_din[5:4]}; // PRG RAM protect ($A001-$BFFF, odd)
-				3'b10_0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
-				3'b10_1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFF, odd)
-				3'b11_0: {irq_enable, irq_reg[0]} <= 2'b00;         // IRQ disable ($E000-$FFFE, even)
-				3'b11_1: irq_enable <= 1;                           // IRQ enable ($E001-$FFFF, odd)
-			endcase
-		end else if (!mapper112) begin
-			casez({prg_ain[14:13], prg_ain[1:0], mapper48})
-				5'b00_00_0: {mirroring, prg_bank_0[5:0]} <= prg_din[6:0] ^ 7'h40; // Select 8 KB PRG ROM bank at $8000-$9FFF
-				5'b00_00_1: prg_bank_0[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF
-				5'b00_01_?: prg_bank_1[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
-				5'b00_10_?: chr_bank_0 <= prg_din;  // Select 2 KB CHR bank at PPU $0000-$07FF
-				5'b00_11_?: chr_bank_1 <= prg_din;  // Select 2 KB CHR bank at PPU $0800-$0FFF
-				5'b01_00_?: chr_bank_2 <= prg_din;  // Select 1 KB CHR bank at PPU $1000-$13FF
-				5'b01_01_?: chr_bank_3 <= prg_din;  // Select 1 KB CHR bank at PPU $1800-$1BFF
-				5'b01_10_?: chr_bank_4 <= prg_din;  // Select 1 KB CHR bank at PPU $1800-$1BFF
-				5'b01_11_?: chr_bank_5 <= prg_din;  // Select 1 KB CHR bank at PPU $1C00-$1FFF
-
-				5'b10_00_1: irq_latch <= prg_din ^ 8'hFF;              // IRQ latch ($C000-$DFFC)
-				5'b10_01_1: {irq_reload, irq_reg} <= 8'b10000000;      // IRQ reload ($C001-$DFFD)
-				5'b10_10_1: irq_enable <= 1;                           // IRQ enable ($C002-$DFFE)
-				5'b10_11_1: irq_enable <= 0;                           // IRQ disable ($C003-$DFFF)
-
-				5'b11_00_1: mirroring <= !prg_din[6];  // Mirroring
-			endcase
-		end else begin
-			casez({prg_ain[14:13], prg_ain[0]})
-				3'b00_0: {bank_select} <= {prg_din[2:0]}; // Bank select ($8000-$9FFE)
-
-				3'b01_0: begin // Bank data ($A000-$BFFF)
-					case (bank_select)
-					0: prg_bank_0 <= prg_din;       // Select 8 KB PRG ROM bank at $8000-$9FFF (or $C000-$DFFF);
-					1: prg_bank_1 <= prg_din;       // Select 8 KB PRG ROM bank at $A000-$BFFF
-					2: chr_bank_0 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
-					3: chr_bank_1 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
-					4: chr_bank_2 <= prg_din;       // Select 1 KB CHR bank at PPU $1000-$13FF (or $0000-$03FF);
-					5: chr_bank_3 <= prg_din;       // Select 1 KB CHR bank at PPU $1400-$17FF (or $0400-$07FF);
-					6: chr_bank_4 <= prg_din;       // Select 1 KB CHR bank at PPU $1800-$1BFF (or $0800-$0BFF);
-					7: chr_bank_5 <= prg_din;       // Select 1 KB CHR bank at PPU $1C00-$1FFF (or $0C00-$0FFF);
-					endcase
-				end
-
-				3'b11_0: mirroring <= !prg_din[0];  // Mirroring ($E000-$FFFE)
+end else begin
+	if (ce) begin // M2
+		if (!regs_7e && prg_write && prg_ain[15]) begin
+			if (!mapper33 && !mapper48 && !mapper112) begin
+				casez({prg_ain[14:13], prg_reg_odd})
+					3'b00_0: {chr_a12_invert, prg_rom_bank_mode, ram6_enabled, bank_select} <= {prg_din[7:5], prg_din[2:0]}; // Bank select ($8000-$9FFE, even)
+					3'b00_1: begin // Bank data ($8001-$9FFF, odd)
+						case (bank_select)
+							0: {chr_bank_0,chr_bank_0_0} <= {1'b0,prg_din};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
+							1: {chr_bank_1,chr_bank_1_0} <= {1'b0,prg_din};  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
+							2: chr_bank_2 <= prg_din;       // Select 1 KB CHR bank at PPU $1000-$13FF (or $0000-$03FF);
+							3: chr_bank_3 <= prg_din;       // Select 1 KB CHR bank at PPU $1400-$17FF (or $0400-$07FF);
+							4: chr_bank_4 <= prg_din;       // Select 1 KB CHR bank at PPU $1800-$1BFF (or $0800-$0BFF);
+							5: chr_bank_5 <= prg_din;       // Select 1 KB CHR bank at PPU $1C00-$1FFF (or $0C00-$0FFF);
+							6: prg_bank_0 <= prg_din;       // Select 8 KB PRG ROM bank at $8000-$9FFF (or $C000-$DFFF);
+							7: prg_bank_1 <= prg_din;       // Select 8 KB PRG ROM bank at $A000-$BFFF
+						endcase
+					end
+					3'b01_0: mirroring <= !prg_din[0];                   // Mirroring ($A000-$BFFE, even)
+					3'b01_1: {ram_enable, ram_protect, ram6_enable, ram6_protect} <= {{4{prg_din[7]}},{4{prg_din[6]}}, prg_din[5:4]}; // PRG RAM protect ($A001-$BFFF, odd)
+					3'b10_0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
+					3'b10_1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFF, odd)
+					3'b11_0: {irq_enable, irq_reg[0]} <= 2'b00;         // IRQ disable ($E000-$FFFE, even)
+					3'b11_1: irq_enable <= 1;                           // IRQ enable ($E001-$FFFF, odd)
+				endcase
+			end else if (!mapper112) begin
+				casez({prg_ain[14:13], prg_ain[1:0], mapper48})
+					5'b00_00_0: {mirroring, prg_bank_0[5:0]} <= prg_din[6:0] ^ 7'h40; // Select 8 KB PRG ROM bank at $8000-$9FFF
+					5'b00_00_1: prg_bank_0[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF
+					5'b00_01_?: prg_bank_1[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
+					5'b00_10_?: chr_bank_0 <= prg_din;  // Select 2 KB CHR bank at PPU $0000-$07FF
+					5'b00_11_?: chr_bank_1 <= prg_din;  // Select 2 KB CHR bank at PPU $0800-$0FFF
+					5'b01_00_?: chr_bank_2 <= prg_din;  // Select 1 KB CHR bank at PPU $1000-$13FF
+					5'b01_01_?: chr_bank_3 <= prg_din;  // Select 1 KB CHR bank at PPU $1800-$1BFF
+					5'b01_10_?: chr_bank_4 <= prg_din;  // Select 1 KB CHR bank at PPU $1800-$1BFF
+					5'b01_11_?: chr_bank_5 <= prg_din;  // Select 1 KB CHR bank at PPU $1C00-$1FFF
+	
+					5'b10_00_1: irq_latch <= prg_din ^ 8'hFF;              // IRQ latch ($C000-$DFFC)
+					5'b10_01_1: {irq_reload, irq_reg} <= 8'b10000000;      // IRQ reload ($C001-$DFFD)
+					5'b10_10_1: irq_enable <= 1;                           // IRQ enable ($C002-$DFFE)
+					5'b10_11_1: irq_enable <= 0;                           // IRQ disable ($C003-$DFFF)
+	
+					5'b11_00_1: mirroring <= !prg_din[6];  // Mirroring
+				endcase
+			end else begin
+				casez({prg_ain[14:13], prg_ain[0]})
+					3'b00_0: {bank_select} <= {prg_din[2:0]}; // Bank select ($8000-$9FFE)
+	
+					3'b01_0: begin // Bank data ($A000-$BFFF)
+						case (bank_select)
+						0: prg_bank_0 <= prg_din;       // Select 8 KB PRG ROM bank at $8000-$9FFF (or $C000-$DFFF);
+						1: prg_bank_1 <= prg_din;       // Select 8 KB PRG ROM bank at $A000-$BFFF
+						2: chr_bank_0 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
+						3: chr_bank_1 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
+						4: chr_bank_2 <= prg_din;       // Select 1 KB CHR bank at PPU $1000-$13FF (or $0000-$03FF);
+						5: chr_bank_3 <= prg_din;       // Select 1 KB CHR bank at PPU $1400-$17FF (or $0400-$07FF);
+						6: chr_bank_4 <= prg_din;       // Select 1 KB CHR bank at PPU $1800-$1BFF (or $0800-$0BFF);
+						7: chr_bank_5 <= prg_din;       // Select 1 KB CHR bank at PPU $1C00-$1FFF (or $0C00-$0FFF);
+						endcase
+					end
+	
+					3'b11_0: mirroring <= !prg_din[0];  // Mirroring ($E000-$FFFE)
+				endcase
+			end
+	
+			if (mapper154)
+				mirroring <= !prg_din[6];
+			if (DxROM || mapper76 || mapper88)
+				mirroring <= flags[14]; // Hard-wired mirroring
+		end
+		else if (regs_7e && prg_write && prg_ain[15:4]==12'h7EF) begin
+			casez({prg_ain[3:0], mapper82})
+				5'b0000_?: chr_bank_0 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0000-$07FF
+				5'b0001_?: chr_bank_1 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0800-$0FFF
+				5'b0010_?: chr_bank_2 <= prg_din;  // Select 1 KB CHR bank at PPU $1000-$13FF
+				5'b0011_?: chr_bank_3 <= prg_din;  // Select 1 KB CHR bank at PPU $1800-$1BFF
+				5'b0100_?: chr_bank_4 <= prg_din;  // Select 1 KB CHR bank at PPU $1800-$1BFF
+				5'b0101_?: chr_bank_5 <= prg_din;  // Select 1 KB CHR bank at PPU $1C00-$1FFF
+				5'b011?_0: {mirroring} <= prg_din[0]; // Select Mirroing
+				5'b100?_0: {ram_enable[3], ram_protect[3]} <= {(prg_din==8'hA3),!(prg_din==8'hA3)};  // Enable RAM at $7F00-$7FFF
+				5'b0110_1: {chr_a12_invert,mirroring} <= prg_din[1:0]; // Select Mirroing
+				5'b0111_1: {ram_enable[0], ram_protect[0]} <= {(prg_din==8'hCA),!(prg_din==8'hCA)};  // Enable RAM at $6000-$67FF
+				5'b1000_1: {ram_enable[1], ram_protect[1]} <= {(prg_din==8'h69),!(prg_din==8'h69)};  // Enable RAM at $6F00-$6FFF
+				5'b1001_1: {ram_enable[2], ram_protect[2]} <= {(prg_din==8'h84),!(prg_din==8'h84)};  // Enable RAM at $7000-$73FF  //Using 6K; Require 5K instead?
+				5'b101?_0: prg_bank_0[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF
+				5'b110?_0: prg_bank_1[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
+				5'b111?_0: prg_bank_2[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $C000-$DFFF
+				5'b1010_1: prg_bank_0[5:0] <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $8000-$9FFF
+				5'b1011_1: prg_bank_1[5:0] <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $A000-$BFFF
+				5'b1100_1: prg_bank_2[5:0] <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $C000-$DFFF
 			endcase
 		end
-
-		if (mapper154)
-			mirroring <= !prg_din[6];
-		if (DxROM || mapper76 || mapper88)
-			mirroring <= flags[14]; // Hard-wired mirroring
-	end
-	else if (regs_7e && prg_write && prg_ain[15:4]==12'h7EF) begin
-		casez({prg_ain[3:0], mapper82})
-			5'b0000_?: chr_bank_0 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0000-$07FF
-			5'b0001_?: chr_bank_1 <= {1'b0,prg_din[7:1]};  // Select 2 KB CHR bank at PPU $0800-$0FFF
-			5'b0010_?: chr_bank_2 <= prg_din;  // Select 1 KB CHR bank at PPU $1000-$13FF
-			5'b0011_?: chr_bank_3 <= prg_din;  // Select 1 KB CHR bank at PPU $1800-$1BFF
-			5'b0100_?: chr_bank_4 <= prg_din;  // Select 1 KB CHR bank at PPU $1800-$1BFF
-			5'b0101_?: chr_bank_5 <= prg_din;  // Select 1 KB CHR bank at PPU $1C00-$1FFF
-			5'b011?_0: {mirroring} <= prg_din[0]; // Select Mirroing
-			5'b100?_0: {ram_enable[3], ram_protect[3]} <= {(prg_din==8'hA3),!(prg_din==8'hA3)};  // Enable RAM at $7F00-$7FFF
-			5'b0110_1: {chr_a12_invert,mirroring} <= prg_din[1:0]; // Select Mirroing
-			5'b0111_1: {ram_enable[0], ram_protect[0]} <= {(prg_din==8'hCA),!(prg_din==8'hCA)};  // Enable RAM at $6000-$67FF
-			5'b1000_1: {ram_enable[1], ram_protect[1]} <= {(prg_din==8'h69),!(prg_din==8'h69)};  // Enable RAM at $6F00-$6FFF
-			5'b1001_1: {ram_enable[2], ram_protect[2]} <= {(prg_din==8'h84),!(prg_din==8'h84)};  // Enable RAM at $7000-$73FF  //Using 6K; Require 5K instead?
-			5'b101?_0: prg_bank_0[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF
-			5'b110?_0: prg_bank_1[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
-			5'b111?_0: prg_bank_2[5:0] <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $C000-$DFFF
-			5'b1010_1: prg_bank_0[5:0] <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $8000-$9FFF
-			5'b1011_1: prg_bank_1[5:0] <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $A000-$BFFF
-			5'b1100_1: prg_bank_2[5:0] <= prg_din[7:2];  // Select 8 KB PRG ROM bank at $C000-$DFFF
-		endcase
+	
+		if (mapper268 && prg_write && ({mapper268_5k,prg_ain[15:12]}==5'h6 || {mapper268_5k,prg_ain[15:12]}==5'h15)) begin
+			if (prg_ain[2:0]==3'h2) begin
+				m268_reg[2][3:0] <= prg_din[3:0];
+				if (!gnrom_lock)
+					m268_reg[2][7:4] <= prg_din[7:4];
+			end else if ((prg_ain[2:1]!=2'b11) && !lockout) begin
+				m268_reg[prg_ain[2:0]] <= prg_din;
+			end
+		end
+	
+		// For Mapper 47
+		// $6000-7FFF:  [.... ...B]  Block select
+		if (prg_write && prg_is_ram)
+			mapper47_multicart <= prg_din[0];
+	
+		// For Mapper 37
+		// $6000-7FFF:  [.... .QBB]  Block select
+		if (prg_write && prg_is_ram)
+			mapper37_multicart <= prg_din[2:0];
+	
+		// Mapper 189
+		// $4120-7FFF:  [AAAA BBBB] A,B:  PRG Reg
+		if (prg_write && prg_ain[15:14] == 2'b01 && prg_ain[8])
+			mapper189_prgsel <= (prg_din[7:4] | prg_din[3:0]); // Select 32 KB PRG ROM bank at $8000-$FFFF
 	end
 
-	if (mapper268 && prg_write && ({mapper268_5k,prg_ain[15:12]}==5'h6 || {mapper268_5k,prg_ain[15:12]}==5'h15)) begin
-		if (prg_ain[2:0]==3'h2) begin
-			m268_reg[2][3:0] <= prg_din[3:0];
-			if (!gnrom_lock)
-				m268_reg[2][7:4] <= prg_din[7:4];
-		end else if ((prg_ain[2:1]!=2'b11) && !lockout) begin
-			m268_reg[prg_ain[2:0]] <= prg_din;
+	if (m2_inv) begin // Inverted M2
+		irq_reg[6:1] <= irq_reg[5:0]; // 4 cpu cycle delay for mapper 48
+
+		if (!acclaim) begin // nintendo mapper 'cools down' for 3 inverted M2 cycles
+			a12_ctr <= (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
 		end
 	end
 
-	// For Mapper 47
-	// $6000-7FFF:  [.... ...B]  Block select
-	if (prg_write && prg_is_ram)
-		mapper47_multicart <= prg_din[0];
+	if (~paused) begin
+		// Trigger IRQ counter on rising edge of chr_ain[12]
+		// All MMC3A's and non-Sharp MMC3B's will generate only a single IRQ when $C000 is $00.
+		// This is because this version of the MMC3 generates IRQs when the scanline counter is decremented to 0.
+		// In addition, writing to $C001 with $C000 still at $00 will result in another single IRQ being generated.
+		// In the community, this is known as the "alternate" or "old" behavior.
+		// All MMC3C's and Sharp MMC3B's will generate an IRQ on each scanline while $C000 is $00.
+		// This is because this version of the MMC3 generates IRQs when the scanline counter is equal to 0.
+		// In the community, this is known as the "normal" or "new" behavior.
 
-	// For Mapper 37
-	// $6000-7FFF:  [.... .QBB]  Block select
-	if (prg_write && prg_is_ram)
-		mapper37_multicart <= prg_din[2:0];
-
-	// Mapper 189
-	// $4120-7FFF:  [AAAA BBBB] A,B:  PRG Reg
-	if (prg_write && prg_ain[15:14] == 2'b01 && prg_ain[8])
-		mapper189_prgsel <= (prg_din[7:4] | prg_din[3:0]); // Select 32 KB PRG ROM bank at $8000-$FFFF
-
-	// Trigger IRQ counter on rising edge of chr_ain[12]
-	// All MMC3A's and non-Sharp MMC3B's will generate only a single IRQ when $C000 is $00.
-	// This is because this version of the MMC3 generates IRQs when the scanline counter is decremented to 0.
-	// In addition, writing to $C001 with $C000 still at $00 will result in another single IRQ being generated.
-	// In the community, this is known as the "alternate" or "old" behavior.
-	// All MMC3C's and Sharp MMC3B's will generate an IRQ on each scanline while $C000 is $00.
-	// This is because this version of the MMC3 generates IRQs when the scanline counter is equal to 0.
-	// In the community, this is known as the "normal" or "new" behavior.
-
-	last_a12 <= chr_ain_o[12];
-	if ((acclaim && (!last_a12 && chr_ain_o[12]) && (a12_ctr == 6)) ||
-		(~acclaim && chr_ain_o[12] && (a12_ctr == 0))) begin
-		counter <= new_counter;
-
-		// MMC Scanline
-		if ( (!mmc3_alt_behavior || counter != 0 || irq_reload) && new_counter == 0 && irq_enable && irq_support) begin
-			irq_reg[0] <= 1;
+		last_a12 <= chr_ain_o[12];
+		if ((acclaim && (!last_a12 && chr_ain_o[12]) && (a12_ctr == 6)) ||
+			(~acclaim && (!last_a12 && chr_ain_o[12]) && (a12_ctr == 0))) begin
+			counter <= new_counter;
+	
+			// MMC Scanline
+			if ( (!mmc3_alt_behavior || counter != 0 || irq_reload) && new_counter == 0 && irq_enable && irq_support) begin
+				irq_reg[0] <= 1;
+			end
+			irq_reload <= 0;
 		end
-		irq_reload <= 0;
-	end
 
-	if (acclaim) begin
-		if (!last_a12 && chr_ain_o[12]) // acclaim mapper counts down 8 pulses, or 16 edges total
-			a12_ctr <= (a12_ctr != 0) ? a12_ctr - 4'b0001 : 4'b0111;
-		if (prg_ain == 16'hC001 && prg_write) a12_ctr <= 4'b0111;
-	end else begin // nintendo mapper 'cools down' for 16 low cycles
-		a12_ctr <= chr_ain_o[12] ? 4'b1111 : (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
+		if (acclaim) begin
+			if (!last_a12 && chr_ain_o[12]) // acclaim mapper counts down 8 pulses, or 16 edges total
+				a12_ctr <= (a12_ctr != 0) ? a12_ctr - 4'b0001 : 4'b0111;
+			if (prg_ain == 16'hC001 && prg_write) a12_ctr <= 4'b0111;
+		end else if (chr_ain_o[12]) // Nintendo mapper cooldown resets on a12
+			a12_ctr <= 4'b0011;
 	end
 end
 
@@ -820,7 +832,9 @@ module Mapper165(
 	input [15:0] audio_in,    // Inverted audio from APU
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
-	input [13:0] chr_ain_o
+	input [13:0] chr_ain_o,
+	input        m2_inv,
+	input        paused
 );
 
 assign prg_aout_b   = enable ? prg_aout : 22'hZ;
@@ -859,6 +873,7 @@ reg latch_0, latch_1;
 
 wire [7:0] new_counter = (counter == 0 || irq_reload) ? irq_latch : counter - 1'd1;
 reg [3:0] a12_ctr;
+reg last_a12 = 0;
 
 always @(posedge clk)
 if (~enable) begin
@@ -873,50 +888,56 @@ if (~enable) begin
 	{chr_bank_0, chr_bank_1, chr_bank_2, chr_bank_4} <= 0;
 	{prg_bank_0, prg_bank_1} <= 0;
 	a12_ctr <= 0;
-end else if (ce) begin
-	if (prg_write && prg_ain[15]) begin
-		case({prg_ain[14], prg_ain[13], prg_ain[0]})
-			3'b00_0: {chr_a12_invert, prg_rom_bank_mode, bank_select} <= {prg_din[7], prg_din[6], prg_din[2:0]}; // Bank select ($8000-$9FFE, even)
-			3'b00_1: begin // Bank data ($8001-$9FFF, odd)
-				case (bank_select)
-					0: chr_bank_0 <= {prg_din[7:1], 1'b0};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
-					1: chr_bank_1 <= {prg_din[7:1], 1'b0};  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
-					2: chr_bank_2 <= prg_din;       // Select 1 KB CHR bank at PPU $1000-$13FF (or $0000-$03FF);
-					3: ;                            // Select 1 KB CHR bank at PPU $1400-$17FF (or $0400-$07FF);
-					4: chr_bank_4 <= prg_din;       // Select 1 KB CHR bank at PPU $1800-$1BFF (or $0800-$0BFF);
-					5: ;                            // Select 1 KB CHR bank at PPU $1C00-$1FFF (or $0C00-$0FFF);
-					6: prg_bank_0 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF (or $C000-$DFFF);
-					7: prg_bank_1 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
-				endcase
-			end
-			3'b01_0: mirroring <= prg_din[0];                   // Mirroring ($A000-$BFFE, even)
-			3'b01_1: {ram_enable, ram_protect} <= prg_din[7:6]; // PRG RAM protect ($A001-$BFFF, odd)
-			3'b10_0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
-			3'b10_1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFF, odd)
-			3'b11_0: begin irq_enable <= 0; irq <= 0; end       // IRQ disable ($E000-$FFFE, even)
-			3'b11_1: irq_enable <= 1;                           // IRQ enable ($E001-$FFFF, odd)
-		endcase
+	last_a12 <= 0;
+end else begin
+	if (ce) begin
+		if (prg_write && prg_ain[15]) begin
+			case({prg_ain[14], prg_ain[13], prg_ain[0]})
+				3'b00_0: {chr_a12_invert, prg_rom_bank_mode, bank_select} <= {prg_din[7], prg_din[6], prg_din[2:0]}; // Bank select ($8000-$9FFE, even)
+				3'b00_1: begin // Bank data ($8001-$9FFF, odd)
+					case (bank_select)
+						0: chr_bank_0 <= {prg_din[7:1], 1'b0};  // Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
+						1: chr_bank_1 <= {prg_din[7:1], 1'b0};  // Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
+						2: chr_bank_2 <= prg_din;       // Select 1 KB CHR bank at PPU $1000-$13FF (or $0000-$03FF);
+						3: ;                            // Select 1 KB CHR bank at PPU $1400-$17FF (or $0400-$07FF);
+						4: chr_bank_4 <= prg_din;       // Select 1 KB CHR bank at PPU $1800-$1BFF (or $0800-$0BFF);
+						5: ;                            // Select 1 KB CHR bank at PPU $1C00-$1FFF (or $0C00-$0FFF);
+						6: prg_bank_0 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $8000-$9FFF (or $C000-$DFFF);
+						7: prg_bank_1 <= prg_din[5:0];  // Select 8 KB PRG ROM bank at $A000-$BFFF
+					endcase
+				end
+				3'b01_0: mirroring <= prg_din[0];                   // Mirroring ($A000-$BFFE, even)
+				3'b01_1: {ram_enable, ram_protect} <= prg_din[7:6]; // PRG RAM protect ($A001-$BFFF, odd)
+				3'b10_0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
+				3'b10_1: irq_reload <= 1;                           // IRQ reload ($C001-$DFFF, odd)
+				3'b11_0: begin irq_enable <= 0; irq <= 0; end       // IRQ disable ($E000-$FFFE, even)
+				3'b11_1: irq_enable <= 1;                           // IRQ enable ($E001-$FFFF, odd)
+			endcase
+		end
 	end
 
-	// Trigger IRQ counter on rising edge of chr_ain[12]
-	// All MMC3A's and non-Sharp MMC3B's will generate only a single IRQ when $C000 is $00.
-	// This is because this version of the MMC3 generates IRQs when the scanline counter is decremented to 0.
-	// In addition, writing to $C001 with $C000 still at $00 will result in another single IRQ being generated.
-	// In the community, this is known as the "alternate" or "old" behavior.
-	// All MMC3C's and Sharp MMC3B's will generate an IRQ on each scanline while $C000 is $00.
-	// This is because this version of the MMC3 generates IRQs when the scanline counter is equal to 0.
-	// In the community, this is known as the "normal" or "new" behavior.
-	if (chr_ain_o[12] && a12_ctr == 0) begin
-		counter <= new_counter;
+	if (m2_inv) begin // Inverted M2
+		// nintendo mapper 'cools down' for 3 inverted M2 cycles
+		a12_ctr <= (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
+	end
 
-		if ((counter != 0 || irq_reload) && new_counter == 0 && irq_enable) begin
-			irq <= 1;
+	if (~paused) begin
+		// Trigger IRQ counter on rising edge of chr_ain[12]
+
+		last_a12 <= chr_ain_o[12];
+		if ((!last_a12 && chr_ain_o[12]) && (a12_ctr == 0)) begin
+			counter <= new_counter;
+	
+			// MMC Scanline
+			if ( (counter != 0 || irq_reload) && new_counter == 0 && irq_enable) begin
+				irq <= 1;
+			end
+			irq_reload <= 0;
 		end
 
-		irq_reload <= 0;
+		if (chr_ain_o[12]) // Nintendo mapper cooldown resets on a12
+			a12_ctr <= 4'b0011;
 	end
-
-	a12_ctr <= chr_ain_o[12] ? 4'b1111 : (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
 end
 
 // The PRG bank to load. Each increment here is 8kb. So valid values are 0..63.
@@ -993,6 +1014,8 @@ module Mapper413 (
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 	input [13:0] chr_ain_o,
+	input        m2_inv,
+	input        paused,
 	output [2:0] prg_aoute    // Extended prg address out bits
 );
 
@@ -1023,6 +1046,7 @@ assign irq = irq_reg[0];
 
 wire [7:0] new_counter = (counter == 0 || irq_reload) ? irq_latch : counter - 1'd1;
 reg [3:0] a12_ctr;
+reg last_a12 = 0;
 
 reg misc_inc;
 reg old_misc_inc;
@@ -1047,44 +1071,52 @@ if (~enable) begin
 	misc_inc <= 0;
 	old_misc_inc <= 0;
 	a12_ctr <= 0;
-end else if (ce) begin
-	irq_reg[4:1] <= irq_reg[3:0]; // 4 cycle delay
-	if (prg_write && prg_ain[15]) begin
-		casez(prg_ain[14:12])
-			3'b000: irq_latch <= prg_din;                      // IRQ latch $8000-8FFF (mmc3=$C000-$DFFE, even)
-			3'b001: irq_reload <= 1;                           // IRQ reload $9000-9FFF (mmc3=$C001-$DFFF, odd)
-			3'b010: begin irq_enable <= 0; irq_reg[0] <= 0; end// IRQ disable $A000-AFFF (mmc3=$E000-$FFFE, even)
-			3'b011: irq_enable <= 1;                           // IRQ enable $B000-BFFF (mmc3=$E001-$FFFF, odd)
-			3'b100: prg_amisc <= {prg_amisc[21:0], prg_din[7]};// Misc Address (shift left 1, insert MSB)
-			3'b101: misc_ctrl <= prg_din[1];                   // Misc Control (& 0x2)
-			3'b11?: bank_reg[prg_din[7:6]] <= prg_din[5:0];    // Bank select din[7:6] ($E000-$EFFE)
-		endcase
-	end
-
-	misc_inc <= 0;
-	old_misc_inc <= misc_inc;
-	if (prg_read && prg_is_misc)
-		misc_inc <= 1;
-	if (old_misc_inc && !misc_inc && misc_ctrl)
-		prg_amisc <= prg_amisc + 23'd1;
-
-	// Trigger IRQ counter on rising edge of chr_ain[12]
-	// All MMC3C's and Sharp MMC3B's will generate an IRQ on each scanline while $C000 is $00.
-	// This is because this version of the MMC3 generates IRQs when the scanline counter is equal to 0.
-	// In the community, this is known as the "normal" or "new" behavior.
-
-	if (chr_ain_o[12] && (a12_ctr == 0)) begin
-		counter <= new_counter;
-
-		// MMC Scanline
-		if (new_counter == 0 && irq_enable) begin
-			irq_reg[0] <= 1;
+	last_a12 <= 0;
+end else begin
+	if (ce) begin
+		if (prg_write && prg_ain[15]) begin
+			casez(prg_ain[14:12])
+				3'b000: irq_latch <= prg_din;                      // IRQ latch $8000-8FFF (mmc3=$C000-$DFFE, even)
+				3'b001: irq_reload <= 1;                           // IRQ reload $9000-9FFF (mmc3=$C001-$DFFF, odd)
+				3'b010: begin irq_enable <= 0; irq_reg[0] <= 0; end// IRQ disable $A000-AFFF (mmc3=$E000-$FFFE, even)
+				3'b011: irq_enable <= 1;                           // IRQ enable $B000-BFFF (mmc3=$E001-$FFFF, odd)
+				3'b100: prg_amisc <= {prg_amisc[21:0], prg_din[7]};// Misc Address (shift left 1, insert MSB)
+				3'b101: misc_ctrl <= prg_din[1];                   // Misc Control (& 0x2)
+				3'b11?: bank_reg[prg_din[7:6]] <= prg_din[5:0];    // Bank select din[7:6] ($E000-$EFFE)
+			endcase
 		end
-		irq_reload <= 0;
+	
+		misc_inc <= 0;
+		old_misc_inc <= misc_inc;
+		if (prg_read && prg_is_misc)
+			misc_inc <= 1;
+		if (old_misc_inc && !misc_inc && misc_ctrl)
+			prg_amisc <= prg_amisc + 23'd1;
 	end
 
-	// nintendo mapper 'cools down' for 16 low cycles
-	a12_ctr <= chr_ain_o[12] ? 4'b1111 : (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
+	if (m2_inv) begin // Inverted M2
+		// nintendo mapper 'cools down' for 3 inverted M2 cycles
+		a12_ctr <= (a12_ctr != 0) ? a12_ctr - 4'b0001 : a12_ctr;
+		irq_reg[4:1] <= irq_reg[3:0]; // 1 cpu cycle delay ??? what is this for
+	end
+
+	if (~paused) begin
+		// Trigger IRQ counter on rising edge of chr_ain[12]
+
+		last_a12 <= chr_ain_o[12];
+		if ((!last_a12 && chr_ain_o[12]) && (a12_ctr == 0)) begin
+			counter <= new_counter;
+	
+			// MMC Scanline
+			if ( (counter != 0 || irq_reload) && new_counter == 0 && irq_enable) begin
+				irq_reg[0] <= 1;
+			end
+			irq_reload <= 0;
+		end
+
+		if (chr_ain_o[12]) // Nintendo mapper cooldown resets on a12
+			a12_ctr <= 4'b0011;
+	end
 end
 
 reg [5:0] prgsel;
