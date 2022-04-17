@@ -290,7 +290,7 @@ wire pal_video = |status[24:23];
 wire hide_overscan = status[4] && ~pal_video;
 wire [3:0] palette2_osd = status[49:47];
 wire joy_swap = status[9] ^ (raw_serial || piano); // Controller on port 2 for Miracle Piano/SNAC
-wire fds_swap_invert = status[16];
+wire fds_auto_eject = ~status[16];
 wire ext_audio = ~status[30];
 wire int_audio = ~status[31];
 
@@ -546,15 +546,6 @@ wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], j
 wire mic_button = joyA[9] | joyB[9];
 wire fds_btn = joyA[8] | joyB[8];
 
-reg [22:0] clkcount;
-always@(posedge clk) begin
-	if (nes_ce == 3) begin
-		clkcount<=clkcount+1'd1;
-	end
-end
-
-wire fds_eject = swap_delay[2] | fds_swap_invert ? fds_btn : (clkcount[22] | fds_btn);
-
 reg [1:0] nes_ce;
 
 wire raw_serial = status[26];
@@ -767,8 +758,7 @@ wire bram_en;
 wire trigger;
 wire light;
 
-wire [1:0] diskside_req;
-reg [1:0] diskside;
+wire [1:0] diskside;
 reg       diskside_info;
 always @(posedge clk) begin
 	reg [1:0] old_diskside;
@@ -829,10 +819,12 @@ NES nes (
 	.joypad_clock    (joypad_clock),
 	.joypad1_data    (joypad1_data),
 	.joypad2_data    (joypad2_data),
-	.diskside_req    (diskside_req),
+
 	.diskside        (diskside),
 	.fds_busy        (fds_busy),
-	.fds_eject       (fds_eject),
+	.fds_eject       (fds_btn),
+	.fds_auto_eject  (fds_auto_eject),
+	.max_diskside    (max_diskside),
 
 	// Memory transactions
 	.cpumem_addr     (cpu_addr ),
@@ -908,17 +900,13 @@ always @(posedge clk) begin
 	end
 end
 
-dpram #("rtl/fdspatch.mif", 13) biospatch
+spram #(.addr_width(13)) fds_bios
 (
-	.clock_a(clk),
-	.address_a(ioctl_addr[12:0]),
-	.wren_a(bios_write),
-	.data_a(bios_data ^ loader_write_data),
-	.q_a(),
-
-	.clock_b(clk),
-	.address_b(loader_addr[12:0]),
-	.q_b(bios_data)
+	.clock(clk),
+	.address(loader_addr[12:0]),
+	.wren(bios_write),
+	.data(loader_write_data),
+	.q(bios_data)
 );
 
 wire [7:0] nsf_data;
@@ -1174,14 +1162,14 @@ end
 
 reg bk_ena = 0;
 reg old_downloading = 0;
-reg [1:0] last_diskside = 2'd3;
+reg [1:0] max_diskside = 2'd3;
 always @(posedge clk) begin
 	old_downloading <= downloading;
 	if(~old_downloading & downloading) bk_ena <= 0;
 
 	//Save file always mounted in the end of downloading state.
 	if(downloading && img_mounted && !img_readonly) bk_ena <= 1;
-	if(~bk_ena && loader_write_triggered) last_diskside <= loader_addr_mem[17:16];
+	if(~bk_ena && loader_write_triggered) max_diskside <= loader_addr_mem[17:16];
 end
 
 wire bk_load    = status[6];
@@ -1191,12 +1179,8 @@ reg  bk_loading_req = 0;
 reg  bk_request = 0;
 wire bk_busy = (bk_state == S_COPY);
 reg  fds_busy;
-reg  old_fds_btn;
-reg [2:0] swap_delay;
-reg [1:0] diskside_btn;
+
 wire [8:0] save_sz = fds ? rom_sz[17:9] : bram_en ? 9'd3 : (prg_nvram == 4'd7) ? 9'd15 : 9'd63;
-wire [1:0] diskside_req_use = fds_swap_invert ? diskside_btn : diskside_req;
-wire [1:0] next_btn_diskside = (last_diskside == diskside_btn) ? 2'd0 : diskside_btn + 2'd1;
 
 typedef enum bit [1:0] { S_IDLE, S_COPY } mystate;
 mystate bk_state = S_IDLE;
@@ -1211,26 +1195,16 @@ always @(posedge clk) begin : save_block
 	old_save <= bk_save & bk_ena;
 	old_ack  <= sd_ack;
 	fds_busy <= (bk_state != S_IDLE) || bk_request;
-	old_fds_btn <= fds_btn;
 
 	if(~old_ack & sd_ack) {sd_rd, sd_wr} <= 0;
-	if (swap_delay == {1'b1, clkcount[22:21]}) begin
-		swap_delay[2] <= 0;
-	end
-	if(~old_fds_btn & fds_btn & ~fds_busy & ~swap_delay[2]) diskside_btn <= next_btn_diskside;
 
 	if (downloading) begin
-		diskside <= 2'd0;
 		bk_state <= S_IDLE;
 		bk_request <= 0;
-		diskside_btn <= 2'd0;
 	end else if(bk_state == S_IDLE) begin
 		if((~old_load & bk_load) | (~old_save & bk_save)) begin
 			bk_loading <= bk_load;
 			bk_request <= 1;
-		end else if((diskside_req_use != diskside) && ~downloading && ~bk_request && fds) begin
-			diskside <= diskside_req_use;
-			swap_delay <= {1'b1, ~clkcount[22:21]};
 		end
 		if(old_downloading & ~downloading & |img_size & bk_ena) begin
 			bk_loading <= 1;
