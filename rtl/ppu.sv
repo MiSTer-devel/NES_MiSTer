@@ -1424,7 +1424,7 @@ PaletteRam palette_ram(
 	.addr  (pram_addr), // Read addr
 	.din   (din[5:0]),  // Value to write
 	.dout  (color2),    // Output color
-	.write (write && (ain == 7) && is_pal_address), // Condition for writing
+	.write (write && (ain == 7) && is_pal_address && ~is_rendering), // Condition for writing
 	// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ), 
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),
