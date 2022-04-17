@@ -545,7 +545,6 @@ wire chr_read, chr_write, chr_read_ex;       // If PPU reads/writes from VRAM
 wire [13:0] chr_addr, chr_addr_ex;           // Address PPU accesses in VRAM
 wire [7:0] chr_from_ppu;        // Data from PPU to VRAM
 wire [7:0] chr_to_ppu;
-wire [19:0] mapper_ppu_flags;   // PPU flags for mapper cheating
 wire [8:0] ppu_cycle;
 wire [8:0] scanline_ppu;
 assign cycle = use_fake_h ? 9'd340 : (corepause_active) ? cycle_paused : ppu_cycle;
@@ -572,7 +571,6 @@ PPU ppu(
 	.vram_dout        (chr_from_ppu),
 	.scanline         (scanline_ppu),
 	.cycle            (ppu_cycle),
-	.mapper_ppu_flags (mapper_ppu_flags),
 	.emphasis         (emphasis),
 	.short_frame      (skip_pixel),
 	.extra_sprites    (ex_sprites),
@@ -618,8 +616,10 @@ cart_top multi_mapper (
 	.clk               (clk),
 	.reset             (reset_noSS),
 	.flags             (mapper_flags),            // iNES header data (use 0 while loading)
+	.paused            (freeze_clocks),
 	// Cart pins (slightly abstracted)
 	.ce                (cart_ce & ~reset_noSS),   // M2 (held in high impedance during reset)
+	.cpu_ce            (cpu_ce),                  // Serves as M2 Inverted
 	.prg_ain           (prg_addr),                // CPU Address in (a15 abstracted from ROMSEL)
 	.prg_read          (prg_read),                // CPU RnW split
 	.prg_write         (prg_write),               // CPU RnW split
@@ -652,8 +652,6 @@ cart_top multi_mapper (
 	.mapper_ovr        (bram_override),
 	// Cheats
 	.prg_from_ram      (from_data_bus),           // Hacky cpu din <= get rid of this!
-	.ppuflags          (mapper_ppu_flags),        // Cheat for MMC5
-	.ppu_ce            (ppu_ce),                  // PPU Clock (cheat for MMC5/2/4)
 	// Behavior helper flags
 	.has_chr_dout      (has_chr_from_ppu_mapper), // Output specific data for CHR rather than from SDRAM
 	.prg_bus_write     (prg_bus_write),           // PRG data driven to bus

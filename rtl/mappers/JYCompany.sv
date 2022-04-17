@@ -76,7 +76,7 @@ module JYCompany(
 	inout [15:0] audio_b,     // Mixed audio output
 	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
 	// Special ports
-	input        ppu_ce,
+	input        paused,
 	input [13:0] chr_ain_o,
 		// savestates              
 	input       [63:0]  SaveStateBus_Din,
@@ -220,7 +220,7 @@ always @(posedge clk) begin
 		endcase
 	end
 	
-	if (ppu_ce) old_a12 <= chr_ain_o[12];
+	if (~paused) old_a12 <= chr_ain_o[12];
 
 	if (irq_source && irq_enable && (irq_mode[7] != irq_mode[6])) begin
 		irq_prescalar <= irq_mode[6] ? (irq_prescalar + 8'd1) : (irq_prescalar - 8'd1);
@@ -248,8 +248,8 @@ end
 always @* begin
 	case(irq_mode[1:0])
 		2'b00: irq_source = ce;
-		2'b01: irq_source = ppu_ce && chr_ain_o[12] && !old_a12;
-		2'b10: irq_source = ppu_ce && chr_read;
+		2'b01: irq_source = ~paused && chr_ain_o[12] && !old_a12;
+		2'b10: irq_source = ~paused && chr_read;
 		2'b11: irq_source = ce && prg_write;
 	endcase
 end
@@ -367,7 +367,7 @@ if (~enable) begin
 	chr_latch <= 2'b00;
 end else if (SaveStateBus_load) begin
 	chr_latch <= SS_MAP6[11:10];
-end else if (ppu_ce && chr_read) begin
+end else if (~paused && chr_read) begin
 	chr_latch[chr_ain_o[12]] <= outer_bank[7] && (((chr_ain_o & 14'h2ff8) == 14'h0fd8) ? 1'd0 : ((chr_ain_o & 14'h2ff8) == 14'h0fe8) ? 1'd1 : chr_latch[chr_ain_o[12]]);
 end
 wire [2:0] chr_reg;

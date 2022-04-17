@@ -1084,7 +1084,6 @@ module PPU(
 	output  [7:0] vram_dout,
 	output  [8:0] scanline,
 	output  [8:0] cycle,
-	output [19:0] mapper_ppu_flags,
 	output reg [2:0] emphasis,
 	output        short_frame,
 	input         extra_sprites,
@@ -1392,8 +1391,9 @@ always_comb begin
 			vram_r_ex = use_ex && extra_sprites;
 		else
 			vram_r_ex = 0;
-
-		if (cycle[2:1] == 0 || at_last_cycle_group)
+		if (cycle == 340)
+			vram_a = {1'b0, bg_patt, bg_name_table, cycle[1], loopy[14:12]}; // Pattern table override
+		else if (cycle[2:1] == 0 || at_last_cycle_group)
 			vram_a = {2'b10, loopy[11:0]};                                   // Name Table
 		else if (cycle[2:1] == 1)
 			vram_a = {2'b10, loopy[11:10], 4'b1111, loopy[9:7], loopy[4:2]}; // Attribute table
@@ -1610,8 +1610,5 @@ always @(posedge clk) begin
 end
 
 assign dout = latched_dout;
-
-
-assign mapper_ppu_flags = {scanline, cycle, obj_size, is_rendering};
 
 endmodule  // PPU

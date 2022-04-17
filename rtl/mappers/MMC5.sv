@@ -28,7 +28,7 @@ module MMC5(
 	input  [7:0] chr_din,     // CHR Data in
 	input        chr_write,   // CHR Write
 	inout  [7:0] chr_dout_b,  // chr data (non standard)
-	input        ppu_ce,
+	input        paused,
 	// savestates              
 	input       [63:0]  SaveStateBus_Din,
 	input       [ 9:0]  SaveStateBus_Adr,
@@ -217,7 +217,7 @@ always @(posedge clk) begin
 	// Mode 2 - Readable and writable
 	// Mode 3 - Read-only
 	if (extended_ram_mode != 3) begin
-		if (ppu_ce && !ppu_in_frame && !extended_ram_mode[1] && chr_write && (mirrbits == 2) && chr_ain[13]) begin
+		if (~paused && !ppu_in_frame && !extended_ram_mode[1] && chr_write && (mirrbits == 2) && chr_ain[13]) begin
 			ram_addrA <= chr_ain[9:0];
 			ram_dataA <= chr_din;
 			ram_wrenA <= 1'b1;

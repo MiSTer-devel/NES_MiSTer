@@ -17,10 +17,10 @@
 
 module cart_top (
 	input             clk,
-	input             ce,
-	input             ppu_ce,
+	input             ce,             // M2
+	input             cpu_ce,         // CPU Phi1 clock (several mappers use m2 inverted)
+	input             paused,         // This indicates the core is paused so anything using the master clock won't get messed up
 	input             reset,
-	input      [19:0] ppuflags,       // Misc flags from PPU for MMC5 cheating
 	input      [63:0] flags,          // Misc flags from ines header {prg_size(3), chr_size(3), mapper(8)}
 	input      [15:0] prg_ain,        // Better known as "CPU Address in"
 	output reg [24:0] prg_aout,       // PRG Input / Output Address Lines ([25:22] extended Lines [Misc ROM])
@@ -277,7 +277,7 @@ Mapper32 map32(
 //*****************************************************************************//
 MMC2 mmc2(
 	.clk        (clk),
-	.ce         (ppu_ce), // PPU_CE
+	.ce         (ce),
 	.enable     (me[9]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
@@ -299,6 +299,7 @@ MMC2 mmc2(
 	.audio_b    (audio_out_b),
 	// Special ports
 	.chr_ain_o  (chr_ain_orig),
+	.paused     (paused),
 	// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ), 
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),
@@ -322,7 +323,7 @@ wire mmc3_en = me[118] | me[119] | me[47] | me[206] | me[112] | me[88] | me[154]
 
 MMC3 mmc3 (
 	.clk        (clk),
-	.ce         (ppu_ce), // PPU CE
+	.ce         (ce),
 	.enable     (mmc3_en),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
@@ -344,6 +345,8 @@ MMC3 mmc3 (
 	.audio_b    (audio_out_b),
 	// Special ports
 	.chr_ain_o  (chr_ain_orig),
+	.m2_inv     (cpu_ce),
+	.paused     (paused),
 	// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ), 
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),
@@ -362,7 +365,7 @@ MMC3 mmc3 (
 //*****************************************************************************//
 MMC4 mmc4(
 	.clk        (clk),
-	.ce         (ppu_ce), // PPU_CE
+	.ce         (ce),
 	.enable     (me[10]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
@@ -384,6 +387,7 @@ MMC4 mmc4(
 	.audio_b    (audio_out_b),
 	// Special ports
 	.chr_ain_o  (chr_ain_orig),
+	.paused     (paused),
 	// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ), 
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),
@@ -428,7 +432,7 @@ MMC5 mmc5(
 	.chr_din    (chr_din),
 	.chr_write  (chr_write),
 	.chr_dout_b (chr_dout_b),
-	.ppu_ce     (ppu_ce),
+	.paused     (paused),
 		// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ), 
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),
@@ -1221,7 +1225,7 @@ Mapper111 map111(
 //*****************************************************************************//
 Mapper165 map165(
 	.clk        (clk),
-	.ce         (ppu_ce), // PPU_CE
+	.ce         (ce),
 	.enable     (me[165]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
@@ -1242,7 +1246,9 @@ Mapper165 map165(
 	.audio_in   (audio_in),
 	.audio_b    (audio_out_b),
 	// Special ports
-	.chr_ain_o  (chr_ain_orig)
+	.chr_ain_o  (chr_ain_orig),
+	.m2_inv     (cpu_ce),
+	.paused     (paused)
 );
 
 //*****************************************************************************//
@@ -1623,7 +1629,7 @@ VRC5 vrc5(
 	.chr_din    (chr_din),
 	.chr_write  (chr_write),
 	.chr_dout_b (chr_dout_b),
-	.ppu_ce     (ppu_ce),
+	.paused     (paused),
 	// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ), 
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),
@@ -1810,8 +1816,7 @@ Nanjing map163(
 	.audio_in   (audio_in),
 	.audio_b    (audio_out_b),
 	// Special Ports
-	.ppu_ce     (ppu_ce),
-	.ppuflags   (ppuflags)
+	.paused     (paused)
 );
 
 
@@ -1988,7 +1993,7 @@ JYCompany jycompany(
 	.audio_in   (audio_in),
 	.audio_b    (audio_out_b),
 	// Special ports
-	.ppu_ce     (ppu_ce),
+	.paused     (paused),
 	.chr_ain_o  (chr_ain_orig),
 	// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ), 
@@ -2075,7 +2080,7 @@ Mapper225 map225(
 //*****************************************************************************//
 Mapper413 map413 (
 	.clk        (clk),
-	.ce         (ppu_ce), // PPU CE
+	.ce         (ce),
 	.enable     (me[413]),
 	.flags      (flags),
 	.prg_ain    (prg_ain),
@@ -2097,7 +2102,9 @@ Mapper413 map413 (
 	.audio_b    (audio_out_b),
 	// Special ports
 	.chr_ain_o  (chr_ain_orig),
-	.prg_aoute  (prg_aoute_m413)
+	.prg_aoute  (prg_aoute_m413),
+	.m2_inv     (cpu_ce),
+	.paused     (paused)
 );
 
 //*****************************************************************************//
