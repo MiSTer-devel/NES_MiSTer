@@ -78,7 +78,7 @@ always @(posedge clk) begin
 			end
 	
 			// Vertical Increment
-			if (cycle == 255) begin
+			if (cycle == 251) begin
 				loopy_v[14:12] <= loopy_v[14:12] + 1'd1;
 				if (loopy_v[14:12] == 7) begin
 					if (loopy_v[9:5] == 29) begin
