@@ -358,7 +358,7 @@ always @(posedge clk) begin
 		last_chr_a13       <= SS_MAP5[   61];
 	end else begin
 
-		if (~last_chr_read & chr_read) begin
+		if (~paused & ~last_chr_read & chr_read) begin
 			ppu_last_nt_addr <= chr_ain_o[11:0];
 
 			// Detect 3 PPU NT reads ($2xxx) from the same address
@@ -452,13 +452,15 @@ always @(posedge clk) begin
 			end
 		end
 
-		last_ppu_in_frame <= ppu_in_frame;
-		if (last_ppu_in_frame & ~ppu_in_frame) begin
-			ppu_nt_read_cnt <= 0;
-			ppu_no_rd_read_cnt <= 0;
-			irq_pending <= 0;
-			in_split_area <= 0;
-			is_sprite_fetch <= 0;
+		if (~paused) begin
+			last_ppu_in_frame <= ppu_in_frame;
+			if (last_ppu_in_frame & ~ppu_in_frame) begin
+				ppu_nt_read_cnt <= 0;
+				ppu_no_rd_read_cnt <= 0;
+				irq_pending <= 0;
+				in_split_area <= 0;
+				is_sprite_fetch <= 0;
+			end
 		end
 
 	end
@@ -533,7 +535,7 @@ always @(posedge clk) begin
 		last_read_exattr <= SS_MAP5[24:17];
 		last_read_vram   <= SS_MAP5[32:25];
 		last_chr_read    <= SS_MAP5[   33];
-	end else begin
+	end else if (~paused) begin
 
 		last_chr_read <= chr_read;
 

@@ -350,9 +350,11 @@ assign romoffset=diskpos + sideoffset;
 
 
 // BIOS patches
-localparam BIOS_PATCHES_CNT = 53;
+localparam BIOS_PATCHES_CNT = 54;
 wire [23:0] BIOS_PATCHES[BIOS_PATCHES_CNT] = '{
 	// Wait for button press before loading disk
+	'hEEE2_09,                       // Don't branch here otherwise no music
+
 	'hEF33_20, 'hEF34_CC, 'hEF35_F4, // JSR $F4CC
 	'hEF36_29, 'hEF37_F0,            // AND #$F0
 	'hEF38_F0, 'hEF39_B0,            // BEQ $EEEA
