@@ -429,6 +429,7 @@ MMC5 mmc5(
 	// Special ports
 	.audio_dout	(mmc5_data),
 	.chr_ain_o  (chr_ain_orig),
+	.chr_ex     (chr_ex),
 	.chr_din    (chr_din),
 	.chr_write  (chr_write),
 	.chr_dout_b (chr_dout_b),
