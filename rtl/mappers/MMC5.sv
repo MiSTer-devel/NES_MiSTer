@@ -25,6 +25,7 @@ module MMC5(
 	// Special ports
 	input  [7:0] audio_dout,
 	input [13:0] chr_ain_o,
+	input        chr_ex,      // Extra sprites fetch active
 	input  [7:0] chr_din,     // CHR Data in
 	input        chr_write,   // CHR Write
 	inout  [7:0] chr_dout_b,  // chr data (non standard)
@@ -116,13 +117,16 @@ reg [5:0] ppu_tile_cnt;
 
 reg last_chr_a13;
 reg is_sprite_fetch;
+// is_sprite_fetch goes high during the unused NT fetches of the first sprite.
+// That is too late for the first extra sprite so also use chr_ex here.
+wire is_bg_fetch = ~(is_sprite_fetch | chr_ex);
 
 // On an original NES these PPU addresses should be latched because the lower 8 bits
 // are overwritten with the read data on the 2nd cycle when PPU_/RD goes low.
 // In the core the address is not changed so latching is not needed.
-wire ppu_is_tile_addr = (~chr_ain_o[13]);
-wire ppu_is_at_addr = (chr_ain_o[13:12] == 2'b10) & (&chr_ain_o[9:6]);
-wire ppu_is_nt_addr = (chr_ain_o[13:12] == 2'b10) & (~&chr_ain_o[9:6]);
+wire ppu_is_tile_addr = (~chr_ain[13]);
+wire ppu_is_at_addr = (chr_ain[13:12] == 2'b10) & (&chr_ain[9:6]);
+wire ppu_is_nt_addr = (chr_ain[13:12] == 2'b10) & (~&chr_ain[9:6]);
 
 // Block RAM, otherwise we need to time multiplex..
 reg [9:0] ram_addrA;
@@ -493,7 +497,7 @@ wire [1:0] split_attr = (!loopy[1] && !loopy[6]) ? last_read_ram[1:0] :
 						(!loopy[1] &&  loopy[6]) ? last_read_ram[5:4] :
 													last_read_ram[7:6];
 // If splitting is active or not
-wire insplit = in_split_area && vsplit_enable;
+wire insplit = in_split_area && vsplit_enable && ~chr_ex;
 
 // Currently reading the attribute byte?
 wire exattr_read = (extended_ram_mode == 1) && ppu_is_at_addr && ppu_in_frame;
@@ -603,7 +607,7 @@ assign prg_aout = {prgsel[7] ? {2'b00, prgsel[6:0]} : {6'b11_1100, prgsel[2:0]},
 // Otherwise, the last set of registers written to (either $5120-$5127 or $5128-$512B) will be used for all graphics.
 // 0 if using $5120-$5127, 1 if using $5128-$512F
 
-wire chrset = (~sprite8x16_mode) ? 1'd0 : (ppu_in_frame) ? ~is_sprite_fetch : chr_last;
+wire chrset = (~sprite8x16_mode) ? 1'd0 : (ppu_in_frame) ? is_bg_fetch : chr_last;
 reg [9:0] chrsel;
 
 always @* begin
@@ -643,7 +647,7 @@ always @* begin
 		//$write("In vertical split!\n");
 //		chr_aout = {2'b10, vsplit_bank, chr_ain[11:3], vscroll[2:0]}; // SL
 		chr_aout = {2'b10, vsplit_bank, chr_ain[11:3], chr_ain[2:0]}; // CL
-	end else if (ppu_in_frame && extended_ram_mode == 1 && ~is_sprite_fetch && ppu_is_tile_addr) begin
+	end else if (ppu_in_frame && extended_ram_mode == 1 && is_bg_fetch && ppu_is_tile_addr) begin
 		//$write("In exram thingy!\n");
 		// Extended attribute mode. Replace the page with the page from exram.
 		chr_aout = {2'b10, upper_chr_bank_bits, last_read_exattr[5:0], chr_ain[11:0]};
