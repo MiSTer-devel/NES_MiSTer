@@ -350,7 +350,7 @@ assign romoffset=diskpos + sideoffset;
 
 
 // BIOS patches
-localparam BIOS_PATCHES_CNT = 54;
+localparam BIOS_PATCHES_CNT = 51;
 wire [23:0] BIOS_PATCHES[BIOS_PATCHES_CNT] = '{
 	// Wait for button press before loading disk
 	'hEEE2_09,                       // Don't branch here otherwise no music
@@ -375,7 +375,7 @@ wire [23:0] BIOS_PATCHES[BIOS_PATCHES_CNT] = '{
 	'hF4DF_4C, 'hF4E0_E3, 'hF4E1_E6, // JMP $E6E3 (StartXfer)
 
 	// Remove some delays
-	'hE652_EA, 'hE653_EA, 'hE654_EA, // NOP
+	//'hE652_EA, 'hE653_EA, 'hE654_EA, // NOP <- This delay is needed for SMB2J Level 4-4 end
 	'hE655_EA, 'hE656_EA, 'hE657_EA,
 	'hE65D_EA, 'hE65E_EA, 'hE65F_EA,
 	'hE691_EA, 'hE692_EA, 'hE693_EA,
