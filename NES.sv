@@ -36,13 +36,14 @@ module emu
 	output        VGA_F1,
 	output [1:0]  VGA_SL,
 	output        VGA_SCALER, // Force VGA scaler
+	output        VGA_DISABLE, // analog out is off
 
 	input  [11:0] HDMI_WIDTH,
 	input  [11:0] HDMI_HEIGHT,
 	output        HDMI_FREEZE,
 
 `ifdef MISTER_FB
-	// Use framebuffer in DDRAM (USE_FB=1 in qsf)
+	// Use framebuffer in DDRAM
 	// FB_FORMAT:
 	//    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
 	//    [3]   : 0=16bits 565 1=16bits 1555
@@ -168,7 +169,8 @@ assign LED_USER  = downloading | (loader_fail & led_blink) | (bk_state != S_IDLE
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign BUTTONS [1] = 0;
-assign VGA_SCALER = 0;
+assign VGA_SCALER  = 0;
+assign VGA_DISABLE = 0;
 
 assign VGA_F1 = 0;
 //assign {UART_RTS, UART_TXD, UART_DTR} = 0;
@@ -251,7 +253,7 @@ parameter CONF_STR = {
 	"P3-;",
 	"P3OG,Disk Swap,Auto,FDS button;",
 	"P3o9,Pause when OSD is open,Off,On;",
-	"-;",
+	"- ;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP/Mat 1,PP/Mat 2,PP/Mat 3,PP/Mat 4,PP/Mat 5,PP/Mat 6,PP/Mat 7,PP/Mat 8,PP/Mat 9,PP/Mat 10,PP/Mat 11,PP/Mat 12,Savestates;",
 	"jn,A,B,Select,Start,L,,R|P;",
