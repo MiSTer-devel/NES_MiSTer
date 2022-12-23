@@ -202,7 +202,7 @@ video_freak video_freak
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXX XX     X XXXXXXXX XXXXX XXXXXXXXXXXXXXXXXXXXX
+// XXXXXXXX XX     X XXXXXXXX XXXXX XXXXXXXXXXXXXXXXXXXXXX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -246,6 +246,7 @@ parameter CONF_STR = {
 	"P2OA,Multitap,Disabled,Enabled;",
 	"P2oJK,SNAC,Off,Controllers,Zapper,3D Glasses;",
 	"P2o02,Periphery,None,Zapper(Mouse),Zapper(Joy1),Zapper(Joy2),Vaus,Vaus(A-Trigger),Powerpad,Family Trainer;",
+	"P2oL,Famicom Keyboard,No,Yes;",
 	"P2-;",
 	"P2OL,Zapper Trigger,Mouse,Joystick;",
 	"P2OM,Crosshairs,On,Off;",
@@ -620,12 +621,24 @@ always_comb begin
 		if (paddle_en)          joypad2_data[4:1] = {joypad_d4[0], paddle_btn, 1'b0, joypad_d4[0]};
 		if (status[34:32] == 6) joypad2_data[4:3] = {joypad_d4[0], joypad_d3[0]};
 		if (status[34:32] == 7) joypad2_data[4:1] = ~famtr;
+		if (fkeyb)              joypad2_data[4:1] = key_out;
 	end
 end
 
 wire mic = (mic_cnt < 8'd215) && mic_button;
 reg [7:0] mic_cnt;
 always @(posedge clk) mic_cnt <= (mic_cnt == 8'd250) ? 8'd0 : mic_cnt + 1'b1;
+
+wire fkeyb = status[53];
+wire [3:0] key_out;
+keyboard fkey(
+	.clk(clk),
+	.reset(reset_nes || !fkeyb),
+	.posit(1'd1),
+	.ps2_key(ps2_key),
+	.reg_4016(joypad_out),
+	.reg_4017(key_out)
+);
 
 assign {UART_RTS, UART_DTR} = 1;
 wire [15:0] uart_data;
