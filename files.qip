@@ -7,6 +7,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/ddram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/EEPROM_24C0x.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cheatcodes.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/miracle.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/keyboard.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/zapper.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cart.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/video.sv
