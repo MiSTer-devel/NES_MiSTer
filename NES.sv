@@ -198,6 +198,16 @@ video_freak video_freak
 	.SCALE(status[40:39])
 );
 
+// If video mode (NTSC/PAL/DANDY) changes, force vmode update
+reg [1:0] video_status;
+reg new_vmode = 0;
+always @(posedge clk) begin
+    if (video_status != status[24:23]) begin
+        video_status <= status[24:23];
+        new_vmode <= ~new_vmode;
+    end
+end
+
 // Status Bit Map:
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
@@ -385,6 +395,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
+	.new_vmode(new_vmode),
 
 	.joystick_0(joyA_unmod),
 	.joystick_1(joyB),
