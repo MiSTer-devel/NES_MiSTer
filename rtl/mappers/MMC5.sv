@@ -428,10 +428,10 @@ always @(posedge clk) begin
 		end
 
 		// The "in-frame" flag is cleared when 3 CPU cycles pass without a PPU read having occurred
-		if (ce) begin
+		if (~paused) begin
 			if (chr_read) begin
 				ppu_no_rd_read_cnt <= 0;
-			end else if (ppu_in_frame) begin
+			end else if (ce & ppu_in_frame) begin
 				ppu_no_rd_read_cnt <= ppu_no_rd_read_cnt + 1'b1;
 				if (ppu_no_rd_read_cnt == 2'd2) begin
 					ppu_in_frame <= 0;
