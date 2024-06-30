@@ -312,14 +312,14 @@ MMC2 mmc2(
 //*****************************************************************************//
 // Name   : MMC3                                                               //
 // Mappers: 4, 33, 37, 47, 48, 74, 76, 80, 82, 88, 95, 112, 118, 119, 154, 189,//
-//          191, 192, 194, 195, 196, 206, 207, 268                             //
+//          191, 192, 194, 195, 196, 205, 206, 207, 208, 268                   //
 // Status : Working -- Blaarg IRQ timing test fails, but may be submapper      //
 // Notes  : While currently working well, this mapper could use a full review. //
 // Games  : Crystalis, Battletoads                                             //
 //*****************************************************************************//
 wire mmc3_en = me[118] | me[119] | me[47] | me[206] | me[112] | me[88] | me[154] | me[95]
 	| me[76] | me[80] | me[82] | me[207] | me[48] | me[33] | me[37] | me[74] | me[191]
-	| me[192] | me[194] | me[195] | me[196] | me[4] | me[189] | me[268];
+	| me[192] | me[194] | me[195] | me[196] | me[4] | me[189] | me[268] | me[205] | me[208];
 
 MMC3 mmc3 (
 	.clk        (clk),

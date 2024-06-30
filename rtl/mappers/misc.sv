@@ -2668,8 +2668,7 @@ assign prg_allow = (((prg_ain[15] || ((prg_ain>=16'h4080) && (prg_ain<16'h4FFF))
                    || (prg_ain[15:10]==6'b010111 && prg_ain[9:4]!=6'b111111) || ((prg_ain>=16'h8000) && (prg_ain<16'hDFFF) && exp_audioe[2]));
 assign chr_allow = flags[15]; // CHR RAM always...
 
-wire       patt_bars = chr_ain[13:11] == 3'b00_1;     // 'h0800-'hfff bar pattern for pulse1,pulse2,triangle,noise,sample volume
-assign chr_aout = {9'b10_0000_000, chr_read && patt_bars ? {5'b0_0001,chr_ain[7:0]} : chr_ain[12:0]}; //replace 'h0800-'h0fff with 'h0100-'h01ff = bars location
+assign chr_aout = {9'b10_0000_000, chr_ain[12:0]};
 assign vram_ce = chr_ain[13] & !has_chr_dout;
 assign vram_a10 = flags[14] ? chr_ain[10] : chr_ain[11];
 
@@ -2698,9 +2697,7 @@ wire [4:0] oct_idx = {1'b0,oct_no[voi_tab_idx]} + {oct_no[voi_tab_idx],1'b0}; //
 wire [4:0] spot_chr = use_freq ? freq : oct_idx + {3'b000,spot[voi_tab_idx][4:3]}; // noise+sample=d0-15, tri=d0-24 (25-27->24), puls=d3-27 (28-30->27)
 wire [3:0] spot_vol = voi_off ? 4'h0 : voi_vol;
 wire       has_spot_chr = print_spot && (chr_ain[4:0] == spot_chr);
-wire       skip_vol = !print_midi && !print_oct && patt_bars && ((spot_vol[2:0]<=~chr_ain[2:0] && !(spot_vol[3] && !chr_ain[3])) || (!spot_vol[3] && chr_ain[3])); // skip middle volume bar if vol[2:0] is less than pixelrow[2:0]; skip outer volume bars if vol[3] is not set
 wire       spot_vol_row = !chr_ain[5];  // d18,20,22,24,26
-wire [4:0] spot_val = {spot_vol_row ? {4'b1000,use_freq ? 1'b1 : 1'b0}:5'h0}; // d18->10010, 20->10100, 22->10110, 24->11001, 25->11011: [4]=1 means bar pattern, [3:1]=voi_idx will be in chr_ain[10:8]->ignored, [0]=chr_ain[7] 0x0 = 0x800, 0x1 = 0x0880 pattern table address; will be adjusted to 0x100 and 0x180
 wire [4:0] note_val = spot[voi_tab_idx][4:0];
 wire       inc_note = (note_val == 5'd23) || (note_val == 5'd24);
 wire       inc_oct = (note_val > 5'd5);
@@ -2709,8 +2706,8 @@ wire [7:0] letter = {5'b0100_0,note_no[4:2]}; // A=$41,G=$47
 wire       sharp = note_no[1];    // #=$23
 
 wire cpu_ppu_write = prg_write && prg_ain[15:12]==4'h2; // 'h2000-2FFF
-assign has_chr_dout = !(cpu_ppu_write) && (print_reg || print_exp || print_spot || skip_vol || print_midi || print_oct || print_let || print_shp);
-assign chr_dout = skip_vol ? {8'h00} : print_exp ? exp_letter : print_let ? letter : print_shp ? 8'h23 : (print_spot && !print_oct) ? has_spot_chr ? {spot_val,use_freq?3'b000:spot[voi_tab_idx][2:0]} : {8'h20} : {4'h0, chr_ain[0] ? chr_num[3:0] : chr_num[7:4]};
+assign has_chr_dout = !(cpu_ppu_write) && (print_reg || print_exp || print_spot || print_midi || print_oct || print_let || print_shp);
+assign chr_dout = print_exp ? exp_letter : print_let ? letter : print_shp ? 8'h23 : (print_spot && !print_oct) ? has_spot_chr ? !spot_vol_row ? use_freq?8'h00:{5'h00,spot[voi_tab_idx][2:0]}:{use_freq?4'b0001:{1'b1,spot[voi_tab_idx][2:0]},spot_vol} : {8'h20} : {4'h0, chr_ain[0] ? chr_num[3:0] : chr_num[7:4]};
 
 endmodule
 
