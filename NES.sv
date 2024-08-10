@@ -212,7 +212,7 @@ end
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXX XX     X XXXXXXXX XXXXX XXXXXXXXXXXXXXXXXXXXXX
+// XXXXXXXX XX     XXXXXXXXXX XX XX XXXXXXXXXXXXXXXXXXXXXX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -263,6 +263,7 @@ parameter CONF_STR = {
 	"P3,Miscellaneous;",
 	"P3-;",
 	"P3OG,Disk Swap,Auto,FDS button;",
+	"P3O[17],Disk Speed,Fast,Original;",
 	"P3o9,Pause when OSD is open,Off,On;",
 	"- ;",
 	"R0,Reset;",
@@ -303,6 +304,7 @@ wire hide_overscan = status[4] && ~pal_video;
 wire [3:0] palette2_osd = status[49:47];
 wire joy_swap = status[9] ^ (raw_serial || piano); // Controller on port 2 for Miracle Piano/SNAC
 wire fds_auto_eject = ~status[16];
+wire fds_fast = ~status[17];
 wire ext_audio = ~status[30];
 wire int_audio = ~status[31];
 
@@ -869,6 +871,7 @@ NES nes (
 	.fds_eject       (fds_btn),
 	.fds_auto_eject  (fds_auto_eject),
 	.max_diskside    (max_diskside),
+	.fds_fast        (fds_fast),
 
 	// Memory transactions
 	.cpumem_addr     (cpu_addr ),
