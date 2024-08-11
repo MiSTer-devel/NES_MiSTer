@@ -58,8 +58,9 @@ module cart_top (
 	output reg  [1:0] diskside,
 	input             fds_busy,       // FDS Disk Swap Busy
 	input             fds_eject,      // FDS Disk Swap Pause
-	input             fds_auto_eject,
-	input       [1:0] max_diskside,
+	input             fds_auto_eject, // FDS Auto Swap Enabled
+	input       [1:0] max_diskside,   // FDS disk side count
+	input             fds_fast,       // FDS disk access speed
 	// savestates              
 	input       [63:0]  SaveStateBus_Din,
 	input       [ 9:0]  SaveStateBus_Adr,
@@ -2184,7 +2185,8 @@ MapperFDS mapfds(
 	.max_diskside (max_diskside),
 	.fds_busy   (fds_busy),
 	.fds_eject_btn (fds_eject),
-	.fds_auto_eject_en (fds_auto_eject)
+	.fds_auto_eject_en (fds_auto_eject),
+	.fds_fast   (fds_fast)
 );
 
 //*****************************************************************************//
