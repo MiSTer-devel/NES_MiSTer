@@ -212,7 +212,7 @@ end
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXX XX     XXXXXXXXXX XX XX XXXXXXXXXXXXXXXXXXXXXX
+// XXXXXXXX XX     XXXXXXXXXXXXX XX XXXXXXXXXXXXXXXXXXXXXX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -265,6 +265,9 @@ parameter CONF_STR = {
 	"P3OG,Disk Swap,Auto,FDS button;",
 	"P3O[17],Disk Speed,Fast,Original;",
 	"P3o9,Pause when OSD is open,Off,On;",
+	"P4,Advanced;",
+	"P4-;",
+	"P4OQ,Video Dijitter,Enabled,Disabled;",
 	"- ;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP/Mat 1,PP/Mat 2,PP/Mat 3,PP/Mat 4,PP/Mat 5,PP/Mat 6,PP/Mat 7,PP/Mat 8,PP/Mat 9,PP/Mat 10,PP/Mat 11,PP/Mat 12,Savestates;",
@@ -860,6 +863,7 @@ NES nes (
 	.cycle           (cycle),
 	.scanline        (scanline),
 	.mask            (status[28:27]),
+	.dejitter_timing(status[26]),
 	// User Input
 	.joypad_out      (joypad_out),
 	.joypad_clock    (joypad_clock),
