@@ -1469,7 +1469,8 @@ wire [3:0] prg_nvram = (is_nes20 ? ines[10][7:4] : 4'h0);
 wire       piano = is_nes20 && (ines[15][5:0] == 6'h19);
 wire has_saves = ines[6][1];
 
-assign mapper_flags[63:35] = 'd0;
+assign mapper_flags[63:36] = 'd0;
+assign mapper_flags[35]    = is_nes20;
 assign mapper_flags[34:31] = prg_nvram; //NES 2.0 Save RAM shift size (64 << size)
 assign mapper_flags[30]    = piano;
 assign mapper_flags[29:26] = prgram; //NES 2.0 PRG RAM shift size (64 << size)
