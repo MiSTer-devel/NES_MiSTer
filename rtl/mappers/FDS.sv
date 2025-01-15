@@ -113,7 +113,7 @@ localparam PRE_GAP_DELAY_FAST = 20'd65535;
 localparam PRE_GAP_DELAY_ORIG = 20'd525420;
 localparam BYTE_DELAY_FAST    = 20'd99;
 localparam BYTE_DELAY_ORIG    = 20'd149;
-localparam EJECT_DELAY        = 80 * 23'd22335;
+localparam EJECT_DELAY        = 100 * 23'd29780;
 
 wire [19:0] pre_gap_delay = fds_fast ? PRE_GAP_DELAY_FAST : PRE_GAP_DELAY_ORIG;
 wire [19:0] byte_delay = fds_fast ? BYTE_DELAY_FAST : BYTE_DELAY_ORIG;
@@ -241,6 +241,7 @@ always@(posedge clk) begin
 						end
 
 						if (read_4032_cnt == 5'd20) begin
+							read_4032_cnt <= 0;
 							disk_eject_auto <= 1;
 							disk_eject_wait <= 1;
 							cpu_clk_cnt <= 0;
@@ -255,7 +256,6 @@ always@(posedge clk) begin
 			end
 
 			if (cpu_clk_cnt == EJECT_DELAY) begin // Eject for a certain amount of frames
-				read_4032_cnt <= 0;
 				cpu_clk_cnt <= 0;
 				if (disk_eject_auto) begin
 					disk_eject_auto <= 0;
