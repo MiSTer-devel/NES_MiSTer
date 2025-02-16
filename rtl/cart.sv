@@ -2186,7 +2186,14 @@ MapperFDS mapfds(
 	.fds_busy   (fds_busy),
 	.fds_eject_btn (fds_eject),
 	.fds_auto_eject_en (fds_auto_eject),
-	.fds_fast   (fds_fast)
+	.fds_fast   (fds_fast),
+	// savestates
+	.SaveStateBus_Din  (SaveStateBus_Din ),
+	.SaveStateBus_Adr  (SaveStateBus_Adr ),
+	.SaveStateBus_wren (SaveStateBus_wren),
+	.SaveStateBus_rst  (SaveStateBus_rst ),
+	.SaveStateBus_load (SaveStateBus_load ),
+	.SaveStateBus_Dout (SaveStateBus_wired_or[38])
 );
 
 //*****************************************************************************//
@@ -2311,7 +2318,14 @@ fds_mixed snd_fds (
 	.data_in(prg_din),
 	.data_out(fds_data),
 	.audio_in(audio_in),
-	.audio_out(fds_audio)
+	.audio_out(fds_audio),
+	// savestates
+	.Savestate_MAPRAMactive   (Savestate_MAPRAMactive),
+	.Savestate_MAPRAMAddr     (Savestate_MAPRAMAddr[7:0]),
+	.Savestate_MAPRAMRdEn     (Savestate_MAPRAMRdEn),
+	.Savestate_MAPRAMWrEn     (Savestate_MAPRAMWrEn),
+	.Savestate_MAPRAMWriteData(Savestate_MAPRAMWriteData),
+	.Savestate_MAPRAMReadData (SaveStateRAM_wired_or[3])
 );
 
 wire [15:0] vrc7_audio;
@@ -2384,7 +2398,7 @@ always @* begin
 end
 
 // savestates
-localparam SAVESTATE_MODULES    = 38;
+localparam SAVESTATE_MODULES    = 39;
 wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 
 assign SaveStateBus_Dout  = SaveStateBus_wired_or[ 0] | SaveStateBus_wired_or[ 1] | SaveStateBus_wired_or[ 2] | SaveStateBus_wired_or[ 3] | SaveStateBus_wired_or[ 4] | 
@@ -2394,10 +2408,10 @@ assign SaveStateBus_Dout  = SaveStateBus_wired_or[ 0] | SaveStateBus_wired_or[ 1
 									 SaveStateBus_wired_or[20] | SaveStateBus_wired_or[21] | SaveStateBus_wired_or[22] | SaveStateBus_wired_or[23] | SaveStateBus_wired_or[24] |
 									 SaveStateBus_wired_or[25] | SaveStateBus_wired_or[26] | SaveStateBus_wired_or[27] | SaveStateBus_wired_or[28] | SaveStateBus_wired_or[29] |
 									 SaveStateBus_wired_or[30] | SaveStateBus_wired_or[31] | SaveStateBus_wired_or[32] | SaveStateBus_wired_or[33] | SaveStateBus_wired_or[34] |
-									 SaveStateBus_wired_or[35] | SaveStateBus_wired_or[36] | SaveStateBus_wired_or[37];
+									 SaveStateBus_wired_or[35] | SaveStateBus_wired_or[36] | SaveStateBus_wired_or[37] | SaveStateBus_wired_or[38];
 
-localparam SAVESTATERAM_MODULES    = 3;
-wire [7:0] SaveStateRAM_wired_or[0:SAVESTATE_MODULES-1];
-assign Savestate_MAPRAMReadData = SaveStateRAM_wired_or[0] | SaveStateRAM_wired_or[1] | SaveStateRAM_wired_or[2];
+localparam SAVESTATERAM_MODULES    = 4;
+wire [7:0] SaveStateRAM_wired_or[0:SAVESTATERAM_MODULES-1];
+assign Savestate_MAPRAMReadData = SaveStateRAM_wired_or[0] | SaveStateRAM_wired_or[1] | SaveStateRAM_wired_or[2] | SaveStateRAM_wired_or[3];
 
 endmodule

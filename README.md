@@ -36,7 +36,7 @@ The battery backed RAM (Save RAM) for the NES does not write to disk automatical
 `Legend of Zelda, The (USA) (Rev 1).nes` -> `Legend of Zelda, The (USA) (Rev 1).sav`
 
 # Savestates
-Core provides 4 slots to save and restore the state (FDS not supported). 
+Core provides 4 slots to save and restore the state.
 Those can be saved to SDCard or reside only in memory for temporary use(OSD Option). 
 Usage with either Keyboard, Gamepad mappable button or OSD. Save states are stored as .ss files in `/media/fat/savestates/NES/`, with an underscore and the save slot number (1,2,3,4) preceding `.ss`. Example (save slot 1): `Metroid (USA).nes` -> `Metroid (USA)_1.ss`
 
@@ -60,7 +60,7 @@ The Miracle Piano is a MIDI keyboard compatible with the Miracle Piano Education
 |#||||||||||||||||
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 |**0**|**1**|**2**|**3**|**4**|**5**||**7**||**9**|**10**|**11**|~~12~~|13||15|
-|**16**||**18**|**19**|FDS|**21**|**22**|**23**|**24**|**25**|**26**|**27**|**28**||**30**|31|
+|**16**||**18**|**19**|**FDS**|**21**|**22**|**23**|**24**|**25**|**26**|**27**|**28**||**30**|31|
 |**32**|**33**|**34**|**35**|**36**|**37**|**38**|**39**|~~40~~|41|42|~~43~~|**44**|~~45~~|**46**|**47**|
 |**48**|~~49~~|~~50~~|~~51~~|~~52~~|~~53~~|~~54~~|~~55~~|~~56~~|~~57~~|~~58~~|~~59~~|~~60~~|~~61~~|~~62~~|~~63~~|
 |**64**|**65**|**66**|**67**|**68**|**69**|**70**|**71**|**72**|**73**|**74**|**75**|**76**|**77**|**78**|**79**|
