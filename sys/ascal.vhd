@@ -201,9 +201,10 @@ ENTITY ascal IS
 		i_vdmax : OUT natural RANGE 0 TO 4095;
 
 		-- Output video parameters
-		run    : IN std_logic :='1'; -- 1=Enable output image. 0=No image
-		freeze : IN std_logic :='0'; -- 1=Disable framebuffer writes
-		mode   : IN unsigned(4 DOWNTO 0);
+		run       : IN std_logic :='1'; -- 1=Enable output image. 0=No image
+		freeze    : IN std_logic :='0'; -- 1=Disable framebuffer writes
+		mode      : IN unsigned(4 DOWNTO 0);
+ 		bob_deint : IN std_logic := '0';
 		-- SYNC  |_________________________/"""""""""\_______|
 		-- DE    |""""""""""""""""""\________________________|
 		-- RGB   |    <#IMAGE#>      ^HDISP                  |
@@ -222,6 +223,7 @@ ENTITY ascal IS
 		vmax    : IN natural RANGE 0 TO 4095; -- 0 <= vmin < vmax < vdisp
 		vrr     : IN std_logic := '0';
 		vrrmax  : IN natural RANGE 0 TO 4095 := 0;
+		swblack : IN std_logic := '0';        -- will output 3 black frame on every resolution switch
 
 		-- Scaler format. 00=16bpp 565, 01=24bpp 10=32bpp
 		format  : IN unsigned(1 DOWNTO 0) :="01";
@@ -318,6 +320,7 @@ ARCHITECTURE rtl OF ascal IS
 	SIGNAL i_pvs,i_pfl,i_pde,i_pce : std_logic;
 	SIGNAL i_ppix : type_pix;
 	SIGNAL i_freeze : std_logic;
+	SIGNAL i_bob_deint : std_logic;
 	SIGNAL i_count : unsigned(2 DOWNTO 0);
 	SIGNAL i_hsize,i_hmin,i_hmax,i_hcpt : uint12;
 	SIGNAL i_hrsize,i_vrsize : uint12;
@@ -333,6 +336,7 @@ ARCHITECTURE rtl OF ascal IS
 	SIGNAL i_de_delay : natural RANGE 0 TO 31;
 	SIGNAL i_intercnt : natural RANGE 0 TO 3;
 	SIGNAL i_inter,i_half,i_flm : std_logic;
+	SIGNAL i_wfl : std_logic_vector(2 DOWNTO 0);
 	SIGNAL i_write,i_wreq,i_alt,i_line,i_wline,i_wline_mem : std_logic;
 	SIGNAL i_walt,i_walt_mem,i_wreq_mem : std_logic;
 	SIGNAL i_wdelay : natural RANGE 0 TO 7;
@@ -410,6 +414,8 @@ ARCHITECTURE rtl OF ascal IS
 	-- Output
 	SIGNAL o_run : std_logic;
 	SIGNAL o_freeze : std_logic;
+	SIGNAL o_bob_deint : std_logic;
+	SIGNAL o_iwfl : std_logic_vector(2 DOWNTO 0);
 	SIGNAL o_mode,o_hmode,o_vmode : unsigned(4 DOWNTO 0);
 	SIGNAL o_format : unsigned(5 DOWNTO 0);
 	SIGNAL o_fb_pal_dr : unsigned(23 DOWNTO 0);
@@ -510,6 +516,7 @@ ARCHITECTURE rtl OF ascal IS
 	SIGNAL o_divrun : std_logic;
 	SIGNAL o_hacpt,o_vacpt : unsigned(11 DOWNTO 0);
 	SIGNAL o_vacptl : unsigned(1 DOWNTO 0);
+	signal o_newres : integer range 0 to 3;
 
 	-----------------------------------------------------------------------------
 	FUNCTION shift_ishift(shift : unsigned(0 TO 119);
@@ -1130,6 +1137,7 @@ BEGIN
 			i_pushhead<='0';
 			i_eol<='0'; -- End Of Line
 			i_freeze <=freeze; -- <ASYNC>
+			i_bob_deint <= bob_deint;
 			i_iauto<=iauto; -- <ASYNC>
 			i_wreq<='0';
 			i_wr<='0';
@@ -1190,11 +1198,13 @@ BEGIN
 					i_vcpt<=0;
 					IF i_inter='1' AND i_flm='0' AND i_half='0' AND INTER THEN
 						i_line<='1';
+						i_wfl(o_ibuf1) <= '0';
 						i_adrsi<=to_unsigned(N_BURST * i_hburst,32) +
 									to_unsigned(N_BURST * to_integer(
 									unsigned'("00") & to_std_logic(HEADER)),32);
 					ELSE
 						i_line<='0';
+						i_wfl(o_ibuf0) <= '1';
 						i_adrsi<=to_unsigned(N_BURST * to_integer(
 									 unsigned'("00") & to_std_logic(HEADER)),32);
 					END IF;
@@ -1204,8 +1214,8 @@ BEGIN
 														i_vcpt>=i_vmin AND i_vcpt<=i_vmax);
 
 				-- Detects end of frame for triple buffering.
-				i_endframe0<=i_vs AND (NOT i_inter OR i_flm);
-				i_endframe1<=i_vs AND (NOT i_inter OR NOT i_flm);
+				i_endframe0<=i_vs AND (NOT i_inter OR i_flm OR i_bob_deint);
+				i_endframe1<=i_vs AND (NOT i_inter OR NOT i_flm OR i_bob_deint);
 
 				i_vss<=to_std_logic(i_vcpt>=i_vmin AND i_vcpt<=i_vmax);
 
@@ -1862,6 +1872,8 @@ BEGIN
 			o_isync <= '0';
 			o_isync2 <= o_isync;
 			o_freeze <= freeze;
+			o_bob_deint <= bob_deint;
+			o_iwfl <= i_wfl;
 			o_inter  <=i_inter; -- <ASYNC>
 			o_iendframe0<=i_endframe0; -- <ASYNC>
 			o_iendframe02<=o_iendframe0;
@@ -1890,6 +1902,14 @@ BEGIN
 				o_ivsize<=i_vrsize; -- <ASYNC>
 				o_hdown<=i_hdown; -- <ASYNC>
 				o_vdown<=i_vdown; -- <ASYNC>
+
+				IF (o_newres > 0) then
+					o_newres <= o_newres- 1;
+				END IF;
+			END IF;
+
+			IF (swblack = '1' and o_fb_ena = '0' and (o_ihsize /= i_hrsize or o_ivsize /= i_vrsize)) then
+				o_newres <= 3;
 			END IF;
 
 			-- Simultaneous change of input and output framebuffers
@@ -2086,7 +2106,26 @@ BEGIN
 			o_read<=o_read_pre AND o_run;
 			o_rline<=o_vacpt(0); -- Even/Odd line for interlaced video
 
-			o_adrs_pre<=to_integer(o_vacpt) * to_integer(o_stride);
+			----
+			-- When bob deinterlacing we read lines from one buffer (the most current) but we read them twice
+			-- (in contrast to weave deinterlacing where we read each 480p line from alternating buffers)
+			-- To counteract the severe vibrating/motion with bob deinterlacing, we need to offset one field
+			-- by a half-line. This is done by only reading the first line of the 'even' frame once
+
+			IF o_inter='1' AND o_bob_deint='1' THEN
+				IF o_iwfl(o_obuf0)='0' THEN
+					IF o_vacpt=0 OR o_rline='1' THEN
+						o_adrs_pre <= to_integer(o_vacpt) * to_integer(o_stride);
+					ELSE
+						o_adrs_pre <= (to_integer(o_vacpt)-1) * to_integer(o_stride);
+					END IF;
+				ELSE
+					o_adrs_pre <= to_integer(o_vacpt(11 DOWNTO 1) & "0") * to_integer(o_stride);
+				END IF;
+			ELSE
+				o_adrs_pre<=to_integer(o_vacpt) * to_integer(o_stride);
+			END IF;
+
 			IF o_adrsa='1' THEN
 				IF o_fload=2 THEN
 					o_adrs<=to_unsigned(o_hbcpt * N_BURST,32);
@@ -2218,6 +2257,9 @@ BEGIN
 					-- 8bpp indexed colour mode
 					hpix_v:=(r=>o_fb_pal_dr(23 DOWNTO 16),g=>o_fb_pal_dr(15 DOWNTO 8),
 									 b=>o_fb_pal_dr(7 DOWNTO 0));
+				END IF;
+				IF (o_newres > 0) then
+					hpix_v := (others => (others => '0'));
 				END IF;
 				o_hpix0<=hpix_v;
 				o_hpix1<=o_hpix0;
