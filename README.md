@@ -10,7 +10,7 @@ This is an FPGA implementation of the NES/Famicom based on [FPGANES](https://git
  * Multiple Palette options
  * Zapper, Powerpad, Microphone, and Miracle Piano support
  * Supports four players
- * Setting for increasing sprite per line by 8
+ * Setting for increasing sprites per line by 8
  * Supports up to 32 cheat codes
  * Supports NSF Player
  * Supports expansion audio from mappers including VRC6 & 7, MMC5, Namco 163 and Sunsoft 5b
@@ -35,19 +35,19 @@ The battery backed RAM (Save RAM) for the NES does not write to disk automatical
 `Metroid (Japan) (Rev 3).fds` -> `Metroid (Japan) (Rev 3).sav`  
 `Legend of Zelda, The (USA) (Rev 1).nes` -> `Legend of Zelda, The (USA) (Rev 1).sav`
 
-# Savestates
+## Savestates
 Core provides 4 slots to save and restore the state.
-Those can be saved to SDCard or reside only in memory for temporary use(OSD Option). 
-Usage with either Keyboard, Gamepad mappable button or OSD. Save states are stored as .ss files in `/media/fat/savestates/NES/`, with an underscore and the save slot number (1,2,3,4) preceding `.ss`. Example (save slot 1): `Metroid (USA).nes` -> `Metroid (USA)_1.ss`
+Those can be saved to SD Card or reside only in memory for temporary use (OSD Option). 
+Usage with either Keyboard, Gamepad mappable button, or OSD. Save states are stored as .ss files in `/media/fat/savestates/NES/`, with an underscore and the save slot number (1,2,3,4) preceding `.ss`. Example (save slot 1): `Metroid (USA).nes` -> `Metroid (USA)_1.ss`
 
 Keyboard Hotkeys for save states:
-- Alt-F1..F4 - save the state
-- F1...F4 - restore
+- <kbd>ALT</kbd>+<kbd>F1</kbd>/<kbd>F2</kbd>/<kbd>F3</kbd>/<kbd>F4</kbd> – save state  
+- <kbd>F1</kbd>/<kbd>F2</kbd>/<kbd>F3</kbd>/<kbd>F4</kbd> – restore state
 
 Gamepad:
-- Savestatebutton+Left or Right switches the savestate slot
-- Savestatebutton+Start+Down saves to the selected slot
-- Savestatebutton+Start+Up loads from the selected slot
+- <kbd>SAVESTATEBUTTON</kbd>+<kbd>LEFT</kbd>/<kbd>RIGHT</kbd> prev/next savestate slot
+- <kbd>SAVESTATEBUTTON</kbd>+<kbd>START</kbd>+<kbd>DOWN</kbd> saves to the selected slot
+- <kbd>SAVESTATEBUTTON</kbd>+<kbd>START</kbd>+<kbd>UP</kbd> loads from the selected slot
 
 ## Zapper Support
 The "Zapper" (aka Light Gun) can be used via two methods. You can select Peripheral: Zapper(Mouse) to use your mouse to aim and shoot with the left button. This mode uses relative mouse motion, so devices that rely on absolute coordinates will not work via this method. Alternatively, you can choose Zapper(Joy) to use the Analog stick to aim, and the defined Trigger button to fire. Guns such as Aimtrak have joystick modes which may be compatible with this method.
