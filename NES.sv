@@ -274,9 +274,9 @@ parameter CONF_STR = {
 	"P4OQ,Video Dijitter,Enabled,Disabled;",
 	"- ;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP/Mat 1,PP/Mat 2,PP/Mat 3,PP/Mat 4,PP/Mat 5,PP/Mat 6,PP/Mat 7,PP/Mat 8,PP/Mat 9,PP/Mat 10,PP/Mat 11,PP/Mat 12,Savestates;",
-	"jn,A,B,Select,Start,L,,R|P;",
-	"jp,B,Y,Select,Start,L,,R|P;",
+	"J1,A,B,Turbo A,Turbo B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP/Mat 1,PP/Mat 2,PP/Mat 3,PP/Mat 4,PP/Mat 5,PP/Mat 6,PP/Mat 7,PP/Mat 8,PP/Mat 9,PP/Mat 10,PP/Mat 11,PP/Mat 12,Savestates;",
+	"jn,A,B,X,Y,Select,Start,L,,R|P;",
+	"jp,B,Y,A,X,Select,Start,L,,R|P;",
 	"I,",
 	"Disk 1A,",
 	"Disk 1B,",
@@ -298,8 +298,8 @@ parameter CONF_STR = {
 	"V,v",`BUILD_DATE
 };
 
-wire [23:0] joyA,joyB,joyC,joyD;
-wire [23:0] joyA_unmod;
+wire [25:0] joyA,joyB,joyC,joyD;
+wire [25:0] joyA_unmod;
 wire [10:0] ps2_key;
 wire [1:0] buttons;
 
@@ -455,7 +455,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	//.uart_mode(16'b000_11111_000_11111)
 );
 
-assign joyA = joyA_unmod[23] ? 23'b0 : joyA_unmod;
+assign joyA = joyA_unmod[25] ? 25'b0 : joyA_unmod;
 
 wire       info_req = diskside_info || ss_info_req;
 wire [7:0] info     = ss_info_req ? ss_info : {1'b0,diskside} + 3'd1;
@@ -552,7 +552,7 @@ reg  [23:0] joypad_bits, joypad_bits2;
 reg   [7:0] joypad_d3, joypad_d4;
 reg   [1:0] last_joypad_clock;
 
-wire [11:0] powerpad = joyA[22:11] | joyB[22:11] | joyC[22:11] | joyD[22:11];
+wire [11:0] powerpad = joyA[24:13] | joyB[24:13] | joyC[24:13] | joyD[24:13];
 
 wire [3:0] famtr;
 assign famtr[0] = (~joypad_out[2] & powerpad[3]) | (~joypad_out[1] & powerpad[7]) | (~joypad_out[0] & powerpad[11]);
@@ -560,13 +560,24 @@ assign famtr[1] = (~joypad_out[2] & powerpad[2]) | (~joypad_out[1] & powerpad[6]
 assign famtr[2] = (~joypad_out[2] & powerpad[1]) | (~joypad_out[1] & powerpad[5]) | (~joypad_out[0] & powerpad[9] );
 assign famtr[3] = (~joypad_out[2] & powerpad[0]) | (~joypad_out[1] & powerpad[4]) | (~joypad_out[0] & powerpad[8] );
 
-wire [7:0] nes_joy_A = { joyA[0], joyA[1], joyA[2], joyA[3], joyA[7], joyA[6], joyA[5], ~paddle_atr & joyA[4] };
-wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[7], joyB[6], joyB[5], ~paddle_atr & joyB[4] };
-wire [7:0] nes_joy_C = { joyC[0], joyC[1], joyC[2], joyC[3], joyC[7], joyC[6], joyC[5], ~paddle_atr & joyC[4] };
-wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[7], joyD[6], joyD[5], ~paddle_atr & joyD[4] };
 
-wire mic_button = joyA[9] | joyB[9];
-wire fds_btn = joyA[8] | joyB[8];
+// Turbo A/B buttons: 21.5e6/2^20 = ~20.5hz
+reg [19:0] turbo_cnt = 0;
+always @(posedge clk) begin
+    turbo_cnt <= turbo_cnt + 1'd1;
+end
+wire [5:4] joyA_t = {turbo_cnt[19],turbo_cnt[19]} & joyA[7:6];
+wire [5:4] joyB_t = {turbo_cnt[19],turbo_cnt[19]} & joyB[7:6];
+wire [5:4] joyC_t = {turbo_cnt[19],turbo_cnt[19]} & joyC[7:6];
+wire [5:4] joyD_t = {turbo_cnt[19],turbo_cnt[19]} & joyD[7:6];
+
+wire [7:0] nes_joy_A = { joyA[0], joyA[1], joyA[2], joyA[3], joyA[9], joyA[8], joyA[5] | joyA_t[5], ~paddle_atr & (joyA[4] | joyA_t[4]) };
+wire [7:0] nes_joy_B = { joyB[0], joyB[1], joyB[2], joyB[3], joyB[9], joyB[8], joyB[5] | joyB_t[5], ~paddle_atr & (joyB[4] | joyB_t[4]) };
+wire [7:0] nes_joy_C = { joyC[0], joyC[1], joyC[2], joyC[3], joyC[9], joyC[8], joyC[5] | joyC_t[5], ~paddle_atr & (joyC[4] | joyC_t[4]) };
+wire [7:0] nes_joy_D = { joyD[0], joyD[1], joyD[2], joyD[3], joyD[9], joyD[8], joyD[5] | joyD_t[5], ~paddle_atr & (joyD[4] | joyD_t[4]) };
+
+wire mic_button = joyA[11] | joyB[11];
+wire fds_btn = joyA[10] | joyB[10];
 
 reg [1:0] nes_ce;
 
@@ -682,7 +693,7 @@ zapper zap (
 	.trigger_mode(status[21]),
 	.ps2_mouse(ps2_mouse),
 	.analog(~status[32] ? joy_analog0 : joy_analog1),
-	.analog_trigger(~status[32] ? joyA[10] : joyB[10]),
+	.analog_trigger(~status[32] ? joyA[12] : joyB[12]),
 	.cycle(cycle),
 	.scanline(scanline),
 	.color(color),
@@ -710,7 +721,7 @@ wire [7:0] paddle_adj = paddle_off + ((paddle < 40) ? 8'd40 : (paddle > 216) ? 8
 wire [7:0] paddle_nes = ~{paddle_adj[0],paddle_adj[1],paddle_adj[2],paddle_adj[3],paddle_adj[4],paddle_adj[5],paddle_adj[6],paddle_adj[7]};
 wire       paddle_en  = (status[34:33] == 2);
 wire       paddle_atr = paddle_en & status[32];
-wire       paddle_btn = paddle_atr ? (joyA[4] | joyB[4] | joyC[4] | joyD[4]) : (joyA[10] | joyB[10] | joyC[10] | joyD[10]);
+wire       paddle_btn = paddle_atr ? (joyA[4] | joyB[4] | joyC[4] | joyD[4]) : (joyA[12] | joyB[12] | joyC[12] | joyD[12]);
 
 always @(posedge clk) begin
 	if (reset_nes) begin
@@ -1346,12 +1357,12 @@ savestate_ui savestate_ui
 	.clk            (clk           ),
 	.ps2_key        (ps2_key_adjust),
 	.allow_ss       (rom_loaded & mapper_has_savestate),
-	.joySS          (joyA_unmod[23]),
+	.joySS          (joyA_unmod[25]),
 	.joyRight       (joyA_unmod[0] ),
 	.joyLeft        (joyA_unmod[1] ),
 	.joyDown        (joyA_unmod[2] ),
 	.joyUp          (joyA_unmod[3] ),
-	.joyStart       (joyA_unmod[7] ),
+	.joyStart       (joyA_unmod[9] ),
 	.status_slot    (status[46:45] ),
 	.OSD_saveload   (status[43:42] ),
 	.ss_save        (ss_save       ),
