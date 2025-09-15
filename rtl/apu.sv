@@ -508,14 +508,6 @@ module DmcChan #(parameter [9:0] SSREG_INDEX_DMC1, parameter [9:0] SSREG_INDEX_D
 	input               SaveStateBus_load,
 	output      [63:0]  SaveStateBus_Dout
 );
-	// NOTE: Implicit DMA abort behavior is intentionally not emulated. I consider this undersireable
-	// behavior as the bug appeared so very late in the consoles lifespan. This is the note from the
-	// nesdev wiki: On RP2A03H and late RP2A03G CPUs, when playback is stopped implicitly on the same
-	// APU cycle that a reload DMA would schedule (that is, the 1st CPU cycle before the halt attempt),
-	// an unexpected reload DMA occurs from the same address. This extra byte goes into the sample
-	// buffer and is played after the first byte, as with any normal fetch. On RP2A03G CPUs, this bug
-	// was introduced sometime in 1990; earlier chips are unaffected.
-
 	// Savestates
 	localparam SAVESTATE_MODULES    = 2;
 	wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
@@ -812,6 +804,7 @@ module FrameCtr #(parameter [9:0] SSREG_INDEX_FCT) (
 	logic frame_interrupt_clear_pending;
 
 	always_ff @(posedge clk) begin : apu_block
+		// The priority of all these statements is important in which takes precident
 		if (addr == 2'h1 && read)
 			FrameInterrupt <= 0;
 
@@ -832,21 +825,9 @@ module FrameCtr #(parameter [9:0] SSREG_INDEX_FCT) (
 		if (aclk2 & frame_reset)
 			frame_reset_2 <= 1;
 
-		// Setting the IRQ will trump clearing the IRQ, so it must be set cleared above where it
-		// is set.
-
-
-
-
 		if (frame_int_disabled) begin
 			FrameInterrupt <= 0;
 		end
-
-
-		// else
-		// 	frame_interrupt_buffer <= FrameInterrupt;
-
-
 
 		if (write_ce && addr == 3 && ~MMC5) begin  // Register $4017
 			FrameSeqMode <= din[7];

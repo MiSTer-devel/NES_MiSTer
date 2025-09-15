@@ -29,15 +29,14 @@ module DmaController(
 	input dmc_trigger,             // DMC DMA trigger?
 	input cpu_read,                // CPU is in a read cycle?
 	input [7:0] data_from_cpu,     // Data written by CPU?
-	input [7:0] dma_data_to_ram,     // Data read from RAM?
+	input [7:0] dma_data_to_ram,   // Data read from RAM?
 	input [15:0] dmc_dma_addr,     // DMC DMA Address
 	output [15:0] aout,            // Address to access
 	output aout_enable,            // DMA controller wants bus control
 	output read,                   // 1 = read, 0 = write
 	output [7:0] data_to_ram,      // Value to write to RAM
 	output dmc_ack,                // ACK the DMC DMA
-	output pause_cpu,              // CPU is paused
-	output [7:0] current_dbus      // The value of the current data bus
+	output pause_cpu               // CPU is paused
 );
 
 reg dmc_state;
@@ -69,7 +68,6 @@ assign aout_enable = dmc_ack || spr_state[1];
 assign read = !put_cycle;
 assign data_to_ram = sprite_dma_lastval;
 assign aout = dmc_ack ? dmc_dma_addr : !put_cycle ? sprite_dma_addr : 16'h2004;
-assign current_dbus = !aout_enable ? dma_data_to_ram : (dmc_ack ? dma_data_to_ram : (!read ? data_to_ram : dma_data_to_ram));
 
 endmodule
 
@@ -441,7 +439,6 @@ wire dma_read;
 wire [7:0] dma_data_to_ram;
 wire apu_dma_request, apu_dma_ack;
 wire [15:0] apu_dma_addr;
-wire [7:0] dma_dbus;
 
 // Determine the values on the bus outgoing from the CPU chip (after DMA / APU)
 wire [15:0] addr = dma_aout_enable ? dma_aout  : cpu_addr;
@@ -458,7 +455,7 @@ DmaController dma(
 	.ce             (cpu_ce),
 	.reset          (reset_noSS),
 	.put_cycle      (odd_or_even),                // Even or odd cycle
-	.sprite_trigger ((addr == 'h4014 && mw_int)), // Sprite trigger
+	.sprite_trigger (apu_cs && addr[4:0] == 5'h14 && ~cpu_rnw), // Sprite trigger
 	.dmc_trigger    (apu_dma_request),            // DMC Trigger
 	.cpu_read       (cpu_rnw),                    // CPU in a read cycle?
 	.data_from_cpu  (cpu_dout),                   // Data from cpu
@@ -471,8 +468,7 @@ DmaController dma(
 	.dmc_ack        (apu_dma_ack),
 	.pause_cpu      (pause_cpu),
 	.get_ce         (get_ce),
-	.put_ce         (put_ce),
-	.current_dbus	(dma_dbus)
+	.put_ce         (put_ce)
 );
 
 
@@ -539,8 +535,8 @@ wire [15:0] audio_mappers = (audio_en == 2'd1) ? 16'd0 : sample_inverted;
 
 
 // Joypads are mapped into the APU's range.
-wire joypad1_cs = apu_cs && addr[4:0] == 5'h16;//(cpu_addr == 'h4016);
-wire joypad2_cs = apu_cs && addr[4:0] == 5'h17;//(cpu_addr == 'h4017);
+wire joypad1_cs = apu_cs && addr[4:0] == 5'h16;
+wire joypad2_cs = apu_cs && addr[4:0] == 5'h17;
 
 reg [2:0] joy_out;
 reg [2:0] joy_latch;
