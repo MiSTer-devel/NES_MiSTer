@@ -839,7 +839,7 @@ wire chr_allow;
 wire vram_a10;
 wire vram_ce;
 reg irq;
-reg [14:0] flags_out = 0;
+reg [15:0] flags_out = 0;
 
 
 reg [3:0] prg_bank;
