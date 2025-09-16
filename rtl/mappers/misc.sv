@@ -839,7 +839,7 @@ wire chr_allow;
 wire vram_a10;
 wire vram_ce;
 reg irq;
-reg [15:0] flags_out = 0;
+reg [14:0] flags_out = 0;
 
 
 reg [3:0] prg_bank;
@@ -872,22 +872,17 @@ end else if (ce) begin
 				endcase
 		endcase
 		if (irq_enable)
-			if (mapper == 40)
-				irq_counter <= irq_counter + 13'd1;
-			else // Mapper 42 (broken)
-				irq_counter <= irq_counter + 15'd1;
+			case(mapper)
+				40: irq_counter <= irq_counter + 13'd1;
+				42: irq_counter <= irq_counter + 15'd1;
+			endcase
 		else begin
-			irq <= 1'b0;	// ACK
 			irq_counter <= 0;
 		end
-		if (mapper == 40)
-			if (irq_counter == 13'h1000)
-				irq <= 1'b1;
-			else if (irq_counter == 13'h0000)
-				irq <= 1'b0;	// IRQ will self-acknowledge after 4096 M2 cycles
-		else // Mapper 42 (broken)
-			if (irq_counter == 15'h6000)
-				irq <= 1'b1;
+		case(mapper) //IRQ will self-acknowledge when counter overflows
+			40: irq <= irq_counter[12];
+			42: irq <= &irq_counter[14:13];
+		endcase
 end
 
 always @* begin
