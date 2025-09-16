@@ -1339,7 +1339,7 @@ wire statusUpdate;
 
 //Ignore F1-F4 when famicom keyboard is enabled
 wire skip_ps2 = (ps2_key[7:0] == 'h04) || (ps2_key[7:0] == 'h05) || (ps2_key[7:0] == 'h06) || (ps2_key[7:0] == 'h0C);
-wire [10:0] ps2_key_adjust = skip_ps2 && fkeyb ? 'h0 : ps2_key[10:0];
+wire [10:0] ps2_key_adjust = skip_ps2 && fkeyb ? 11'h0 : ps2_key[10:0];
 
 savestate_ui savestate_ui
 (
