@@ -271,6 +271,7 @@ parameter CONF_STR = {
 	"P3o9,Pause when OSD is open,Off,On;",
 	"P4,Advanced;",
 	"P4-;",
+	"P4O[64],PPU Reset Behavior,Famicom,NES;",
 	"P4OQ,Video Dijitter,Enabled,Disabled;",
 	"- ;",
 	"R0,Reset;",
@@ -303,7 +304,7 @@ wire [23:0] joyA_unmod;
 wire [10:0] ps2_key;
 wire [1:0] buttons;
 
-wire [63:0] status;
+wire [127:0] status;
 
 wire arm_reset = status[0];
 wire pal_video = |status[24:23];
@@ -844,6 +845,7 @@ end
 NES nes (
 	.clk             (clk),
 	.reset_nes       (reset_nes),
+	.ppu_rst_behavior(status[64]),
 	.cold_reset      (downloading & (type_fds | type_nes)),
 	.pausecore       (pausecore),
 	.corepaused      (corepaused),
