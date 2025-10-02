@@ -133,6 +133,7 @@ module NES(
 	input         gg_reset,
 	output  [2:0] emphasis,
 	output        save_written,
+	input         debug_dots,
 
 	// savestates
 	output        mapper_has_savestate,
@@ -142,6 +143,11 @@ module NES(
 	input  [1:0]  savestate_number,
 	output        sleep_savestate,
 	output        state_loaded,
+
+	output        hsync,
+	output        hblank,
+	output        vsync,
+	output        vblank,
 
 	output [24:0] Savestate_SDRAMAddr,
 	output        Savestate_SDRAMRdEn,
@@ -175,6 +181,7 @@ module NES(
 // Cyc 123456789ABC123456789ABC123456789ABC123456789ABC
 // CPU ----M------C----M------C----M------C----M------C
 // PPU ---P---P---P---P---P---P---P---P---P---P---P---P
+//                2000011112222
 //  M: M2 Tick, C: CPU Tick, P: PPU Tick -: Idle Cycle
 //
 // On Mister, we must pre-fetch data from memory 4 cycles before it is needed.
@@ -219,12 +226,12 @@ reg [1:0] div_sys = 2'd0;
 // CE's
 wire cpu_ce  = (div_cpu == div_cpu_n);
 wire ppu_ce  = (div_ppu == div_ppu_n);
-wire cart_ce = (cart_pre & ppu_ce); // First PPU cycle where cpu data is visible.
+wire cart_ce = (div_cpu == div_cpu_n - 5'd2); // First PPU cycle where cpu data is visible.
 
 // Signals
-wire cart_pre  = (ppu_tick == (cpu_tick_count[2] ? 1 : 0));
-wire ppu_read  = (ppu_tick == (cpu_tick_count[2] ? 2 : 1));
-wire ppu_write = (ppu_tick == (cpu_tick_count[2] ? 1 : 0));
+wire cart_pre  = (div_cpu >= div_cpu_n - 5'd6) && (div_cpu <= div_cpu_n - 5'd2);
+wire ppu_read  = (ppu_tick == 1);
+wire ppu_write = (ppu_tick == 1);
 
 wire phi2 = (div_cpu > 4 && div_cpu < div_cpu_n);
 
@@ -576,10 +583,13 @@ assign scanline = (corepause_active) ? scanline_paused : scanline_ppu;
 
 PPU ppu(
 	.clk              (clk),
+	.cs               (addr[15:13] == 3'b001 && phi2),
+	.RWn              (mr_int && !mw_int),
 	.rst_behavior     (ppu_rst_behavior),
 	.ce               (ppu_ce),
 	.reset            (reset),
 	.sys_type         (sys_type),
+	.debug_dots       (debug_dots),
 	.color            (color),
 	.din              (dbus),
 	.dout             (ppu_dout),
@@ -590,9 +600,9 @@ PPU ppu(
 	.vram_r           (chr_read),
 	.vram_r_ex        (chr_read_ex),
 	.vram_w           (chr_write),
-	.vram_a           (chr_addr),
+	.vram_addr        (chr_addr),
 	.vram_a_ex        (chr_addr_ex),
-	.vram_din         (chr_to_ppu),
+	.vram_dbus_in     (chr_to_ppu),
 	.vram_dout        (chr_from_ppu),
 	.scanline         (scanline_ppu),
 	.cycle            (ppu_cycle),
@@ -602,6 +612,10 @@ PPU ppu(
 	.mask             (mask),
 	.render_ena_out   (render_ena),
 	.evenframe        (evenframe),
+	.hblank           (hblank),
+	.vblank           (vblank),
+	.hsync            (hsync),
+	.vsync            (vsync),
 	// savestates
 	.SaveStateBus_Din       (SaveStateBus_Din        ),
 	.SaveStateBus_Adr       (SaveStateBus_Adr        ),
