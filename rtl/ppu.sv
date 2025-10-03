@@ -344,27 +344,20 @@ reg [7:0] x_coord;     // X coordinate where we want things
 reg [7:0] pix1, pix2;  // Shift registers, output when x_coord == 0
 reg aprio;             // Current prio
 wire active = (x_coord == 0);
-reg sprite_active;
 
 always @(posedge clk) if (ce) begin
 	if (enable) begin
 		if (!active) begin
 			// Decrease until x_coord is zero.
 			x_coord <= x_coord - 8'h01;
-			if (x_coord == 2'd1 && rendering)
-				sprite_active <= 1;
 		end else if (rendering) begin
 			pix1 <= pix1 >> 1;
 			pix2 <= pix2 >> 1;
-		end else if (!sprite_active) begin
-			// If not rendering, and sprite misses its mark, it won't get rendered at all
-			pix1 <= '0;
-			pix2 <= '0;
 		end
 	end
 	if (load[3]) pix1 <= load_in[26:19];
 	if (load[2]) pix2 <= load_in[18:11];
-	if (load[1]) begin x_coord <= load_in[10:3]; sprite_active <= ~|load_in[10:3]; end
+	if (load[1]) x_coord <= load_in[10:3];
 	if (load[0]) {upper_color, aprio} <= load_in[2:0];
 end
 assign bits = {aprio, upper_color, active && pix2[0], active && pix1[0]};
