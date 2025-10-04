@@ -54,12 +54,12 @@ assign SS_vram_BACK[   34] = ppu_address_latch;
 assign SS_vram_BACK[52:51] = write_shift;
 assign SS_vram_BACK[63:55] = 9'b0; // free to be used
 
+wire write_2006b = write_shift[1];
+
 wire inc_horizontal = (cycle[2:0] == 7 && ((cycle <= 255) || (cycle >= 320 && cycle <= 335)) && is_rendering);
 wire inc_vertical = (cycle == 255) && is_rendering;
-wire copy_hscroll = (cycle == 256) && is_rendering;
-wire copy_vscroll = (cycle >= 279 && cycle <= 303) && is_pre_render && is_rendering;
-
-wire write_2006b = write_shift[1];
+wire copy_hscroll = ((cycle == 256) && is_rendering) || write_2006b;
+wire copy_vscroll = ((cycle >= 279 && cycle <= 303) && is_pre_render && is_rendering) || write_2006b;
 
 wire  [14:0] vram_t_mask;
 assign {vram_t_mask[10], vram_t_mask[4:0]} = (write_2006b || copy_hscroll) ? {vram_t[10], vram_t[4:0]} : 6'b11_1111;
@@ -77,17 +77,21 @@ always @(posedge clk) begin
 	end else if (ce) begin
 
 		// Horizontal copy at cycle 256 and rendering OR if delayed 2006 write
-		if (copy_hscroll || write_2006b)
+		if (copy_hscroll)
 			{vram_v[10], vram_v[4:0]} <= {vram_t[10], vram_t[4:0]};
 
 		// Vertical copy at Cycles 279 to 303 and rendering OR delayed 2006 write
-		if (copy_vscroll || write_2006b)
+		if (copy_vscroll)
 			{vram_v[14:11], vram_v[9:5]} <= {vram_t[14:11], vram_t[9:5]};
 
 		// Increment course X scroll from (cycle 0-255 or 320-335) and cycle[2:0] == 7
 		if (inc_horizontal || (trigger_2007 && is_rendering)) begin
 			vram_v[4:0] <= (vram_v[4:0] + 1'd1) & vram_t_mask[4:0];
 			vram_v[10] <= (vram_v[10] ^ &vram_v[4:0]) & vram_t_mask[10];
+			if (copy_hscroll) begin // vram_t will also get corrupted
+				vram_t[4:0] <= (vram_v[4:0] + 1'd1) & vram_t_mask[4:0];
+				vram_t[10] <= (vram_v[10] ^ &vram_v[4:0]) & vram_t_mask[10];
+			end
 		end
 
 		// Vertical Increment at 255 and rendering
@@ -101,6 +105,19 @@ always @(posedge clk) begin
 					vram_v[11] <= ~vram_v[11] & vram_t_mask[11];
 				end else begin
 					vram_v[9:5] <= (vram_v[9:5] + 1'd1) & vram_t_mask[9:5];
+				end
+			end
+			if (copy_vscroll) begin // vram_t will also get corrupted
+				vram_t[14:12] <= (vram_v[14:12] + 1'd1) & vram_t_mask[14:12];
+				vram_t[9:5] <= vram_v[9:5] & vram_t_mask[9:5];
+				vram_t[11] <= vram_v[11] & vram_t_mask[11];
+				if (vram_v[14:12] == 7) begin
+					if (vram_v[9:5] == 29) begin
+						vram_t[9:5] <= 0;
+						vram_t[11] <= ~vram_v[11] & vram_t_mask[11];
+					end else begin
+						vram_t[9:5] <= (vram_v[9:5] + 1'd1) & vram_t_mask[9:5];
+					end
 				end
 			end
 		end
@@ -180,8 +197,8 @@ module ClockGen #(parameter USE_SAVESTATE = 0) (
 	output [63:0] SaveStateBus_Dout
 );
 
-reg even_frame_toggle = 0; // 1 indicates even frame.
-assign evenframe = even_frame_toggle;
+reg is_even_frame = 0; // 1 indicates even frame.
+assign evenframe = is_even_frame;
 
 // Dendy is 291 to 310
 wire [8:0] vblank_start_sl;
@@ -245,7 +262,7 @@ generate
 		assign SS_CLKGEN_BACK[13:10] = rendering_sr;
 		assign SS_CLKGEN_BACK[22:14] = scanline;
 		assign SS_CLKGEN_BACK[   23] = is_pre_render;
-		assign SS_CLKGEN_BACK[   24] = even_frame_toggle;
+		assign SS_CLKGEN_BACK[   24] = is_even_frame;
 		assign SS_CLKGEN_BACK[   25] = skip_next;
 		assign SS_CLKGEN_BACK[   26] = vblank;
 		assign SS_CLKGEN_BACK[   27] = hblank;
@@ -274,7 +291,7 @@ always @(posedge clk) if (reset) begin
 		vsync        <= SS_CLKGEN[   28]; // 0;
 		hsync        <= SS_CLKGEN[   29]; // 0;
 	end else begin
-		cycle        <= 338;
+		cycle        <= 240;
 		is_in_vblank <= 0;
 		rendering_sr <= '0;
 		skip_next    <= 0;
@@ -285,7 +302,7 @@ always @(posedge clk) if (reset) begin
 	end
 end else if (ce) begin
 	if (cycle == 338) begin
-		skip_next <= is_pre_render && ~even_frame_toggle && is_rendering && skip_en;
+		skip_next <= is_pre_render && ~is_even_frame && is_rendering && skip_en;
 	end
 	rendering_sr <= {rendering_sr[2:0], is_rendering};
 	cycle <= end_of_line ? 9'd0 : cycle + 9'd1;
@@ -309,11 +326,11 @@ always @(posedge clk) if (reset) begin
 	if (USE_SAVESTATE) begin
 		scanline          <= SS_CLKGEN[22:14]; // 0;
 		is_pre_render     <= SS_CLKGEN[   23]; // 0;
-		even_frame_toggle <= SS_CLKGEN[   24]; // 0; // Resets to 0, the first frame will always end with 341 pixels.
+		is_even_frame      <= SS_CLKGEN[   24]; // 0; // Resets to 0, the first frame will always end with 341 pixels.
 	end else begin
 		scanline          <= 0;
 		is_pre_render     <= 0;
-		even_frame_toggle <= 0; // Resets to 0, the first frame will always end with 341 pixels.
+		is_even_frame      <= 0; // Resets to 0, the first frame will always end with 341 pixels.
 	end
 end else if (ce && end_of_line) begin
 	// Once the scanline counter reaches end of 260, it gets reset to -1.
@@ -322,7 +339,7 @@ end else if (ce && end_of_line) begin
 	is_pre_render <= (scanline == vblank_end_sl);
 
 	if (scanline == 255)
-		even_frame_toggle <= ~even_frame_toggle;
+		is_even_frame <= ~is_even_frame;
 end
 
 endmodule // ClockGen
@@ -1388,7 +1405,7 @@ wire in_visible_frame = (scanline < 240 || is_pre_render_line) && cycle > 0 && c
 wire out_of_clip = cycle > 8'd8;
 
 // Cycle 0 is excluded because the H_LT_256R signal is delayed by a pixel, so 0 is missed.
-wire bgp_en = ((in_visible_frame || (cycle >= 321 && cycle <= 336))) && rendering_enabled;
+wire bgp_en = ((in_visible_frame || (cycle >= 321 && cycle <= 336))) && re_sr[0];
 
 BgPainter bg_painter(
 	.clk            (clk),
@@ -1505,7 +1522,7 @@ SpriteAddressGenEx address_gen_ex(
 SpriteSet sprite_gen(
 	.clk           (clk),
 	.ce            (ce),
-	.enable        (in_visible_frame /*&& rendering_enabled*/),
+	.enable        (in_visible_frame),
 	.rendering     (rendering_enabled),
 	.load          (spriteset_load),
 	.load_in       (spriteset_load_in),
@@ -1676,7 +1693,10 @@ end
 
 reg [5:0] color_pipe[4];
 wire [5:0] color2;
-wire [4:0] pram_addr = is_rendering && in_visible_frame ? pixel : (is_pal_address ? vram[4:0] : 5'b0000);
+wire pal_writes_valid = is_pal_address && ~is_rendering;
+// On a real system if master_mode is set the ext pins would also be used for palette address, but
+// we dont have those here.
+wire [4:0] pram_addr = is_rendering && in_visible_frame ? pixel : (pal_writes_valid ? vram[4:0] : 5'b00000);
 
 PaletteRam palette_ram(
 	.clk   (clk),
@@ -1685,7 +1705,7 @@ PaletteRam palette_ram(
 	.addr  (pram_addr), // Read addr
 	.din   (ppu_dbus[5:0]),  // Value to write
 	.dout  (color2),    // Output color
-	.write (write_2007_delayed[1] && is_pal_address && ~is_rendering), // Condition for writing
+	.write (vram_w_ppudata && pal_writes_valid), // Condition for writing
 	// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ),
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),
