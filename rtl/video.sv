@@ -154,21 +154,27 @@ reg  [8:0] h, v;
 wire [8:0] hc = disengaged ? h : count_h;
 wire [8:0] vc = disengaged ? v : count_v;
 wire [8:0] vblank_start, vblank_end, hblank_start, hblank_end, hsync_start, hsync_end;
-wire [8:0] vblank_start_sl;
+wire [8:0] vblank_start_sl, vblank_end_sl, vsync_start_sl;
 wire hblank_period;
 
 always_comb begin
 	case (sys_type)
 		2'b00,2'b11: begin // NTSC/Vs.
 			vblank_start_sl = 9'd241;
+			vblank_end_sl   = 9'd260;
+			vsync_start_sl = 9'd244;
 		end
 
 		2'b01: begin       // PAL
 			vblank_start_sl = 9'd241;
+			vblank_end_sl   = 9'd310;
+			vsync_start_sl = 9'd269;
 		end
 
 		2'b10: begin       // Dendy
-			vblank_start_sl = 9'd291;
+			vblank_start_sl = 9'd241; // Vblank starts here allegedly, even though the flag is set at 291
+			vblank_end_sl   = 9'd310;
+			vsync_start_sl = 9'd269; // Guessing it's the same as PAL
 		end
 	endcase
 
@@ -222,7 +228,7 @@ always @(posedge clk) begin
 		if (h >= 340) begin
 			h <= 0;
 			v <= v + 1'd1;
-			if (v == (pal_video ? 310 : 260))
+			if (v == vblank_end_sl)
 				v <= 9'd511;
 		end
 
@@ -234,9 +240,9 @@ always @(posedge clk) begin
 		hsync_reg <= hsync_period;
 		hblank_reg <= hblank_period;
 
-		if (vc == (vblank_start_sl + 3'd3) && hsync_period)
+		if (vc == vsync_start_sl && hsync_period)
 			vsync_reg <= 1;
-		if (vc == (vblank_start_sl + 3'd6) && hsync_period)
+		if (vc == (vsync_start_sl + 2'd3) && hsync_period)
 			vsync_reg <= 0;
 
 		if (vc == vblank_start && hsync_period)

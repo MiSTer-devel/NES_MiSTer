@@ -203,6 +203,7 @@ assign evenframe = is_even_frame;
 // Dendy is 291 to 310
 wire [8:0] vblank_start_sl;
 wire [8:0] vblank_end_sl;
+wire [8:0] vsync_start_sl;
 wire [8:0] last_sl;
 wire skip_en;
 reg [3:0] rendering_sr;
@@ -212,18 +213,21 @@ always_comb begin
 		2'b00,2'b11: begin // NTSC/Vs.
 			vblank_start_sl = 9'd241;
 			vblank_end_sl   = 9'd260;
+			vsync_start_sl  = 9'd244;
 			skip_en         = 1'b1;
 		end
 
 		2'b01: begin       // PAL
 			vblank_start_sl = 9'd241;
 			vblank_end_sl   = 9'd310;
+			vsync_start_sl  = 9'd269;
 			skip_en         = 1'b0;
 		end
 
 		2'b10: begin       // Dendy
-			vblank_start_sl = 9'd291;
+			vblank_start_sl = 9'd291; // FIXME vblank doesn't ACTUALLY start here, just the nmi
 			vblank_end_sl   = 9'd310;
+			vsync_start_sl  = 9'd269; // Guessing it's the same as PAL
 			skip_en         = 1'b0;
 		end
 	endcase
@@ -311,12 +315,12 @@ end else if (ce) begin
 	hsync <= hsync_period;
 	hblank <= hblank_period;
 
-	if (scanline == (vblank_start_sl + 3'd3) && hsync_period)
+	if (scanline == vsync_start_sl && hsync_period)
 		vsync <= 1;
-	if (scanline == (vblank_start_sl + 3'd6) && hsync_period)
+	if (scanline == (vsync_start_sl + 3'd3) && hsync_period)
 		vsync <= 0;
 
-	if (scanline == vblank_start_sl && hblank_period)
+	if (scanline == 9'd241 && hblank_period)
 		vblank <= 1;
 	if (is_pre_render && hblank_period)
 		vblank <= 0;
@@ -1279,9 +1283,9 @@ eReg_SavestateV #(SSREG_INDEX_PPU_2, SSREG_DEFAULT_PPU_2) iREG_SAVESTATE_PPU_DEC
 // wire w2007 = cs_w && (ain == 3'd7);
 
 // These are stored in control register 0
-reg obj_patt; // Object pattern table
-reg bg_patt;  // Background pattern table
-reg obj_size; // 1 if sprites are 16 pixels high, else 0.
+reg obj_patt, obj_patt1; // Object pattern table
+reg bg_patt, bg_patt1;  // Background pattern table
+reg obj_size, obj_size1; // 1 if sprites are 16 pixels high, else 0.
 reg vbl_enable;  // Enable VBL flag
 reg clear; // Enable write after first vblank
 
@@ -1436,7 +1440,7 @@ OAMEval spriteeval (
 	.reset             (reset),
 	.end_of_line       (end_of_line),
 	.rendering_enabled (rendering_enabled),
-	.obj_size          (obj_size),
+	.obj_size          (obj_size1),
 	.scanline          (scanline),
 	.cycle             (cycle),
 	.clear_signal      (clear_signal),
@@ -1485,9 +1489,9 @@ SpriteAddressGen address_gen(
 	.rendering (rendering_enabled),
 	.in_range  (in_range & rendering_enabled),
 	.enabled   (sprite_load_en),  // Load sprites between 256..319
-	.obj_size  (obj_size),
+	.obj_size  (obj_size1),
 	.scanline  (scanline),
-	.obj_patt  (obj_patt),               // Object size and pattern table
+	.obj_patt  (obj_patt1),               // Object size and pattern table
 	.temp      (is_pre_render_line || ~is_rendering ? 8'hFF : oam_bus),                // Info from temp buffer.
 	.vram_addr (sprite_vram_addr),       // [out] VRAM Address that we want data from
 	.vram_data (vram_din),               // [in] Data at the specified address
@@ -1505,9 +1509,9 @@ SpriteAddressGenEx address_gen_ex(
 	.ce             (ce),
 	.rendering      (rendering_enabled),
 	.enabled        (sprite_load_en),  // Load sprites between 256..319
-	.obj_size       (obj_size),
+	.obj_size       (obj_size1),
 	.scanline       (scanline[7:0]),
-	.obj_patt       (obj_patt),               // Object size and pattern table
+	.obj_patt       (obj_patt1),               // Object size and pattern table
 	.temp           (is_pre_render_line || ~is_rendering ? 32'hFFFFFFFF : oam_bus_ex),                // Info from temp buffer.
 	.vram_addr      (sprite_vram_addr_ex),    // [out] VRAM Address that we want data from
 	.vram_data      (vram_din),               // [in] Data at the specified address
@@ -1634,7 +1638,7 @@ always_comb begin
 		else if (sprite_load_en)
 			vram_a = {1'b0, sprite_vram_addr};                            // Sprite pattern table during sprite loadout
 		else
-			vram_a = {1'b0, bg_patt, bg_name_table, pattern_table_upper, vram[14:12]}; // Background pattern table otherwise
+			vram_a = {1'b0, bg_patt1, bg_name_table, pattern_table_upper, vram[14:12]}; // Background pattern table otherwise
 	end
 end
 
@@ -1792,6 +1796,10 @@ always @(posedge clk) begin
 		nmi_occured      <= SS_PPU[   13]; // 0; // wasn't reset before!
 		re_sr            <= SS_PPU[36:34]; // 0; // rendering disabled on reset
 	end else if (ce) begin
+		// These are use combinationally so they have to be delayed to the end of M2
+		obj_patt1 <= obj_patt;
+		bg_patt1  <= bg_patt;
+		obj_size1 <= obj_size;
 		re_sr <= {re_sr[1:0], rendering_regs};
 		if (write) begin
 			case (ain)
