@@ -1019,10 +1019,10 @@ initial begin
 end
 
 always @(posedge clk) if (pclk0) begin
-	if (enable) begin
-		if (latch_nametable)
-			current_name_table <= vram_data;
+	if (latch_nametable)
+		current_name_table <= vram_data;
 
+	if (enable) begin
 		if (latch_attrtable) begin
 			current_attribute_table <=
 				(!vram_v[1] && !vram_v[6]) ? vram_data[1:0] :
@@ -1415,7 +1415,7 @@ BgPainter bg_painter(
 	.clk            (clk),
 	.pclk0          (ce),
 	.clear          (reset),
-	.latch_nametable(cycle[2:0] == 2),
+	.latch_nametable(cycle[2:0] == 2 && re_sr[0]),
 	.latch_attrtable(cycle[2:0] == 4),
 	.latch_pattern1 (cycle[2:0] == 6),
 	.latch_pattern2 (cycle[2:0] == 0),
@@ -1615,13 +1615,13 @@ assign vram_a_ex = {1'b0, sprite_vram_addr_ex};
 
 wire special_dot = ~evenframe && cycle == 0 && scanline == 0; // This dot is skipped on even frames
 
-wire nametable_read = cycle[2:0] == 1 || cycle[2:0] == 2 || cycle > 336 || special_dot;
+wire nametable_read = cycle[2:0] == 1 || cycle[2:0] == 2 || (sprite_load_en && attribute_read) || cycle > 336 || special_dot;
 wire attribute_read = cycle[2:0] == 3 || cycle[2:0] == 4;
 wire pattern_table_upper = cycle[1:0] == 3 || cycle[1:0] == 0;
 wire read_cycle = ~cycle[0];
 
 always_comb begin
-	if (~is_rendering) begin
+	if (~is_rendering || (is_pre_render_line && cycle == 0)) begin
 		vram_a = vram[13:0];
 		vram_r_ex = 0;
 	end else begin

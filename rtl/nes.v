@@ -293,7 +293,7 @@ always @(posedge clk) begin
 	end
 
 	// Add one extra PPU tick every 5 cpu cycles for PAL.
-	if (cpu_ce && sys_type[0])
+	if (cpu_ce && (sys_type == 2'b01))
 		cpu_tick_count <= cpu_tick_count[2] ? 3'd0 : cpu_tick_count + 1'b1;
 
 	// SDRAM Clock
@@ -494,7 +494,7 @@ APU apu(
 	.clk            (clk),
 	.PHI2           (phi2),
 	.CS             (apu_cs),
-	.PAL            (sys_type[0]),
+	.PAL            (sys_type == 2'b01),
 	.ce             (apu_ce),
 	.reset          (reset),
 	.cold_reset     (cold_reset),
