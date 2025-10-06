@@ -1094,6 +1094,9 @@ module PaletteRam
 	output [5:0] dout,
 	input write,
 	input reset,
+	input rendering,
+	input [4:0] raw_addr,
+	input is_addressed,
 	// savestates
 	input [63:0]  SaveStateBus_Din,
 	input [ 9:0]  SaveStateBus_Adr,
@@ -1128,6 +1131,15 @@ reg [5:0] palette [32];
 
 // If 0x0,4,8,C: mirror every 0x10
 wire [4:0] addr2 = (addr[1:0] == 0) ? {1'b0, addr[3:0]} : addr;
+
+// 0/4/8/C and 10/14/18/1C (same row)
+// 1/5/9/D
+// 2/6/A/E
+// 3/7/B/F
+// 11/15/19/1D
+// 12/16/1A/1E
+// 13/17/1B/1F
+
 assign dout = palette[addr2];
 
 assign SS_PAL_BACK[0][ 5: 0] = palette[ 0]; assign SS_PAL_BACK[1][ 5: 0] = palette[1 ]; assign SS_PAL_BACK[2][ 5: 0] = palette[2 ]; assign SS_PAL_BACK[3][ 5: 0] = palette[3 ];
@@ -1139,6 +1151,10 @@ assign SS_PAL_BACK[0][45:40] = palette[20]; assign SS_PAL_BACK[1][45:40] = palet
 assign SS_PAL_BACK[0][53:48] = palette[24]; assign SS_PAL_BACK[1][53:48] = palette[25]; assign SS_PAL_BACK[2][53:48] = palette[26]; assign SS_PAL_BACK[3][53:48] = palette[27];
 assign SS_PAL_BACK[0][61:56] = palette[28]; assign SS_PAL_BACK[1][61:56] = palette[29]; assign SS_PAL_BACK[2][61:56] = palette[30]; assign SS_PAL_BACK[3][61:56] = palette[31];
 
+reg old_rendering;
+reg was_addressed;
+reg [4:0] last_addr;
+
 always @(posedge clk) if (reset) begin
 	palette[ 0] <= SS_PAL[0][ 5: 0]; palette[1 ] <= SS_PAL[1][ 5: 0]; palette[2 ] <= SS_PAL[2][ 5: 0]; palette[3 ] <= SS_PAL[3][ 5: 0];
 	palette[ 4] <= SS_PAL[0][13: 8]; palette[5 ] <= SS_PAL[1][13: 8]; palette[6 ] <= SS_PAL[2][13: 8]; palette[7 ] <= SS_PAL[3][13: 8];
@@ -1148,8 +1164,20 @@ always @(posedge clk) if (reset) begin
 	palette[20] <= SS_PAL[0][45:40]; palette[21] <= SS_PAL[1][45:40]; palette[22] <= SS_PAL[2][45:40]; palette[23] <= SS_PAL[3][45:40];
 	palette[24] <= SS_PAL[0][53:48]; palette[25] <= SS_PAL[1][53:48]; palette[26] <= SS_PAL[2][53:48]; palette[27] <= SS_PAL[3][53:48];
 	palette[28] <= SS_PAL[0][61:56]; palette[29] <= SS_PAL[1][61:56]; palette[30] <= SS_PAL[2][61:56]; palette[31] <= SS_PAL[3][61:56];
-end else if (ce && write) begin
-	palette[addr2] <= din;
+end else if (ce) begin
+	if (write) begin
+		palette[addr2] <= din;
+	end
+	// Disabled for now, but leaving palette corruption for when the behavior is better understood.
+	// It doesn't impact the functional behavior of any game.
+	// old_rendering <= rendering;
+	// if (rendering) begin
+	// 	was_addressed <= is_addressed;
+	// 	last_addr <= raw_addr;
+	// end
+	// if (old_rendering && ~rendering && was_addressed) begin
+	// 		palette[{last_addr[4], raw_addr[3:0]}] <= palette[last_addr[4:0]];
+	// end
 end
 
 endmodule  // PaletteRam
@@ -1703,13 +1731,16 @@ wire pal_writes_valid = is_pal_address && ~is_rendering;
 wire [4:0] pram_addr = is_rendering && in_visible_frame ? pixel : (pal_writes_valid ? vram[4:0] : 5'b00000);
 
 PaletteRam palette_ram(
-	.clk   (clk),
-	.reset (reset),
-	.ce    (ce),
-	.addr  (pram_addr), // Read addr
-	.din   (ppu_dbus[5:0]),  // Value to write
-	.dout  (color2),    // Output color
-	.write (vram_w_ppudata && pal_writes_valid), // Condition for writing
+	.clk          (clk),
+	.reset        (reset),
+	.ce           (ce),
+	.addr         (pram_addr), // Read addr
+	.din          (ppu_dbus[5:0]),  // Value to write
+	.dout         (color2),    // Output color
+	.write        (vram_w_ppudata && pal_writes_valid), // Condition for writing
+	.rendering    (rendering_enabled),
+	.raw_addr     (rendering_enabled ? pram_addr : vram[4:0]),
+	.is_addressed (rendering_enabled ? |vram[13:10] : is_pal_address),
 	// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ),
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),
@@ -1731,7 +1762,7 @@ wire mask_right = cycle > 248 && mask == 2'b10;
 wire mask_pal = (|sys_type && pal_mask);
 wire in_draw_range = ~(cycle >= 271 && cycle <= 328) && ~vblank;
 wire grayscale_bit = write_2001 ? ppu_dbus[0] : grayscale;
-wire not_grayscale = (in_draw_range || (vram_r_ppudata && is_pal_address)) && ~grayscale_bit;
+wire not_grayscale = ((in_draw_range || (vram_r_ppudata && is_pal_address)) && sys_type == 0) && ~grayscale_bit;
 
 debug_dots debug_d(
 	.enable     (debug_dots),

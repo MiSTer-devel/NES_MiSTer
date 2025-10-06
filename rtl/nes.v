@@ -417,7 +417,8 @@ T65 cpu(
 	.mode   (0),
 	.BCD_en (0),
 
-	.res_n  (~cpu_reset),
+	.res_n  (~cpu_reset && ~cold_reset),
+	.pwr_n  (~cold_reset), // Cold boot, power reset, must be paired with reset
 	.clk    (clk),
 	.enable (cpu_ce),
 	.rdy    (~pause_cpu),
