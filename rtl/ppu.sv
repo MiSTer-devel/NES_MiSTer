@@ -1093,10 +1093,13 @@ module PaletteRam
 	input [5:0] din,
 	output [5:0] dout,
 	input write,
+	input [1:0] extra_bits,
 	input reset,
 	input rendering,
+	input c_corrupt,
 	input [4:0] raw_addr,
 	input is_addressed,
+	input in_frame,
 	// savestates
 	input [63:0]  SaveStateBus_Din,
 	input [ 9:0]  SaveStateBus_Adr,
@@ -1152,6 +1155,7 @@ assign SS_PAL_BACK[0][53:48] = palette[24]; assign SS_PAL_BACK[1][53:48] = palet
 assign SS_PAL_BACK[0][61:56] = palette[28]; assign SS_PAL_BACK[1][61:56] = palette[29]; assign SS_PAL_BACK[2][61:56] = palette[30]; assign SS_PAL_BACK[3][61:56] = palette[31];
 
 reg old_rendering;
+reg [1:0] old_extra_bits;
 reg was_addressed;
 reg [4:0] last_addr;
 
@@ -1171,12 +1175,16 @@ end else if (ce) begin
 	// Disabled for now, but leaving palette corruption for when the behavior is better understood.
 	// It doesn't impact the functional behavior of any game.
 	// old_rendering <= rendering;
+	// old_extra_bits <= extra_bits;
 	// if (rendering) begin
 	// 	was_addressed <= is_addressed;
-	// 	last_addr <= raw_addr;
+	// 	last_addr <= addr2;
 	// end
-	// if (old_rendering && ~rendering && was_addressed) begin
-	// 		palette[{last_addr[4], raw_addr[3:0]}] <= palette[last_addr[4:0]];
+	// if (old_rendering && ~rendering) begin
+
+	// 	if (in_frame && c_corrupt /* && (addr2[4] == raw_addr[4])*/) begin
+	// 		palette[{raw_addr[4:0]}] <= palette[addr2[4:0]];
+	// 	end
 	// end
 end
 
@@ -1730,6 +1738,8 @@ wire pal_writes_valid = is_pal_address && ~is_rendering;
 // we dont have those here.
 wire [4:0] pram_addr = is_rendering && in_visible_frame ? pixel : (pal_writes_valid ? vram[4:0] : 5'b00000);
 
+wire in_rendering_frame = scanline < 240 || is_pre_render_line;
+
 PaletteRam palette_ram(
 	.clk          (clk),
 	.reset        (reset),
@@ -1738,9 +1748,11 @@ PaletteRam palette_ram(
 	.din          (ppu_dbus[5:0]),  // Value to write
 	.dout         (color2),    // Output color
 	.write        (vram_w_ppudata && pal_writes_valid), // Condition for writing
-	.rendering    (rendering_enabled),
-	.raw_addr     (rendering_enabled ? pram_addr : vram[4:0]),
-	.is_addressed (rendering_enabled ? |vram[13:10] : is_pal_address),
+	.rendering    (rendering_regs),
+	.in_frame     (in_rendering_frame),
+	.c_corrupt    (|vram[13:10]),
+	.raw_addr     (vram[4:0]),
+	.is_addressed (is_pal_address),
 	// savestates
 	.SaveStateBus_Din  (SaveStateBus_Din ),
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),
@@ -1762,7 +1774,7 @@ wire mask_right = cycle > 248 && mask == 2'b10;
 wire mask_pal = (|sys_type && pal_mask);
 wire in_draw_range = ~(cycle >= 271 && cycle <= 328) && ~vblank;
 wire grayscale_bit = write_2001 ? ppu_dbus[0] : grayscale;
-wire not_grayscale = ((in_draw_range || (vram_r_ppudata && is_pal_address)) && sys_type == 0) && ~grayscale_bit;
+wire not_grayscale = ((in_draw_range || (vram_r_ppudata && is_pal_address))) && ~grayscale_bit;
 
 debug_dots debug_d(
 	.enable     (debug_dots),
