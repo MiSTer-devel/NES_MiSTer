@@ -476,6 +476,7 @@ module OAMEval(
 	input PAL,
 	output in_range,
 	output masked_sprites,     // If the game is trying to mask extra sprites
+	input is_pre_render,
 	// savestates
 	input [63:0]  SaveStateBus_Din,
 	input [ 9:0]  SaveStateBus_Adr,
@@ -545,7 +546,7 @@ wire [4:0] oam_row_last = old_using_secondary ? oam_secondary_addr : oam_addr[7:
 
 wire corrupting_write = 0;// (oam_addr_write & ~using_secondary);
 
-assign in_range = scanline[7:0] >= oam_dbus && scanline[7:0] < oam_dbus + (obj_size ? 16 : 8);
+assign in_range = (scanline[7:0] >= oam_dbus && scanline[7:0] < oam_dbus + (obj_size ? 16 : 8)) && ~is_pre_render;
 
 wire clear_secondary_addr = ((cycle == 63) || (cycle == 255) || (cycle == 339)) && rendering;
 
@@ -583,6 +584,8 @@ assign SS_OAMEVAL_BACK[59] = old_rendering;
 assign SS_OAMEVAL_BACK[60] = old_using_secondary;
 assign SS_OAMEVAL_BACK[37:31] = '0; // free to be used
 assign SS_OAMEVAL_BACK[63:61] = 3'b0; // free to be used
+
+wire oam_wr_enabled = ~oam_secondary_ovr && ~is_pre_render;
 
 always @(posedge clk) begin :oam_eval
 
@@ -665,7 +668,7 @@ end else if (ce) begin
 			n_ovr <= 0;
 
 			if (secondary_write) begin
-				if (~oam_secondary_ovr) begin // If this overflows due to rendering status corrupting the addr, oamdata will still be FF
+				if (oam_wr_enabled) begin // If this overflows due to rendering status corrupting the addr, oamdata will still be FF
 					oam_temp[oam_secondary_addr] <= 8'hFF;
 					{oam_secondary_ovr, oam_secondary_addr} <= {1'b0, oam_secondary_addr} + 6'd1;
 				end
@@ -700,9 +703,9 @@ end else if (ce) begin
 
 				//On even cycles, data is read from (primary) OAM
 				if (!secondary_write) begin
-					oam_data <= (oam[oam_read_addr] & (is_attr_byte ? 8'hE3 : 8'hFF));
+					oam_data <= is_pre_render ? oam_temp[oam_secondary_addr] : (oam[oam_read_addr] & (is_attr_byte ? 8'hE3 : 8'hFF));
 				end else begin
-					if (~oam_secondary_ovr && ~n_ovr) // The Attr byte of secondary OAM is NOT missing bits 4:2
+					if (oam_wr_enabled && ~n_ovr) // The Attr byte of secondary OAM is NOT missing bits 4:2
 						oam_temp[oam_secondary_addr] <= oam_dbus;
 					else
 						oam_data <= oam_temp[oam_secondary_addr];
@@ -713,7 +716,8 @@ end else if (ce) begin
 					if (eval_count == 2'd0) begin // Evaluate Y for in_range
 						if (in_range && ~n_ovr) begin
 							eval_count <= 2'd1; // is good, start copy
-							{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd1;
+							if (~is_pre_render)
+								{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd1;
 
 							if (~oam_secondary_ovr) begin
 								{oam_secondary_ovr, oam_secondary_addr} <= {1'b0, oam_secondary_addr} + 6'd1;
@@ -723,10 +727,12 @@ end else if (ce) begin
 
 						end else begin
 							if (oam_secondary_ovr & ~n_ovr) begin // Not in range but due to the secondary oam read, it buggily triggers a +1 increment too
-								{n_ovr, oam_addr[7:2]} <= {1'b0, oam_addr[7:2]} + 6'd1;
+								if (~is_pre_render)
+									{n_ovr, oam_addr[7:2]} <= {1'b0, oam_addr[7:2]} + 6'd1;
 								oam_addr[1:0] <= oam_addr[1:0] + 2'd1;
 							end else begin // Normal and proper advance to the next Y position "slot"
-								{n_ovr, oam_addr} <= ({1'b0, oam_addr} + 9'd4) & 9'h1FC;
+								if (~is_pre_render)
+									{n_ovr, oam_addr} <= ({1'b0, oam_addr} + 9'd4) & 9'h1FC;
 							end
 						end
 					end else if (eval_count == 2'd3) begin // end of copy
@@ -734,12 +740,15 @@ end else if (ce) begin
 						// under normal circumstances regardless of if true or false, the outcome is the same
 						// but if the oamaddress is misaligned, the oamaddress increments differently in practice.
 						if (in_range && ~n_ovr) begin
-							{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd1;
+							if (~is_pre_render)
+								{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd1;
 						end else begin
 							if (oam_secondary_ovr & ~n_ovr) begin // Same buggy increment as y if secondary oam is full
-								{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd5;
+								if (~is_pre_render)
+									{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd5;
 							end else begin
-								{n_ovr, oam_addr} <= ({1'b0, oam_addr} + 9'd1) & 9'h1FC;
+								if (~is_pre_render)
+									{n_ovr, oam_addr} <= ({1'b0, oam_addr} + 9'd1) & 9'h1FC;
 							end
 						end
 
@@ -760,7 +769,8 @@ end else if (ce) begin
 							n_ovr <= 1;
 						end
 					end else begin
-						{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd1;
+						if (~is_pre_render)
+							{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd1;
 					end
 				end
 				// Check if the 9th sprite is a repeat
@@ -819,7 +829,7 @@ end else if (ce) begin
 	// writes during rendering.
 	if (oam_data_write) begin
 		if (~rendering) begin
-			oam[oam_read_addr] <= (is_attr_byte) ? (oam_din & 8'hE3) : oam_din; // byte 3 has no bits 2-4
+			oam[oam_read_addr] <= (is_attr_byte) ? (oam_din & 8'hE3) : oam_din; // attr has no bits 2-4
 			oam_data <= oam_din;
 			oam_addr <= oam_addr + 1'b1;
 		end else begin
@@ -1489,6 +1499,7 @@ OAMEval spriteeval (
 	.overflow          (sprite_overflow),
 	.sprite0           (obj0_on_line),
 	.is_vbe            (is_vbe_sl),
+	.is_pre_render     (is_pre_render_line),
 	.PAL               (sys_type[0]),
 	.masked_sprites    (masked_sprites),
 	 // savestates
@@ -1528,7 +1539,7 @@ SpriteAddressGen address_gen(
 	.obj_size  (obj_size1),
 	.scanline  (scanline),
 	.obj_patt  (obj_patt1),               // Object size and pattern table
-	.temp      (is_pre_render_line || ~is_rendering ? 8'hFF : oam_bus),                // Info from temp buffer.
+	.temp      (~is_rendering ? 8'hFF : oam_bus),                // Info from temp buffer.
 	.vram_addr (sprite_vram_addr),       // [out] VRAM Address that we want data from
 	.vram_data (vram_din),               // [in] Data at the specified address
 	.load      (spriteset_load),
@@ -1548,7 +1559,7 @@ SpriteAddressGenEx address_gen_ex(
 	.obj_size       (obj_size1),
 	.scanline       (scanline[7:0]),
 	.obj_patt       (obj_patt1),               // Object size and pattern table
-	.temp           (is_pre_render_line || ~is_rendering ? 32'hFFFFFFFF : oam_bus_ex),                // Info from temp buffer.
+	.temp           (~is_rendering ? 32'hFFFFFFFF : oam_bus_ex),                // Info from temp buffer.
 	.vram_addr      (sprite_vram_addr_ex),    // [out] VRAM Address that we want data from
 	.vram_data      (vram_din),               // [in] Data at the specified address
 	.load           (spriteset_load_ex),
