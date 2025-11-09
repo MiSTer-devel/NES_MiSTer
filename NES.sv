@@ -922,8 +922,7 @@ NES nes (
 	.bram_write      (bram_write),
 	.bram_override   (bram_en),
 	.save_written    (save_written),
-
-
+	.mapper_has_flashsaves (mapper_has_flashsaves),
 
 	// savestates
 	.mapper_has_savestate    (mapper_has_savestate),
@@ -1018,7 +1017,9 @@ always @(posedge clk) begin
 	end
 end
 
-wire [24:0] ch2_addr = sleep_savestate ? Savestate_SDRAMAddr      : {7'b0001111, save_addr};
+wire [24:0] ch2_addr = sleep_savestate ? Savestate_SDRAMAddr :
+                       mapper_has_flashsaves ? {6'b000000, save_addr} : // PRG-ROM
+                       {7'b0001111, save_addr[17:0]};                   // CARTRAM
 wire        ch2_wr   = sleep_savestate ? Savestate_SDRAMWrEn      : save_wr;
 wire  [7:0] ch2_din  = sleep_savestate ? Savestate_SDRAMWriteData : sd_buff_dout;
 wire        ch2_rd   = sleep_savestate ? Savestate_SDRAMRdEn      : save_rd;
@@ -1084,7 +1085,7 @@ dpram #(" ", 11) eeprom
 wire save_busy;
 reg save_rd, save_wr;
 reg save_wait;
-reg [17:0] save_addr;
+reg [18:0] save_addr;
 
 always @(posedge clk) begin
 
@@ -1095,14 +1096,14 @@ always @(posedge clk) begin
 		save_wait <= 0;
 	end
 	else if(sd_ack & ~save_busy ) begin
-		if(~bk_loading && (save_addr != {sd_lba[8:0], sd_buff_addr})) begin
+		if(~bk_loading && (save_addr != {sd_lba[9:0], sd_buff_addr})) begin
 			save_rd <= 1;
-			save_addr <= {sd_lba[8:0], sd_buff_addr};
+			save_addr <= {sd_lba[9:0], sd_buff_addr};
 			save_wait <= 1;
 		end
 		if(bk_loading && sd_buff_wr) begin
 			save_wr <= 1;
-			save_addr <= {sd_lba[8:0], sd_buff_addr};
+			save_addr <= {sd_lba[9:0], sd_buff_addr};
 			save_wait <= 1;
 		end
 	end
@@ -1110,9 +1111,9 @@ always @(posedge clk) begin
 end
 
 reg bk_pending;
-wire save_written;
+wire save_written, mapper_has_flashsaves;
 always @(posedge clk) begin
-	if ((mapper_flags[25] || fds) && ~OSD_STATUS && save_written)
+	if ((mapper_flags[25] || fds || mapper_has_flashsaves) && ~OSD_STATUS && save_written)
 		bk_pending <= 1'b1;
 	else if (bk_state)
 		bk_pending <= 1'b0;
@@ -1261,7 +1262,10 @@ reg  bk_request = 0;
 wire bk_busy = (bk_state == S_COPY);
 reg  fds_busy;
 
-wire [8:0] save_sz = fds ? rom_sz[17:9] : bram_en ? 9'd3 : (prg_nvram == 4'd7) ? 9'd15 : 9'd63;
+wire [10:0] save_sz = fds ? rom_sz[17:9] :
+                      bram_en ? 11'd3 :
+                      mapper_has_flashsaves ? (11'd32 << mapper_flags[10:8]) : // 512KB max atm
+                      (prg_nvram == 4'd7) ? 11'd15 : 11'd63;
 
 typedef enum bit [1:0] { S_IDLE, S_COPY } mystate;
 mystate bk_state = S_IDLE;
@@ -1300,7 +1304,7 @@ always @(posedge clk) begin : save_block
 		end
 	end else begin
 		if(old_ack & ~sd_ack) begin
-			if(sd_lba[8:0] == save_sz) begin
+			if(sd_lba == save_sz) begin
 				bk_loading <= 0;
 				bk_state <= S_IDLE;
 			end else begin
