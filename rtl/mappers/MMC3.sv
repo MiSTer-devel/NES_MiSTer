@@ -156,7 +156,6 @@ end else if (ce) begin
 			end else begin
 				counter <= 8'h00;
 			end
-
 			if (~|irq_latch && irq_enable) begin
 				irq_delay <= 1;
 			end
