@@ -208,7 +208,7 @@ always @(posedge clk) begin
 				{nametable, chrbank, prgbank} <= prg_din[7:0];
 			end
 			// Flash sequence tracking (only for $8000-$BFFF when battery=1)
-			else if (battery && !prg_ain[14] && prg_write) begin
+			else if (battery && !prg_ain[14]) begin
 				case (write_state)
 					STATE_IDLE: begin
 						write_state <= (unlock1_match && prg_din == 8'hAA) ? STATE_UNLOCK1 : STATE_IDLE;
