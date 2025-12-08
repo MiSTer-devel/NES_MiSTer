@@ -323,7 +323,7 @@ MMC2 mmc2(
 wire mmc3_en = me[118] | me[119] | me[47] | me[206] | me[112] | me[88] | me[154] | me[95]
 	| me[76] | me[80] | me[82] | me[207] | me[48] | me[33] | me[37] | me[74] | me[191]
 	| me[192] | me[194] | me[195] | me[196] | me[4] | me[189] | me[268] | me[205] | me[208]
-	| me[45];
+	| me[45] | me[52];
 
 MMC3 mmc3 (
 	.clk        (clk),
