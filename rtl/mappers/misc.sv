@@ -1515,8 +1515,8 @@ wire inner_64k = outer_bank[5];          // M: 0=32KB, 1=64KB
 wire mirroring = outer_bank[7];          // N: mirroring
 
 // Inner Bank Register (shared for both NINA-03 and Color Dreams modes)
-// NINA-03 ($4100): bits 0-1=CHR A14..A13, bit 2=CHR A15 (M=1), bit 3=PRG A15 (M=1)
-// Color Dreams ($8000): bit 0=PRG A15 (M=1), bits 1-2=CHR A14..A13, bit 3=CHR A15 (M=1)
+// NINA-03 ($4100-$417F): bits 0-1=CHR A14..A13, bit 2=CHR A15 (M=1), bit 3=PRG A15 (M=1)
+// Color Dreams ($6000-$7FFF): data bits reorganized as {D0, D6:D4} -> {PRG A15, CHR}
 reg [3:0] inner_bank;
 
 always @(posedge clk)
@@ -1527,17 +1527,20 @@ end else if (SaveStateBus_load) begin
 	outer_bank <= SS_MAP1[7:0];
 	inner_bank <= SS_MAP1[11:8];
 end else if (ce && prg_write) begin
-	// Outer bank register at $4180
-	if (prg_ain == 16'h4180) begin
-		outer_bank <= prg_din;
+	// $4100-$5FFF range with bit 8 set
+	if (prg_ain[15:13] == 3'b010 && prg_ain[8]) begin
+		if (prg_ain[7]) begin
+			// Outer bank register ($4180-$41FF, $4380-$43FF, etc.) - bit 7 set
+			outer_bank <= prg_din;
+		end else if (!chip_sel) begin
+			// NINA-03 register ($4100-$417F, etc.) - bit 7 clear, C=0
+			inner_bank <= prg_din[3:0];
+		end
 	end
-	// NINA-03 register at $4100 (when C=0)
-	else if (prg_ain == 16'h4100 && !chip_sel) begin
-		inner_bank <= prg_din[3:0];
-	end
-	// Color Dreams register at $8000-$FFFF (when C=1)
-	else if (prg_ain[15] && chip_sel) begin
-		inner_bank <= prg_din[3:0];
+	// Color Dreams register at $6000-$7FFF (when C=1)
+	// Bit reorganization: {value[0], value[6:4]} -> inner_bank
+	else if (prg_ain[15:13] == 3'b011 && chip_sel) begin
+		inner_bank <= {prg_din[0], prg_din[6:4]};
 	end
 end
 
@@ -1546,19 +1549,21 @@ assign SS_MAP1_BACK[11:8] = inner_bank;
 assign SS_MAP1_BACK[63:12] = 52'b0;
 
 // PRG banking logic
+// After Color Dreams bit reorganization, both modes use same inner_bank layout:
+// inner_bank[3] = PRG A15 (when M=1), inner_bank[2:0] = CHR bits
 // When M=0: A15 comes from outer_b
-// When M=1: A15 comes from inner register (bit 3 for NINA-03, bit 0 for Color Dreams)
-// A19 is set when C=1 (Color Dreams mode) to offset into second/third 512KB
-wire prg_a15 = inner_64k ? (chip_sel ? inner_bank[0] : inner_bank[3]) : outer_b;
+// When M=1: A15 comes from inner_bank[3]
+// chip_sel adds offset to skip first 512KB
+wire prg_a15 = inner_64k ? inner_bank[3] : outer_b;
 wire [4:0] prg_bank = {chip_sel, outer_high, prg_a15};
 
 // CHR banking logic
-// A14..A13 always from inner register (bits 0-1 for NINA-03, bits 1-2 for Color Dreams)
-// When M=0: A15 comes from outer_b
-// When M=1: A15 comes from inner register (bit 2 for NINA-03, bit 3 for Color Dreams)
-// A19 is set when C=1 (Color Dreams mode) to offset into second/third 512KB
-wire [1:0] chr_low = chip_sel ? inner_bank[2:1] : inner_bank[1:0];
-wire chr_a15 = inner_64k ? (chip_sel ? inner_bank[3] : inner_bank[2]) : outer_b;
+// inner_bank[2:0] provides CHR bits (layout unified by Color Dreams reorganization)
+// When M=0: A15 comes from outer_b, inner provides A14..A13
+// When M=1: inner_bank[2] provides A15, inner_bank[1:0] provides A14..A13
+// chip_sel adds offset to skip first 512KB
+wire [1:0] chr_low = inner_bank[1:0];
+wire chr_a15 = inner_64k ? inner_bank[2] : outer_b;
 wire [6:0] chr_bank = {chip_sel, outer_high, chr_a15, chr_low};
 
 assign prg_aout = {2'b00, prg_bank, prg_ain[14:0]};
@@ -1566,7 +1571,7 @@ assign prg_allow = prg_ain[15] && !prg_write;
 assign chr_aout = {2'b10, chr_bank, chr_ain[12:0]};
 assign chr_allow = flags[15];
 assign vram_ce = chr_ain[13];
-assign vram_a10 = mirroring ? chr_ain[10] : chr_ain[11]; // 0: horiz, 1: vert
+assign vram_a10 = mirroring ? chr_ain[11] : chr_ain[10]; // 1=horiz, 0=vert
 
 // savestate
 localparam SSREG_INDEX_MAP1 = 8'd1;
@@ -2111,7 +2116,7 @@ always @(posedge clk) begin
 						'h5300: security[3] <= prg_din;
 					endcase
 				end
-			end else if (prg_read) begin // Security stuff as Mesen does it
+			end else if (prg_read) begin
 				prg_bus_write <= 1'b1;
 				case (prg_ain & 16'h7700)
 					'h5100: prg_dout <= security[0] | security[1] | security[3] | (security[2] ^ 8'hFF);
