@@ -1450,6 +1450,134 @@ assign vram_ce = chr_ain[13];
 endmodule
 
 
+// 487 - AVE NINA-08 multicart
+// 30-in-1 multicart supporting NINA-03 and Color Dreams games
+module Mapper487(
+	input        clk,         // System clock
+	input        ce,          // M2 ~cpu_clk
+	input        enable,      // Mapper enabled
+	input [31:0] flags,       // Cart flags
+	input [15:0] prg_ain,     // prg address
+	inout [21:0] prg_aout_b,  // prg address out
+	input        prg_read,    // prg read
+	input        prg_write,   // prg write
+	input  [7:0] prg_din,     // prg data in
+	inout  [7:0] prg_dout_b,  // prg data out
+	inout        prg_allow_b, // Enable access to memory for the specified operation.
+	input [13:0] chr_ain,     // chr address in
+	inout [21:0] chr_aout_b,  // chr address out
+	input        chr_read,    // chr ram read
+	inout        chr_allow_b, // chr allow write
+	inout        vram_a10_b,  // Value for A10 address line
+	inout        vram_ce_b,   // True if the address should be routed to the internal 2kB VRAM.
+	inout        irq_b,       // IRQ
+	input [15:0] audio_in,    // Inverted audio from APU
+	inout [15:0] audio_b,     // Mixed audio output
+	inout [15:0] flags_out_b, // flags {0, 0, 0, 0, has_savestate, prg_conflict, prg_bus_write, has_chr_dout}
+	// savestates
+	input       [63:0]  SaveStateBus_Din,
+	input       [ 9:0]  SaveStateBus_Adr,
+	input               SaveStateBus_wren,
+	input               SaveStateBus_rst,
+	input               SaveStateBus_load,
+	output      [63:0]  SaveStateBus_Dout
+);
+
+assign prg_aout_b   = enable ? prg_aout : 22'hZ;
+assign prg_dout_b   = enable ? 8'hFF : 8'hZ;
+assign prg_allow_b  = enable ? prg_allow : 1'hZ;
+assign chr_aout_b   = enable ? chr_aout : 22'hZ;
+assign chr_allow_b  = enable ? chr_allow : 1'hZ;
+assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
+assign vram_ce_b    = enable ? vram_ce : 1'hZ;
+assign irq_b        = enable ? 1'b0 : 1'hZ;
+assign flags_out_b  = enable ? flags_out : 16'hZ;
+assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
+
+wire [21:0] prg_aout, chr_aout;
+wire prg_allow;
+wire chr_allow;
+wire vram_a10;
+wire vram_ce;
+wire [15:0] flags_out = {12'h0, 1'b1, 3'b00};
+
+// Outer Bank Register ($4180)
+// Bit 0 (b): PRG/CHR A15 when M=0
+// Bits 1-4: PRG/CHR A19..A16
+// Bit 5 (C): Chip select (0=NINA-03, 1=Color Dreams)
+// Bit 6 (M): Inner bank size (0=32KB, 1=64KB)
+// Bit 7 (N): Nametable arrangement (mirroring)
+reg [7:0] outer_bank;
+wire outer_b = outer_bank[0];            // A15 when M=0
+wire [3:0] outer_high = outer_bank[4:1]; // A19..A16
+wire chip_sel = outer_bank[5];           // C: 0=NINA-03, 1=Color Dreams
+wire inner_64k = outer_bank[6];          // M: 0=32KB, 1=64KB
+wire mirroring = outer_bank[7];          // N: mirroring
+
+// Inner Bank Register (shared for both NINA-03 and Color Dreams modes)
+// NINA-03 ($4100): bits 0-1=CHR A14..A13, bit 2=CHR A15 (M=1), bit 3=PRG A15 (M=1)
+// Color Dreams ($8000): bit 0=PRG A15 (M=1), bits 1-2=CHR A14..A13, bit 3=CHR A15 (M=1)
+reg [3:0] inner_bank;
+
+always @(posedge clk)
+if (~enable) begin
+	outer_bank <= 8'h00;
+	inner_bank <= 4'h0;
+end else if (SaveStateBus_load) begin
+	outer_bank <= SS_MAP1[7:0];
+	inner_bank <= SS_MAP1[11:8];
+end else if (ce && prg_write) begin
+	// Outer bank register at $4180
+	if (prg_ain == 16'h4180) begin
+		outer_bank <= prg_din;
+	end
+	// NINA-03 register at $4100 (when C=0)
+	else if (prg_ain == 16'h4100 && !chip_sel) begin
+		inner_bank <= prg_din[3:0];
+	end
+	// Color Dreams register at $8000-$FFFF (when C=1)
+	else if (prg_ain[15] && chip_sel) begin
+		inner_bank <= prg_din[3:0];
+	end
+end
+
+assign SS_MAP1_BACK[7:0] = outer_bank;
+assign SS_MAP1_BACK[11:8] = inner_bank;
+assign SS_MAP1_BACK[63:12] = 52'b0;
+
+// PRG banking logic
+// When M=0: A15 comes from outer_b
+// When M=1: A15 comes from inner register (bit 3 for NINA-03, bit 0 for Color Dreams)
+wire prg_a15 = inner_64k ? (chip_sel ? inner_bank[0] : inner_bank[3]) : outer_b;
+wire [4:0] prg_bank = {outer_high, prg_a15};
+
+// CHR banking logic
+// A14..A13 always from inner register (bits 0-1 for NINA-03, bits 1-2 for Color Dreams)
+// When M=0: A15 comes from outer_b
+// When M=1: A15 comes from inner register (bit 2 for NINA-03, bit 3 for Color Dreams)
+wire [1:0] chr_low = chip_sel ? inner_bank[2:1] : inner_bank[1:0];
+wire chr_a15 = inner_64k ? (chip_sel ? inner_bank[3] : inner_bank[2]) : outer_b;
+wire [6:0] chr_bank = {outer_high, chr_a15, chr_low};
+
+assign prg_aout = {2'b00, prg_bank, prg_ain[14:0]};
+assign prg_allow = prg_ain[15] && !prg_write;
+assign chr_aout = {2'b10, chr_bank, chr_ain[12:0]};
+assign chr_allow = flags[15];
+assign vram_ce = chr_ain[13];
+assign vram_a10 = mirroring ? chr_ain[10] : chr_ain[11]; // 0: horiz, 1: vert
+
+// savestate
+localparam SSREG_INDEX_MAP1 = 8'd1;
+wire [63:0] SS_MAP1;
+wire [63:0] SS_MAP1_BACK;
+wire [63:0] SaveStateBus_Dout_active;
+eReg_SavestateV #(SSREG_INDEX_MAP1, 64'h0000000000000000) iREG_SAVESTATE_MAP1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout_active, SS_MAP1_BACK, SS_MAP1);
+
+assign SaveStateBus_Dout = enable ? SaveStateBus_Dout_active : 64'h0000000000000000;
+
+endmodule
+
+
 module Mapper234(
 	input        clk,         // System clock
 	input        ce,          // M2 ~cpu_clk
