@@ -1503,15 +1503,15 @@ wire [15:0] flags_out = {12'h0, 1'b1, 3'b00};
 
 // Outer Bank Register ($4180)
 // Bit 0 (b): PRG/CHR A15 when M=0
-// Bits 1-4: PRG/CHR A19..A16
-// Bit 5 (C): Chip select (0=NINA-03, 1=Color Dreams)
-// Bit 6 (M): Inner bank size (0=32KB, 1=64KB)
+// Bits 3-1: PRG/CHR A18..A16 (3 bits)
+// Bit 4 (C): Chip select (0=NINA-03, 1=Color Dreams)
+// Bit 5 (M): Inner bank size (0=32KB, 1=64KB)
 // Bit 7 (N): Nametable arrangement (mirroring)
 reg [7:0] outer_bank;
 wire outer_b = outer_bank[0];            // A15 when M=0
-wire [3:0] outer_high = outer_bank[4:1]; // A19..A16
-wire chip_sel = outer_bank[5];           // C: 0=NINA-03, 1=Color Dreams
-wire inner_64k = outer_bank[6];          // M: 0=32KB, 1=64KB
+wire [2:0] outer_high = outer_bank[3:1]; // A18..A16 (3 bits per wiki)
+wire chip_sel = outer_bank[4];           // C: 0=NINA-03, 1=Color Dreams
+wire inner_64k = outer_bank[5];          // M: 0=32KB, 1=64KB
 wire mirroring = outer_bank[7];          // N: mirroring
 
 // Inner Bank Register (shared for both NINA-03 and Color Dreams modes)
@@ -1548,16 +1548,18 @@ assign SS_MAP1_BACK[63:12] = 52'b0;
 // PRG banking logic
 // When M=0: A15 comes from outer_b
 // When M=1: A15 comes from inner register (bit 3 for NINA-03, bit 0 for Color Dreams)
+// A19 is set when C=1 (Color Dreams mode) to offset into second/third 512KB
 wire prg_a15 = inner_64k ? (chip_sel ? inner_bank[0] : inner_bank[3]) : outer_b;
-wire [4:0] prg_bank = {outer_high, prg_a15};
+wire [4:0] prg_bank = {chip_sel, outer_high, prg_a15};
 
 // CHR banking logic
 // A14..A13 always from inner register (bits 0-1 for NINA-03, bits 1-2 for Color Dreams)
 // When M=0: A15 comes from outer_b
 // When M=1: A15 comes from inner register (bit 2 for NINA-03, bit 3 for Color Dreams)
+// A19 is set when C=1 (Color Dreams mode) to offset into second/third 512KB
 wire [1:0] chr_low = chip_sel ? inner_bank[2:1] : inner_bank[1:0];
 wire chr_a15 = inner_64k ? (chip_sel ? inner_bank[3] : inner_bank[2]) : outer_b;
-wire [6:0] chr_bank = {outer_high, chr_a15, chr_low};
+wire [6:0] chr_bank = {chip_sel, outer_high, chr_a15, chr_low};
 
 assign prg_aout = {2'b00, prg_bank, prg_ain[14:0]};
 assign prg_allow = prg_ain[15] && !prg_write;
