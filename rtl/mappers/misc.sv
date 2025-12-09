@@ -1503,20 +1503,19 @@ wire [15:0] flags_out = {12'h0, 1'b1, 3'b00};
 
 // Outer Bank Register ($4180)
 // Bit 0 (b): PRG/CHR A15 when M=0
-// Bits 3-1: PRG/CHR A18..A16 (3 bits)
-// Bit 4 (C): Chip select (0=NINA-03, 1=Color Dreams)
-// Bit 5 (M): Inner bank size (0=32KB, 1=64KB)
+// Bits 5-1: PRG/CHR bank high bits
+// Bit 5 (C): Also determines Color Dreams mode (0x20)
+// Bit 6 (M): Inner bank size (0=32KB, 1=64KB)
 // Bit 7 (N): Nametable arrangement (mirroring)
 reg [7:0] outer_bank;
-wire outer_b = outer_bank[0];            // A15 when M=0
-wire [2:0] outer_high = outer_bank[3:1]; // A18..A16 (3 bits per wiki)
-wire chip_sel = outer_bank[4];           // C: 0=NINA-03, 1=Color Dreams
-wire inner_64k = outer_bank[5];          // M: 0=32KB, 1=64KB
-wire mirroring = outer_bank[7];          // N: mirroring
+wire outer_b = outer_bank[0];
+wire chip_sel = outer_bank[5];   // C: 0=NINA-03, 1=Color Dreams
+wire inner_64k = outer_bank[6];  // M: 0=32KB, 1=64KB
+wire mirroring = outer_bank[7];  // N: mirroring
 
 // Inner Bank Register (shared for both NINA-03 and Color Dreams modes)
 // NINA-03 ($4100-$417F): bits 0-1=CHR A14..A13, bit 2=CHR A15 (M=1), bit 3=PRG A15 (M=1)
-// Color Dreams ($6000-$7FFF): data bits reorganized as {D0, D6:D4} -> {PRG A15, CHR}
+// Color Dreams ($8000-$FFFF): data bits reorganized as {D0, D6:D4} -> inner
 reg [3:0] inner_bank;
 
 always @(posedge clk)
@@ -1527,19 +1526,19 @@ end else if (SaveStateBus_load) begin
 	outer_bank <= SS_MAP1[7:0];
 	inner_bank <= SS_MAP1[11:8];
 end else if (ce && prg_write) begin
-	// $4100-$5FFF range with bit 8 set
+	// $4xxx-$5xxx range with bit 8 set
 	if (prg_ain[15:13] == 3'b010 && prg_ain[8]) begin
 		if (prg_ain[7]) begin
-			// Outer bank register ($4180-$41FF, $4380-$43FF, etc.) - bit 7 set
+			// Outer bank register - bit 7 set
 			outer_bank <= prg_din;
 		end else if (!chip_sel) begin
-			// NINA-03 register ($4100-$417F, etc.) - bit 7 clear, C=0
+			// NINA-03 register - bit 7 clear, C=0
 			inner_bank <= prg_din[3:0];
 		end
 	end
-	// Color Dreams register at $6000-$7FFF (when C=1)
-	// Bit reorganization: {value[0], value[6:4]} -> inner_bank
-	else if (prg_ain[15:13] == 3'b011 && chip_sel) begin
+	// Color Dreams register at $8000-$FFFF (when C=1)
+	// Bit reorganization: (val << 3 & 8) | (val >> 4 & 7) = {D0, D6:D4}
+	else if (prg_ain[15] && chip_sel) begin
 		inner_bank <= {prg_din[0], prg_din[6:4]};
 	end
 end
@@ -1549,26 +1548,22 @@ assign SS_MAP1_BACK[11:8] = inner_bank;
 assign SS_MAP1_BACK[63:12] = 52'b0;
 
 // PRG banking logic
-// After Color Dreams bit reorganization, both modes use same inner_bank layout:
-// inner_bank[3] = PRG A15 (when M=1), inner_bank[2:0] = CHR bits
-// When M=0: A15 comes from outer_b
-// When M=1: A15 comes from inner_bank[3]
-// chip_sel adds offset to skip first 512KB
+// prg = (M ? inner[3] : outer[0]) | (outer & 0x3E)
+// if (prg & 0x30) prg -= 0x10
 wire prg_a15 = inner_64k ? inner_bank[3] : outer_b;
-wire [4:0] prg_bank = {chip_sel, outer_high, prg_a15};
+wire [5:0] prg_raw = {outer_bank[5:1], prg_a15};
+wire [5:0] prg_bank = (prg_raw[5] | prg_raw[4]) ? (prg_raw - 6'd16) : prg_raw;
 
 // CHR banking logic
-// inner_bank[2:0] provides CHR bits (layout unified by Color Dreams reorganization)
-// When M=0: A15 comes from outer_b, inner provides A14..A13
-// When M=1: inner_bank[2] provides A15, inner_bank[1:0] provides A14..A13
-// chip_sel adds offset to skip first 512KB
-wire [1:0] chr_low = inner_bank[1:0];
+// chr = (inner & 0x03) | (M ? (inner & 0x04) : (outer << 2 & 4)) | (outer << 2 & 0xF8)
+// if (chr & 0xC0) chr -= 0x40
 wire chr_a15 = inner_64k ? inner_bank[2] : outer_b;
-wire [6:0] chr_bank = {chip_sel, outer_high, chr_a15, chr_low};
+wire [7:0] chr_raw = {outer_bank[5:1], chr_a15, inner_bank[1:0]};
+wire [7:0] chr_bank = (chr_raw[7] | chr_raw[6]) ? (chr_raw - 8'd64) : chr_raw;
 
-assign prg_aout = {2'b00, prg_bank, prg_ain[14:0]};
+assign prg_aout = {1'b0, prg_bank, prg_ain[14:0]};
 assign prg_allow = prg_ain[15] && !prg_write;
-assign chr_aout = {2'b10, chr_bank, chr_ain[12:0]};
+assign chr_aout = {1'b1, chr_bank, chr_ain[12:0]};
 assign chr_allow = flags[15];
 assign vram_ce = chr_ain[13];
 assign vram_a10 = mirroring ? chr_ain[11] : chr_ain[10]; // 1=horiz, 0=vert
