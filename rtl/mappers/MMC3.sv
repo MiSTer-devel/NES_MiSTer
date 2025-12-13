@@ -454,7 +454,7 @@ if (~enable) begin
 	mapper37_multicart <= 3'b000;
 	mapper189_prgsel <= 4'b1011; // mapper 208 requires 0xX011
 	{m268_reg[0],m268_reg[1],m268_reg[2],m268_reg[3],m268_reg[4],m268_reg[5]} <= 0;
-	{m45_reg[0],m45_reg[1],m45_reg[2],m45_reg[3]} <= 0;
+	{m45_reg[0],m45_reg[1],m45_reg[2],m45_reg[3]} <= {8'h00, 8'h00, 8'h0F, 8'h00}; // reg[2]=0x0F per NRS
 	m45_index <= 0;
 	m52_reg <= 0;
 end else if (SaveStateBus_load) begin
@@ -818,15 +818,15 @@ assign map268c[10] = (weird_mode && chr_ain[10]) ? 1'b0 : (use_chr_ain_12 || !we
 wire m268_chr_ram = {map268c[17:11],1'b1} == m268_reg[4];
 
 // Mapper 45 outer bank address calculation
-// PRG: (prgsel & PRG_AND) | PRG_OR
-// CHR: (chrsel & CHR_AND) | CHR_OR
+// CHR: (chrsel & CHR_AND) | CHR_OR, plus high bits from reg[2]
 wire [5:0] m45_prg_and = ~m45_reg[3][5:0];  // PRG-AND mask (inverted in register)
-wire [7:0] m45_chr_and = 8'hFF >> (4'hF - m45_reg[2][3:0]); // CHR-AND: $F=256KB(8 bits), $0=1KB(0 bits)
+wire [7:0] m45_chr_and = 8'hFF >> (4'hF - m45_reg[2][3:0]); // CHR-AND mask
 wire [7:0] m45_chr_or = m45_reg[0]; // CHR A10-A17
 
 // PRG final: upper bits from reg1[7:6], lower bits masked/OR'd
 wire [7:0] m45_prg_final = {m45_reg[1][7:6], (prgsel[5:0] & m45_prg_and) | m45_reg[1][5:0]};
-wire [7:0] m45_chr_final = (chrsel[7:0] & m45_chr_and) | m45_chr_or[7:0];
+// CHR final: (chrsel & AND) | OR
+wire [7:0] m45_chr_final = (chrsel[7:0] & m45_chr_and) | m45_chr_or;
 
 // Mapper 52 outer bank address calculation (per Nintendulator)
 // PRG: bit3=0: 256KB outer (5-bit mask), bit3=1: 128KB outer (4-bit mask)
@@ -872,7 +872,8 @@ assign chr_aout =
 		(mapper195 & chr_ram_cs)             ? {10'b11_1111_1111,  chrsel[1:0], chr_ain[9:0]} :   // 4kb CHR-RAM
 		(m268_chr_ram)                       ? {11'b11_1111_1111_1,            chr_ain[10:0]} :   // 2kb CHR-RAM
 		(mapper268)                          ? {4'b10_00,              map268c, chr_ain[9:0]} :   // Mapper 268 override
-		(mapper45)                           ? {2'b10, m45_reg[2][5:4], m45_chr_final, chr_ain[9:0]} : // Mapper 45 CHR override
+		(mapper45 & flags[15])               ? {9'b11_1111_111, chr_ain[12:0]} : // Mapper 45 unbanked 8KB CHR-RAM
+		(mapper45)                           ? {2'b10, m45_reg[2][5:4], m45_chr_final, chr_ain[9:0]} : // Mapper 45 CHR-ROM
 		(mapper52)                           ? {2'b10,         m52_chr_final, chr_ain[9:0]} : // Mapper 52 CHR override
 		                                       {3'b10_0,                chrsel, chr_ain[9:0]};    // Standard MMC3 CHR-ROM/RAM
 
