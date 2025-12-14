@@ -11,7 +11,7 @@
 // SDRAM Locations for various RAM types:
 // PRG       = 0....
 // CHR       = 10...
-// CHR-VRAM  = 1100
+// CHR-VRAM  = 11101
 // CPU-RAM   = 1110
 // CARTRAM   = 1111
 
