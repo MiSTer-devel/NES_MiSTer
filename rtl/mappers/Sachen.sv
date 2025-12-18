@@ -61,6 +61,7 @@ wire mapper139 = (flags[7:0] == 139);
 wire mapper141 = (flags[7:0] == 141);
 wire mapper150 = (flags[7:0] == 150);
 wire mapper243 = (flags[7:0] == 243);
+wire has_chr_ram = flags[15];
 
 reg [2:0] register;
 reg [2:0] prg_bank;
@@ -138,7 +139,8 @@ always @* begin
 	else if (mapper138)
 		chrsel = {2'b11, chr_banko, chr_bank, chr_ain[10]};
 	else if (mapper141)
-		chrsel = {1'b1, chr_banko, chr_bank, chr_ain[11:10]};
+		chrsel = has_chr_ram	? {6'b100000, chr_ain[12:10]} // Q boy
+								: {1'b1, chr_banko, chr_bank, chr_ain[11:10]};
 	else if (mapper139)
 		chrsel = {chr_banko, chr_bank, chr_ain[12:10]};
 	else if (mapper150)
@@ -160,7 +162,7 @@ always @* begin
 end
 
 assign prg_aout = {4'b00_00, prg_bank, prg_ain[14:0]};
-assign chr_allow = flags[15];
+assign chr_allow = has_chr_ram;
 assign chr_aout = {3'b10_0, chrsel, chr_ain[9:0]};
 assign vram_ce = chr_ain[13];
 //assign vram_a10 = ; //done above
