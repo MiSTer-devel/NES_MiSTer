@@ -11,8 +11,8 @@
 // SDRAM Locations for various RAM types:
 // PRG       = 0....
 // CHR       = 10...
-// CHR-VRAM  = 1100
-// CPU-RAM   = 1110
+// CHR-VRAM  = 11101
+// CPU-RAM   = 11100
 // CARTRAM   = 1111
 
 module cart_top (
