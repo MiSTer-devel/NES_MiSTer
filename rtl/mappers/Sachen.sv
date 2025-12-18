@@ -89,9 +89,9 @@ end else if (ce && prg_write) begin
 			0: chr_bank_0 <= prg_din[2:0];  // Select 2 KB CHR bank at PPU $0000-$07FF;
 			1: chr_bank_1 <= prg_din[2:0];  // Select 2 KB CHR bank at PPU $0800-$0FFF;
 			2: begin
-			   chr_bank_2 <= prg_din[2:0];  // Select 2 KB CHR bank at PPU $1000-$17FF;
-				if (mapper150) prg_bank = {2'b00, prg_din[0]};
-				end
+			   		chr_bank_2 <= prg_din[2:0];  // Select 2 KB CHR bank at PPU $1000-$17FF;
+					if (mapper150) prg_bank = {2'b00, prg_din[0]};
+			   end
 			3: chr_bank_3 <= prg_din[2:0];  // Select 2 KB CHR bank at PPU $1800-$1FFF;
 			4: chr_bank_o <= prg_din[2:0];  // Outer CHR bank
 			5: prg_bank   <= prg_din[2:0];  // Select 32 KB PRG ROM bank at $8000-$FFFF;
