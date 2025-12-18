@@ -86,10 +86,7 @@ end else if (ce && prg_write) begin
 		register <= prg_din[2:0];
 	end else if ({prg_ain[15:14], prg_ain[8], prg_ain[0]} == 4'b0111) begin
 		case (register)
-			0: begin 
-			   chr_bank_0 <= prg_din[2:0];  // Select 2 KB CHR bank at PPU $0000-$07FF;
-				if (mapper243) {prg_bank, chr_bank_2[0], chr_bank_p[1:0], chr_bank_o[0]} = 7'b000_0011;
-				end
+			0: chr_bank_0 <= prg_din[2:0];  // Select 2 KB CHR bank at PPU $0000-$07FF;
 			1: chr_bank_1 <= prg_din[2:0];  // Select 2 KB CHR bank at PPU $0800-$0FFF;
 			2: begin
 			   chr_bank_2 <= prg_din[2:0];  // Select 2 KB CHR bank at PPU $1000-$17FF;
@@ -146,7 +143,7 @@ always @* begin
 	else if (mapper150)
 		chrsel = {2'b00, chr_bank_2[0], chr_bank_o[0], chr_bank_p[1:0], chr_ain[12:10]};
 	else if (mapper243)
-		chrsel = {2'b00, chr_bank_2[0], chr_bank_p[1:0], chr_bank_o[0], chr_ain[12:10]};
+		chrsel = {2'b00, chr_bank_p[1:0], chr_bank_o[0], chr_bank_2[0], chr_ain[12:10]};
 	else
 		chrsel = 9'h000;
 end
