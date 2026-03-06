@@ -426,8 +426,8 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 	.status(status),
 	.status_menumask({(rom_loaded && mapper_has_savestate), en216p, ~status[50], ~raw_serial, (palette2_osd != 3'd5), ~gg_avail, bios_loaded, ~bk_ena}),
-	.status_in({status[63:47],ss_slot,status[44:0]}),
-	.status_set(statusUpdate),
+	.status_in({status[63:47],ss_slot,status[44:25],region_update ? header_region : status[24:23],status[22:0]}),
+	.status_set(statusUpdate | region_update),
 	.info_req(info_req),
 	.info(info),
 
@@ -788,7 +788,22 @@ GameLoader loader
 	.rom_loaded       ( rom_loaded        )
 );
 
-always @(posedge clk) if (loader_done) mapper_flags <= loader_flags;
+reg        region_update;
+reg  [1:0] header_region;
+
+always @(posedge clk) begin
+	if (loader_done) mapper_flags <= loader_flags;
+	region_update <= 0;
+
+	if (loader_done && loader_flags[35]) begin
+		case (loader_flags[37:36])
+			2'd1:    header_region <= 2'd1;  // PAL
+			2'd3:    header_region <= 2'd2;  // Dendy
+			default: header_region <= 2'd0;  // NTSC (0 and multi-region)
+		endcase
+		region_update <= 1;
+	end
+end
 
 reg led_blink;
 always @(posedge clk) begin : blink_block
@@ -1505,7 +1520,8 @@ wire [3:0] prg_nvram = (is_nes20 ? ines[10][7:4] : 4'h0);
 wire       piano = is_nes20 && (ines[15][5:0] == 6'h19);
 wire has_saves = ines[6][1];
 
-assign mapper_flags[63:36] = 'd0;
+assign mapper_flags[63:38] = 'd0;
+assign mapper_flags[37:36] = is_nes20 ? ines[12][1:0] : 2'b00;
 assign mapper_flags[35]    = is_nes20;
 assign mapper_flags[34:31] = prg_nvram; //NES 2.0 Save RAM shift size (64 << size)
 assign mapper_flags[30]    = piano;
