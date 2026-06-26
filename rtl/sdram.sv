@@ -23,7 +23,7 @@ module sdram
 (
 
 	// interface to the MT48LC16M16 chip
-	inout  reg [15:0] SDRAM_DQ,   // 16 bit bidirectional data bus
+	inout      [15:0] SDRAM_DQ,   // 16 bit bidirectional data bus
 	output reg [12:0] SDRAM_A,    // 13 bit multiplexed address bus
 	output reg        SDRAM_DQML, // byte mask
 	output reg        SDRAM_DQMH, // byte mask
@@ -65,6 +65,8 @@ module sdram
 	input             ss_load,
 	output     [15:0] ss_out
 );
+
+reg SDRAM_DQ_CONTROL;
 
 assign SDRAM_nCS = 0;
 assign SDRAM_CKE = 1;
@@ -200,25 +202,26 @@ localparam CMD_LOAD_MODE       = 3'b000;
 
 wire [1:0] dqm = {we & ~a[0], we & a[0]};
 
+assign SDRAM_DQ = (SDRAM_DQ_CONTROL)? data: {16{1'bZ}};
+
 // SDRAM state machines
 always @(posedge clk) begin
 	reg [15:0] last_data[3];
 	reg [15:0] data_reg;
 
 	if(state == STATE_START) SDRAM_BA <= (mode == MODE_NORMAL) ? bank : 2'b00;
-
-	SDRAM_DQ <= 'Z;
+	
 	casex({ram_req,we,mode,state})
-		{2'b1X, MODE_NORMAL, STATE_START}: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_ACTIVE;
-		{2'b11, MODE_NORMAL, STATE_CONT }: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE, SDRAM_DQ} <= {CMD_WRITE, data};
-		{2'b10, MODE_NORMAL, STATE_CONT }: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_READ;
-		{2'b0X, MODE_NORMAL, STATE_START}: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_AUTO_REFRESH;
+		{2'b1X, MODE_NORMAL, STATE_START}: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE, SDRAM_DQ_CONTROL} <= {CMD_ACTIVE, 1'b0};
+		{2'b11, MODE_NORMAL, STATE_CONT }: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE, SDRAM_DQ_CONTROL} <= {CMD_WRITE, 1'b1};
+		{2'b10, MODE_NORMAL, STATE_CONT }: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE, SDRAM_DQ_CONTROL} <= {CMD_READ, 1'b0};
+		{2'b0X, MODE_NORMAL, STATE_START}: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE, SDRAM_DQ_CONTROL} <= {CMD_AUTO_REFRESH, 1'b0};
 
 		// init
-		{2'bXX,    MODE_LDM, STATE_START}: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_LOAD_MODE;
-		{2'bXX,    MODE_PRE, STATE_START}: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_PRECHARGE;
+		{2'bXX,    MODE_LDM, STATE_START}: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE, SDRAM_DQ_CONTROL} <= {CMD_LOAD_MODE, 1'b0};
+		{2'bXX,    MODE_PRE, STATE_START}: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE, SDRAM_DQ_CONTROL} <= {CMD_PRECHARGE, 1'b0};
 
-		                          default: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE} <= CMD_NOP;
+		                          default: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE, SDRAM_DQ_CONTROL} <= {CMD_NOP, 1'b0};
 	endcase
 
 	casex({ram_req,mode,state})
