@@ -50,7 +50,7 @@ video_freak video_freak
 	.SCALE(status[40:39])
 );
 
-// If video mode (NTSC/PAL/DANDY) changes, force vmode update
+// If video mode (NTSC/PAL/Dendy/Vs.) changes, force vmode update
 reg [1:0] video_status;
 reg new_vmode = 0;
 always @(posedge clk) begin
@@ -72,7 +72,7 @@ parameter CONF_STR = {
 	"FS,NESFDSNSF;",
 	"H1F2,BIN,Load FDS BIOS;",
 	"-;",
-	"ONO,System Type,Auto,NTSC,PAL,Dendy;",
+	"O[72:70],System Type,Auto,NTSC,PAL,Dendy,Vs.;",
 	"-;",
 	"C,Cheats;",
 	"H2OK,Cheats Enabled,On,Off;",
@@ -122,7 +122,17 @@ parameter CONF_STR = {
 	"P4O[64],PPU Reset Behavior,Famicom,NES;",
 	"P4OQ,Video Dijitter,Enabled,Disabled;",
 	"P4O[69],Debug Dots,Off,On;",
-	"-  ;",
+	"H8P5,Vs. DIPs;",
+	"H8P5-;",
+	"H8P5O[73],Switch 0,Off,On;",
+	"H8P5O[74],Switch 1,Off,On;",
+	"H8P5O[75],Switch 2,Off,On;",
+	"H8P5O[76],Switch 3,Off,On;",
+	"H8P5O[77],Switch 4,Off,On;",
+	"H8P5O[78],Switch 5,Off,On;",
+	"H8P5O[79],Switch 6,Off,On;",
+	"H8P5O[80],Switch 7,Off,On;",
+	"-;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start,FDS,Mic,Zapper/Vaus Btn,PP/Mat 1,PP/Mat 2,PP/Mat 3,PP/Mat 4,PP/Mat 5,PP/Mat 6,PP/Mat 7,PP/Mat 8,PP/Mat 9,PP/Mat 10,PP/Mat 11,PP/Mat 12,Savestates;",
 	"jn,A,B,Select,Start,L,,R|P;",
@@ -165,13 +175,22 @@ wire fds_fast = ~status[17];
 wire ext_audio = ~status[30];
 wire int_audio = ~status[31];
 
-// Auto detect console region
-wire [1:0] auto_sys_type = (mapper_flags[37:36] == 2'd1) ? 2'd1 :  // PAL
+// Auto detects the NES 2.0 console type before its timing-region field. Legacy
+// images can select Vs. explicitly from the menu.
+wire [2:0] system_type_select = status[72:70];
+wire       system_type_auto = (system_type_select == 3'd0) || (system_type_select > 3'd4);
+wire [1:0] auto_sys_type = (mapper_flags[44:43] == 2'd1) ? 2'd3 :  // Vs. System
+                           (mapper_flags[37:36] == 2'd1) ? 2'd1 :  // PAL
                            (mapper_flags[37:36] == 2'd3) ? 2'd2 :  // Dendy
-                           2'd0;                                    // NTSC (0 and multi-region)
-wire [1:0] effective_sys_type = (status[24:23] == 2'd0) ? auto_sys_type
-                                                         : (status[24:23] - 2'd1);
-wire pal_video = |effective_sys_type;
+                           2'd0;                                   // NTSC (0 and multi-region)
+wire [1:0] effective_sys_type = system_type_auto ? auto_sys_type
+                                                  : (system_type_select[1:0] - 2'd1);
+wire pal_video = (effective_sys_type == 2'd1) || (effective_sys_type == 2'd2);
+wire vs_system = (effective_sys_type == 2'd3);
+wire vs_menu_hidden = ~vs_system;
+wire [7:0] vs_dip_switches = vs_menu_hidden ? 8'd0 : status[80:73];
+wire [15:0] status_menumask = {7'd0, vs_menu_hidden, (rom_loaded && mapper_has_savestate), en216p,
+	~status[50], ~raw_serial, (palette2_osd != 3'd5), ~gg_avail, bios_loaded, ~bk_ena};
 
 // Figure out file types
 reg type_bios, type_fds, type_gg, type_nsf, type_nes, type_palette, is_bios, downloading;
@@ -281,8 +300,8 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.paddle_3(pdl[3]),
 
 	.status(status),
-	.status_menumask({(rom_loaded && mapper_has_savestate), en216p, ~status[50], ~raw_serial, (palette2_osd != 3'd5), ~gg_avail, bios_loaded, ~bk_ena}),
-	.status_in({status[63:47],ss_slot,status[44:0]}),
+	.status_menumask(status_menumask),
+	.status_in({status[127:47],ss_slot,status[44:0]}),
 	.status_set(statusUpdate),
 	.info_req(info_req),
 	.info(info),
@@ -442,6 +461,8 @@ wire snac_3d_glasses = &status[52:51];
 wire serial_d4 = extend_serial_d4 ? |serial_d4_sr : ~USER_IN[4];
 reg [7:0] serial_d4_sr;
 reg snac_p2 = 0;
+wire vs_zapper_data;
+wire vs_zapper_en;
 
 always @(posedge clk) begin
 	reg [17:0] clk_cnt;
@@ -490,6 +511,10 @@ always_comb begin
 		USER_OUT[3]  = ~joy_swap ? ~joypad_clock[0] : ~joypad_clock[1];
 		joypad1_data = {2'b0, mic, 1'b0, ~joy_swap ? joy0_d0 : ~USER_IN[5]};
 		joypad2_data = {serial_d4, snac_3d_glasses ? 1'b1 : ~USER_IN[2], 2'b00, ~joy_swap ? ~USER_IN[5] : joy1_d0};
+
+		// The Vs. gun replaces controller 0's serial report instead of driving
+		// the consumer Zapper D3/D4 lines on controller 1.
+		if (vs_zapper_en) joypad1_data[0] = vs_zapper_data;
 	end else begin
 		USER_OUT[0]  = 1'b1;
 		USER_OUT[1]  = 1'b1;
@@ -499,8 +524,10 @@ always_comb begin
 		joypad1_data = {2'b0, mic, paddle_en & paddle_btn, joypad_bits[0]};
 		joypad2_data = joypad_bits2[0];
 
-		// periphery on port 2
-		if (lightgun_en)        joypad2_data[4:3] = {trigger,light};
+		// Periphery normally uses port 2. The Vs. gun is an eight-bit serial
+		// device on port 1 and is inserted on D0 above the cabinet I/O packer.
+		if (vs_zapper_en)       joypad1_data[0] = vs_zapper_data;
+		else if (lightgun_en)   joypad2_data[4:3] = {trigger,light};
 		if (paddle_en)          joypad2_data[4:1] = {joypad_d4[0], paddle_btn, 1'b0, joypad_d4[0]};
 		if (status[34:32] == 6) joypad2_data[4:3] = {joypad_d4[0], joypad_d3[0]};
 		if (status[34:32] == 7) joypad2_data[4:1] = ~famtr;
@@ -537,6 +564,7 @@ miraclepiano miracle(
 );
 
 wire lightgun_en = ~status[34] & |status[33:32];
+assign vs_zapper_en = vs_system && (extend_serial_d4 || (!raw_serial && lightgun_en));
 
 zapper zap (
 	.clk(clk),
@@ -552,6 +580,17 @@ zapper zap (
 	.reticle(reticle),
 	.light(light),
 	.trigger(trigger)
+);
+
+vs_zapper_serializer vs_zapper (
+	.clk(clk),
+	.reset(reset_nes),
+	.enable(vs_zapper_en),
+	.strobe(joypad_out[0]),
+	.read_clock(joypad_clock[0]),
+	.light(extend_serial_d4 ? ~USER_IN[2] : light),
+	.trigger(extend_serial_d4 ? serial_d4 : trigger),
+	.serial_data(vs_zapper_data)
 );
 
 reg [7:0] paddle = 0;
@@ -649,7 +688,7 @@ reg auto_info_req;
 always @(posedge clk) begin
 	if (loader_done) mapper_flags <= loader_flags;
 	auto_info_req <= 0;
-	if (loader_done && rom_loaded && type_nes && !loader_flags[35] && status[24:23] == 2'd0)
+	if (loader_done && rom_loaded && type_nes && !loader_flags[35] && system_type_auto)
 		auto_info_req <= 1;
 end
 
@@ -726,6 +765,7 @@ NES nes (
 	.corepaused      (corepaused),
 	.debug_dots	     (status[69]),
 	.sys_type        (effective_sys_type),
+	.vs_dip_switches (vs_dip_switches),
 	.nes_div         (nes_ce),
 	.mapper_flags    (downloading ? 64'd0 : mapper_flags),
 	.gg              (status[20]),
@@ -976,7 +1016,7 @@ end
 reg bk_pending;
 wire save_written, mapper_has_flashsaves;
 always @(posedge clk) begin
-	if ((mapper_flags[25] || fds || mapper_has_flashsaves) && ~OSD_STATUS && save_written)
+	if ((mapper_flags[25] || vs_system || fds || mapper_has_flashsaves) && ~OSD_STATUS && save_written)
 		bk_pending <= 1'b1;
 	else if (bk_state)
 		bk_pending <= 1'b0;
@@ -1038,6 +1078,7 @@ video video
 	.reset(reset_nes),
 	.cnt(nes_ce_video),
 	.sys_type(effective_sys_type),
+	.vs_ppu_type(mapper_flags[48:45]),
 	.nes_hsync(nes_hsync),
 	.nes_hblank(nes_hblank),
 	.nes_vsync(nes_vsync),
@@ -1125,7 +1166,8 @@ reg  bk_request = 0;
 wire bk_busy = (bk_state == S_COPY);
 reg  fds_busy;
 
-wire [10:0] save_sz = fds ? rom_sz[17:9] :
+wire [10:0] save_sz = vs_system ? 11'd3 :
+                      fds ? rom_sz[17:9] :
                       bram_en ? 11'd3 :
                       mapper_has_flashsaves ? (11'd32 << mapper_flags[10:8]) : // 512KB max atm
                       (prg_nvram == 4'd7) ? 11'd15 : 11'd63;
@@ -1366,9 +1408,14 @@ wire [7:0] ines2mapper = {is_nes20 ? ines[8] : 8'h00};
 wire [3:0] prgram = {is_nes20 ? ines[10][3:0] : 4'h0};
 wire [3:0] prg_nvram = (is_nes20 ? ines[10][7:4] : 4'h0);
 wire       piano = is_nes20 && (ines[15][5:0] == 6'h19);
+wire       mapper99 = ({ines2mapper[1:0], mapper} == 10'd99);
 wire has_saves = ines[6][1];
 
-assign mapper_flags[63:38] = 'd0;
+assign mapper_flags[63:49] = 'd0;
+assign mapper_flags[48:45] = (is_nes20 && (ines[7][1:0] == 2'd1)) ? ines[13][3:0] : 4'd0; // Vs. PPU type
+assign mapper_flags[44:43] = is_nes20 ? ines[7][1:0] : 2'd0; // NES 2.0 console type
+assign mapper_flags[42:41] = mapper99 ? chr_size2[14:13] : 2'd0; // Exact 8 KiB CHR sockets for mapper 99
+assign mapper_flags[40:38] = mapper99 ? prg_size2[15:13] : 3'd0; // Exact 8 KiB PRG sockets for mapper 99
 assign mapper_flags[37:36] = is_nes20 ? ines[12][1:0] : 2'b00;
 assign mapper_flags[35]    = is_nes20;
 assign mapper_flags[34:31] = prg_nvram; //NES 2.0 Save RAM shift size (64 << size)

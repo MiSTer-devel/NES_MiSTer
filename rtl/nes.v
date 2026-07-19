@@ -79,6 +79,7 @@ module NES(
 	input         pausecore,
 	output        corepaused,
 	input   [1:0] sys_type,
+	input   [7:0] vs_dip_switches,
 	output  [1:0] nes_div,
 	input  [63:0] mapper_flags,
 	output [15:0] sample,         // sample generated from APU
@@ -210,6 +211,12 @@ assign apu_ce = cpu_ce;
 
 wire [7:0] from_data_bus;
 wire [7:0] cpu_dout;
+reg  [7:0] open_bus_data;
+
+wire vs_mode = (sys_type == 2'b11);
+wire [7:0] joypad1_read_data;
+wire [7:0] joypad2_read_data;
+wire fds_eject_cart;
 
 // odd or even apu cycle, AKA div_apu or apu_/clk2. This is actually not 50% duty cycle. It is high for 18
 // master cycles and low for 6 master cycles. It is considered active when low or "even".
@@ -452,8 +459,8 @@ wire [15:0] apu_dma_addr;
 
 // Determine the values on the bus outgoing from the CPU chip (after DMA / APU)
 wire [15:0] addr = dma_aout_enable ? dma_aout  : cpu_addr;
-wire [7:0] dma_data_bus = (joypad1_cs && dma_aout_enable) ? {from_data_bus[7:5], joypad1_data[4:0]} :
-	(joypad2_cs && dma_aout_enable) ? {from_data_bus[7:5], joypad2_data[4:0]} :
+wire [7:0] dma_data_bus = (joypad1_cs && dma_aout_enable) ? joypad1_read_data :
+	(joypad2_cs && dma_aout_enable) ? joypad2_read_data :
 	from_data_bus;
 wire [7:0]  dbus = dma_aout_enable ? dma_data_to_ram : cpu_dout;
 wire mr_int      = dma_aout_enable ? dma_read  : cpu_rnw;
@@ -547,6 +554,24 @@ wire [15:0] audio_mappers = (audio_en == 2'd1) ? 16'd0 : sample_inverted;
 // Joypads are mapped into the APU's range.
 wire joypad1_cs = apu_cs && addr[4:0] == 5'h16;
 wire joypad2_cs = apu_cs && addr[4:0] == 5'h17;
+
+VsCoinInput vs_coin_input
+(
+	.clk(clk),
+	.reset(reset),
+	.enable(vs_mode),
+	.ppu_ce(ppu_ce),
+	.vblank(vblank),
+	.coin_button(fds_eject),
+	.dip_switches(vs_dip_switches),
+	.joypad1_data_in(joypad1_data),
+	.joypad2_data_in(joypad2_data),
+	.open_bus_in(open_bus_data[7:5]),
+	.joypad1_data_out(joypad1_read_data),
+	.joypad2_data_out(joypad2_read_data),
+	.fds_eject_out(fds_eject_cart),
+	.coin_active()
+);
 
 reg [2:0] joy_out;
 reg [2:0] joy_latch;
@@ -660,6 +685,7 @@ cart_top multi_mapper (
 	// FPGA specific
 	.clk               (clk),
 	.reset             (reset_noSS),
+	.vs_mode           (vs_mode),
 	.flags             (mapper_flags),            // iNES header data (use 0 while loading)
 	.paused            (freeze_clocks),
 	// Cart pins (slightly abstracted)
@@ -705,7 +731,7 @@ cart_top multi_mapper (
 	.prg_conflict_d0   (prg_conflict_d0),         // Simulate bus conflicts for Mapper 144
 	.has_flashsaves    (has_flashsaves),          // Homebrew mapper that saves to PRG-ROM in flash memory
 	// User input/FDS controls
-	.fds_eject         (fds_eject),               // Used to trigger FDS disk changes
+	.fds_eject         (fds_eject_cart),          // FDS button is a coin input in Vs. mode
 	.fds_busy          (fds_busy),                // Used to trigger FDS disk changes
 	.fds_fast          (fds_fast),
 	.diskside          (diskside),
@@ -759,8 +785,6 @@ assign ppumem_read  = chr_read;
 assign ppumem_write = chr_write && (chr_allow || vram_ce);
 assign ppumem_dout  = chr_from_ppu;
 
-reg [7:0] open_bus_data;
-
 always @(posedge clk) begin
 	if (loading_savestate) begin
 		open_bus_data <= SS_TOP[8:1];
@@ -778,9 +802,9 @@ always @* begin
 	if (reset) begin
 		external_data_bus = SS_TOP[16:9]; // 0;
 	end else if (joypad1_cs && ~dma_aout_enable) begin   // Joypad1 Read
-		external_data_bus = {open_bus_data[7:5], joypad1_data};
+		external_data_bus = joypad1_read_data;
 	end else if (joypad2_cs && ~dma_aout_enable) begin   // Joypad2 Read
-		external_data_bus = {open_bus_data[7:5], joypad2_data};
+		external_data_bus = joypad2_read_data;
 	end else if (ppu_cs) begin                          // PPU Read
 		external_data_bus = ppu_dout;
 	end else if (prg_allow) begin                       // PRG Read
@@ -925,5 +949,53 @@ statemanager #(58720256, 33554432) statemanager (
 );
 
 assign sleep_savestate = sleep_rewind | sleep_savestates;
+
+endmodule
+
+
+module VsCoinInput
+(
+	input        clk,
+	input        reset,
+	input        enable,
+	input        ppu_ce,
+	input        vblank,
+	input        coin_button,
+	input  [7:0] dip_switches,
+	input  [4:0] joypad1_data_in,
+	input  [4:0] joypad2_data_in,
+	input  [2:0] open_bus_in,
+	output [7:0] joypad1_data_out,
+	output [7:0] joypad2_data_out,
+	output       fds_eject_out,
+	output       coin_active
+);
+
+reg       coin_button_d;
+reg       vblank_d;
+reg [2:0] coin_frames;
+
+assign coin_active = |coin_frames;
+assign joypad1_data_out = enable ? {2'b00, coin_active, dip_switches[1:0], 2'b00, joypad1_data_in[0]} :
+	{open_bus_in, joypad1_data_in};
+assign joypad2_data_out = enable ? {dip_switches[7:2], 1'b0, joypad2_data_in[0]} :
+	{open_bus_in, joypad2_data_in};
+assign fds_eject_out = coin_button && !enable;
+
+always @(posedge clk) begin
+	if(reset || !enable) begin
+		coin_button_d <= coin_button;
+		vblank_d <= vblank;
+		coin_frames <= 3'd0;
+	end else begin
+		coin_button_d <= coin_button;
+		if(ppu_ce) vblank_d <= vblank;
+
+		if(coin_button && !coin_button_d && !coin_active)
+			coin_frames <= 3'd4;
+		else if(ppu_ce && vblank && !vblank_d && coin_active)
+			coin_frames <= coin_frames - 3'd1;
+	end
+end
 
 endmodule

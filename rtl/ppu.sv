@@ -214,7 +214,8 @@ always_comb begin
 			vblank_start_sl = 9'd241;
 			vblank_end_sl   = 9'd260;
 			vsync_start_sl  = 9'd244;
-			skip_en         = 1'b1;
+			// Consumer 2C02 skips a rendered odd-frame dot; Vs. RGB PPUs do not.
+			skip_en         = (sys_type == 2'b00);
 		end
 
 		2'b01: begin       // PAL
@@ -1281,6 +1282,9 @@ module PPU(
 	output [7:0]  Savestate_OAMReadData
 );
 
+wire pal_system = (sys_type == 2'b01);
+wire pal_or_dendy = pal_system || (sys_type == 2'b10);
+
 // Savestates
 localparam SAVESTATE_MODULES    = 6;
 wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
@@ -1460,7 +1464,7 @@ wire [3:0] bg_pixel = {bg_pixel_noblank[3:2], show_bg_on_pixel ? bg_pixel_noblan
 wire [31:0] oam_bus_ex;
 wire masked_sprites;
 
-wire [8:0] scanline_nopr = is_pre_render_line ? (~|sys_type ? 9'd261 : 9'd311) : scanline;
+wire [8:0] scanline_nopr = is_pre_render_line ? (pal_or_dendy ? 9'd311 : 9'd261) : scanline;
 
 OAMEval spriteeval (
 	.clk               (clk),
@@ -1482,7 +1486,7 @@ OAMEval spriteeval (
 	.sprite0           (obj0_on_line),
 	.is_vbe            (is_vbe_sl),
 	.is_pre_render     (is_pre_render_line),
-	.PAL               (sys_type[0]),
+	.PAL               (pal_system),
 	.masked_sprites    (masked_sprites),
 	 // savestates
 	.SaveStateBus_Din       (SaveStateBus_Din        ),
@@ -1771,7 +1775,7 @@ wire mask_left = ~out_of_clip && ((|mask && ~&mask) || auto_mask);
 wire mask_right = cycle > 248 && mask == 2'b10;
 
 // PAL/Dendy masks scanline 0 and 2 pixels on each side with black.
-wire mask_pal = (|sys_type && pal_mask);
+wire mask_pal = pal_or_dendy && pal_mask;
 wire in_draw_range = ~(cycle >= 271 && cycle <= 328) && ~vblank;
 wire grayscale_bit = write_2001 ? ppu_dbus[0] : grayscale;
 wire not_grayscale = ((in_draw_range || (vram_r_ppudata && is_pal_address))) && ~grayscale_bit;
@@ -1862,7 +1866,7 @@ always @(posedge clk) begin
 					object_clip <= ppu_dbus[2];
 					enable_playfield <= ppu_dbus[3];
 					enable_objects <= ppu_dbus[4];
-					emph_reg <= |sys_type ? {ppu_dbus[7], ppu_dbus[5], ppu_dbus[6]} : ppu_dbus[7:5];
+					emph_reg <= pal_or_dendy ? {ppu_dbus[7], ppu_dbus[5], ppu_dbus[6]} : ppu_dbus[7:5];
 				end
 			endcase
 			if (clear) begin
