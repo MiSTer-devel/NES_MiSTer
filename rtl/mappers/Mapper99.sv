@@ -154,7 +154,7 @@ wire chr_rom_present = (chr_banks == 2'd2) || ((chr_banks == 2'd1) && !bank_sele
 wire chr_open_bus = !chr_ain[13] && !chr_ram && !chr_rom_present;
 wire [7:0] chr_dout = chr_ain[7:0];
 
-wire [21:0] chr_rom_addr = {8'b10_0000_0, bank_select, chr_ain[12:0]};
+wire [21:0] chr_rom_addr = {8'b10_0000_00, bank_select, chr_ain[12:0]};
 wire [21:0] chr_ram_addr = {9'b11_1111_111, chr_ain[12:0]};
 wire [21:0] four_screen_addr = {10'b11_1111_1100, chr_ain[11:0]};
 wire [21:0] chr_aout = (four_screen && chr_ain[13]) ? four_screen_addr :

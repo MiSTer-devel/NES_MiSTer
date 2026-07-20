@@ -169,7 +169,9 @@ wire [127:0] status;
 wire arm_reset = status[0];
 wire [1:0] hide_overscan = status[68:67];
 wire [3:0] palette2_osd = status[49:47];
-wire joy_swap = status[9] ^ (raw_serial || piano); // Controller on port 2 for Miracle Piano/SNAC
+wire [6:0] default_expansion = mapper_flags[59:53];
+wire vs_player_left = vs_system && (default_expansion == 7'h05);
+wire joy_swap = status[9] ^ (raw_serial || piano || vs_player_left); // Controller on port 2 for Miracle Piano/SNAC/Vs.
 wire fds_auto_eject = ~status[16];
 wire fds_fast = ~status[17];
 wire ext_audio = ~status[30];
@@ -187,6 +189,7 @@ wire [1:0] effective_sys_type = system_type_auto ? auto_sys_type
                                                   : (system_type_select[1:0] - 2'd1);
 wire pal_video = (effective_sys_type == 2'd1) || (effective_sys_type == 2'd2);
 wire vs_system = (effective_sys_type == 2'd3);
+wire vs_header_zapper = vs_system && (default_expansion == 7'h07);
 wire vs_menu_hidden = ~vs_system;
 wire [7:0] vs_dip_switches = vs_menu_hidden ? 8'd0 : status[80:73];
 wire [15:0] status_menumask = {7'd0, vs_menu_hidden, (rom_loaded && mapper_has_savestate), en216p,
@@ -563,17 +566,21 @@ miraclepiano miracle(
 	.rxd(UART_RXD)
 );
 
-wire lightgun_en = ~status[34] & |status[33:32];
+wire manual_lightgun_en = ~status[34] & |status[33:32];
+wire lightgun_en = manual_lightgun_en || vs_header_zapper;
+wire zapper_port_b = manual_lightgun_en && status[32];
+wire zapper_mode = manual_lightgun_en ? status[33] : 1'b1;
+wire zapper_trigger_mode = manual_lightgun_en ? status[21] : 1'b1;
 assign vs_zapper_en = vs_system && (extend_serial_d4 || (!raw_serial && lightgun_en));
 
 zapper zap (
 	.clk(clk),
 	.reset(reset_nes | ~lightgun_en),
-	.mode(status[33]),
-	.trigger_mode(status[21]),
+	.mode(zapper_mode),
+	.trigger_mode(zapper_trigger_mode),
 	.ps2_mouse(ps2_mouse),
-	.analog(~status[32] ? joy_analog0 : joy_analog1),
-	.analog_trigger(~status[32] ? joyA[10] : joyB[10]),
+	.analog(zapper_port_b ? joy_analog1 : joy_analog0),
+	.analog_trigger(zapper_port_b ? joyB[10] : joyA[10]),
 	.cycle(cycle),
 	.scanline(scanline),
 	.color(color),
@@ -1409,13 +1416,23 @@ wire [3:0] prgram = {is_nes20 ? ines[10][3:0] : 4'h0};
 wire [3:0] prg_nvram = (is_nes20 ? ines[10][7:4] : 4'h0);
 wire       piano = is_nes20 && (ines[15][5:0] == 6'h19);
 wire       mapper99 = ({ines2mapper[1:0], mapper} == 10'd99);
+wire [3:0] vs_hardware_type = (is_nes20 && (ines[7][1:0] == 2'd1)) ? ines[13][7:4] : 4'd0;
+wire       mapper99_dual = mapper99 && (vs_hardware_type == 4'd5);
+wire       mapper99_raid = mapper99 && (vs_hardware_type == 4'd6);
 wire has_saves = ines[6][1];
 
-assign mapper_flags[63:49] = 'd0;
+assign mapper_flags[63:60] = 4'd0;
+assign mapper_flags[59:53] = is_nes20 ? ines[15][6:0] : 7'd0; // NES 2.0 default expansion device
+assign mapper_flags[52:49] = vs_hardware_type; // Vs. hardware/protection type
 assign mapper_flags[48:45] = (is_nes20 && (ines[7][1:0] == 2'd1)) ? ines[13][3:0] : 4'd0; // Vs. PPU type
 assign mapper_flags[44:43] = is_nes20 ? ines[7][1:0] : 2'd0; // NES 2.0 console type
 assign mapper_flags[42:41] = mapper99 ? chr_size2[14:13] : 2'd0; // Exact 8 KiB CHR sockets for mapper 99
-assign mapper_flags[40:38] = mapper99 ? prg_size2[15:13] : 3'd0; // Exact 8 KiB PRG sockets for mapper 99
+// A normal DualSystem image concatenates the main and sub program sets. This
+// single-system core runs the main set at the front of the image. Raid stores
+// its four game ROMs first and appends one remote-side handshake ROM.
+assign mapper_flags[40:38] = mapper99_dual ? prg_size2[16:14] :
+	mapper99_raid ? 3'd4 :
+	mapper99 ? prg_size2[15:13] : 3'd0;
 assign mapper_flags[37:36] = is_nes20 ? ines[12][1:0] : 2'b00;
 assign mapper_flags[35]    = is_nes20;
 assign mapper_flags[34:31] = prg_nvram; //NES 2.0 Save RAM shift size (64 << size)
