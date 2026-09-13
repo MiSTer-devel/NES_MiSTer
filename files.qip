@@ -11,6 +11,9 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/keyboard.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/zapper.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cart.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/video.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/composite_decoder.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/composite_board.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/composite_crop.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/ppu.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/apu.sv
 set_global_assignment -name VHDL_FILE rtl/bus_savestates.vhd

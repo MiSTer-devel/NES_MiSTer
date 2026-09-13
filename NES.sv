@@ -92,7 +92,14 @@ parameter CONF_STR = {
 	"H3P1FC3,PAL,Custom Palette;",
 	"P1-;",
 	"P1OIJ,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"P1O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+	"HAP1O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+	"P1-;",
+	"H9P1O[81],NTSC Composite,Off,On;",
+	"hAP1O[83:82],Composite Filter,Notch,Comb,Adaptive Comb;",
+	"hAP1O[86:84],Composite Brightness,NTSC-J,NTSC-M (-7.5 IRE),+5 IRE,+11 IRE,+16 IRE;",
+	"hAP1O[88:87],Composite Sharpness,Off,Low,Medium,High;",
+	"hAP1O[89],Composite Trail,Low,High;",
+	"P1-;",
 	"d6P1O5,Vertical Crop,Disabled,216p(5x);",
 	"d6P1o36,Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
 	"P1o78,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
@@ -120,7 +127,8 @@ parameter CONF_STR = {
 	"P4-;",
 	"P4O[66:65],RAM Clear,No,$00,$FF,Random;",
 	"P4O[64],PPU Reset Behavior,Famicom,NES;",
-	"P4OQ,Video Dijitter,Enabled,Disabled;",
+	"HAP4OQ,Video Dijitter,Enabled,Disabled;",
+	"hAP4-,Video Dijitter off (Composite);",
 	"P4O[69],Debug Dots,Off,On;",
 	"H8P5,Vs. DIPs;",
 	"H8P5-;",
@@ -192,7 +200,12 @@ wire vs_system = (effective_sys_type == 2'd3);
 wire vs_header_zapper = vs_system && (default_expansion == 7'h07);
 wire vs_menu_hidden = ~vs_system;
 wire [7:0] vs_dip_switches = vs_menu_hidden ? 8'd0 : status[80:73];
-wire [15:0] status_menumask = {7'd0, vs_menu_hidden, (rom_loaded && mapper_has_savestate), en216p,
+
+// Native composite output exists only for the NTSC consumer PPU.
+wire composite_available = (effective_sys_type == 2'd0);
+wire use_composite = status[81] && composite_available;
+
+wire [15:0] status_menumask = {5'd0, use_composite, ~composite_available, vs_menu_hidden, (rom_loaded && mapper_has_savestate), en216p,
 	~status[50], ~raw_serial, (palette2_osd != 3'd5), ~gg_avail, bios_loaded, ~bk_ena};
 
 // Figure out file types
@@ -762,6 +775,7 @@ always_ff @(posedge clk) begin
 end
 
 wire nes_hblank, nes_hsync, nes_vsync, nes_vblank;
+wire signed [23:0] composite_a, composite_b;
 
 NES nes (
 	.clk             (clk),
@@ -792,11 +806,13 @@ NES nes (
 	.hblank          (nes_hblank),
 	.vsync           (nes_vsync),
 	.vblank          (nes_vblank),
+	.composite_a     (composite_a),
+	.composite_b     (composite_b),
 	.emphasis        (emphasis),
 	.cycle           (cycle),
 	.scanline        (scanline),
 	.mask            (hide_overscan[1] ? 2'b00 : status[28:27]),
-	.dejitter_timing (status[26]),
+	.dejitter_timing (status[26] | use_composite), // replacement dots would break the carrier
 	// User Input
 	.joypad_out      (joypad_out),
 	.joypad_clock    (joypad_clock),
@@ -1103,13 +1119,83 @@ video video
 	.pal_video(pal_video)
 );
 
-video_mixer #(260, 0, 1) video_mixer
+// The console hands over two composite samples per master clock; CLK_VIDEO
+// runs at twice that rate and takes them in turn.
+reg comp_toggle = 0;
+always @(posedge clk) comp_toggle <= ~comp_toggle;
+
+reg comp_toggle_d;
+reg signed [23:0] comp_sample;
+always @(posedge CLK_VIDEO) begin
+	comp_toggle_d <= comp_toggle;
+	comp_sample <= (comp_toggle != comp_toggle_d) ? composite_a : composite_b;
+end
+
+// Brightness moves the black point relative to blanking, Q2.13 volts. The
+// NES has no pedestal, so a set expecting the NTSC-M 7.5 IRE setup crushes
+// its blacks; +11 IRE puts $0D, 80 mV under blanking at the jack, at black.
+wire [15:0] comp_brightness = status[86:84] == 3'd1 ? 16'hFE49 : status[86:84] == 3'd2 ? 16'd292 :
+	status[86:84] == 3'd3 ? 16'd643 : status[86:84] == 3'd4 ? 16'd936 : 16'd0;
+
+// 2728 samples per line: 227 subcarrier cycles and four samples over.
+// Composite receiver: sync, blanking and pixels all come from the waveform.
+// The decoded stream is 21.5 MHz pixels on CLK_VIDEO, so the scandoubler and
+// HQ2x stay off while it is selected.
+wire comp_pix, comp_hs, comp_vs, comp_hb, comp_vb;
+wire [7:0] comp_r, comp_g, comp_b;
+
+composite_decoder #(.SPC(12), .HCNT_W(12), .LUMA_LP(6), .PIX_DIV(4)) composite_decoder
+(
+	.clk(CLK_VIDEO),
+	.reset(reset_nes),
+	.ce(1'b1),
+	.comp(comp_sample),
+	.sat(8'd128),
+	.hue(8'd0),
+	.chroma_trail(status[89] ? 4'd3 : 4'd2),   // 8 or 4 sample time constant
+	.sharpness({status[88:87], 2'b00}),
+	.black_stretch(2'd0),
+	.brightness(comp_brightness),
+	.contrast(16'd2857),   // 0.714 V to white
+	.comb_mode(status[83:82] == 2'd3 ? 2'd0 : status[83:82]),
+	.ce_out(),
+	.pix_out(comp_pix),
+	.hs_out(comp_hs),
+	.vs_out(comp_vs),
+	.hb_out(comp_hb),
+	.vb_out(comp_vb),
+	.r_out(comp_r),
+	.g_out(comp_g),
+	.b_out(comp_b)
+);
+
+wire comp_hb_c, comp_vb_c;
+composite_crop composite_crop
+(
+	.clk(CLK_VIDEO),
+	.pix(comp_pix),
+	.hb_in(comp_hb),
+	.vb_in(comp_vb),
+	.mode(hide_overscan),
+	.hb_out(comp_hb_c),
+	.vb_out(comp_vb_c)
+);
+
+video_mixer #(.LINE_LENGTH(260), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
 (
 	.*,
+	.ce_pix(use_composite ? comp_pix : ce_pix),
+	.R(use_composite ? comp_r : R),
+	.G(use_composite ? comp_g : G),
+	.B(use_composite ? comp_b : B),
+	.HSync(use_composite ? comp_hs : HSync),
+	.VSync(use_composite ? comp_vs : VSync),
+	.HBlank(use_composite ? comp_hb_c : HBlank),
+	.VBlank(use_composite ? comp_vb_c : VBlank),
 	.freeze_sync(),
 	.VGA_DE(vga_de),
-	.hq2x(scale==1),
-	.scandoubler(scale || forced_scandoubler)
+	.hq2x(scale==1 && !use_composite),
+	.scandoubler((scale || forced_scandoubler) && !use_composite)
 );
 
 ////////////////////////////  CODES  ///////////////////////////////////
