@@ -94,11 +94,9 @@ parameter CONF_STR = {
 	"P1OIJ,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"HAP1O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"P1-;",
-	"H9P1O[81],NTSC Composite,Off,On;",
-	"hAP1O[83:82],Composite Filter,Notch,Comb,Adaptive Comb;",
-	"hAP1O[86:84],Composite Brightness,NTSC-J,NTSC-M (-7.5 IRE),+5 IRE,+11 IRE,+16 IRE;",
-	"hAP1O[88:87],Composite Sharpness,Off,Low,Medium,High;",
-	"hAP1O[89],Composite Trail,Low,High;",
+	"H9P1O[82:81],Composite Filter,Off,Budget TV,Premium TV;",
+	"hAP1O[85:83],Comp. Brightness,Japan,USA,More,Much More,Too Much;",
+	"hAP1O[87:86],Comp. Sharpness,Off,Low,Medium,High;",
 	"P1-;",
 	"d6P1O5,Vertical Crop,Disabled,216p(5x);",
 	"d6P1o36,Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
@@ -203,7 +201,11 @@ wire [7:0] vs_dip_switches = vs_menu_hidden ? 8'd0 : status[80:73];
 
 // Native composite output exists only for the NTSC consumer PPU.
 wire composite_available = (effective_sys_type == 2'd0);
-wire use_composite = status[81] && composite_available;
+// Budget TV: notch separation and a narrow chroma band. Premium TV: adaptive
+// comb and a wider chroma band.
+wire [1:0] composite_set = status[82:81];
+wire use_composite = (composite_set != 2'd0) && composite_available;
+wire composite_premium = (composite_set == 2'd2);
 
 wire [15:0] status_menumask = {5'd0, use_composite, ~composite_available, vs_menu_hidden, (rom_loaded && mapper_has_savestate), en216p,
 	~status[50], ~raw_serial, (palette2_osd != 3'd5), ~gg_avail, bios_loaded, ~bk_ena};
@@ -1134,8 +1136,8 @@ end
 // Brightness moves the black point relative to blanking, Q2.13 volts. The
 // NES has no pedestal, so a set expecting the NTSC-M 7.5 IRE setup crushes
 // its blacks; +11 IRE puts $0D, 80 mV under blanking at the jack, at black.
-wire [15:0] comp_brightness = status[86:84] == 3'd1 ? 16'hFE49 : status[86:84] == 3'd2 ? 16'd292 :
-	status[86:84] == 3'd3 ? 16'd643 : status[86:84] == 3'd4 ? 16'd936 : 16'd0;
+wire [15:0] comp_brightness = status[85:83] == 3'd1 ? 16'hFE49 : status[85:83] == 3'd2 ? 16'd292 :
+	status[85:83] == 3'd3 ? 16'd643 : status[85:83] == 3'd4 ? 16'd936 : 16'd0;
 
 // 2728 samples per line: 227 subcarrier cycles and four samples over.
 // Composite receiver: sync, blanking and pixels all come from the waveform.
@@ -1152,12 +1154,12 @@ composite_decoder #(.SPC(12), .HCNT_W(12), .LUMA_LP(6), .PIX_DIV(4)) composite_d
 	.comp(comp_sample),
 	.sat(8'd128),
 	.hue(8'd0),
-	.chroma_trail(status[89] ? 4'd3 : 4'd2),   // 8 or 4 sample time constant
-	.sharpness({status[88:87], 2'b00}),
+	.chroma_trail(composite_premium ? 4'd2 : 4'd3),   // 4 or 8 sample time constant
+	.sharpness({status[87:86], 2'b00}),
 	.black_stretch(2'd0),
 	.brightness(comp_brightness),
 	.contrast(16'd2857),   // 0.714 V to white
-	.comb_mode(status[83:82] == 2'd3 ? 2'd0 : status[83:82]),
+	.comb_mode(composite_premium ? 2'd2 : 2'd0),
 	.ce_out(),
 	.pix_out(comp_pix),
 	.hs_out(comp_hs),
