@@ -1760,6 +1760,8 @@ assign vram_w = ~vram_r && vram_w_ppudata && !is_pal_address; // R&W at the same
 // Value currently being written to video ram
 assign vram_dout = ALE ? vram_a[7:0] : ppu_dbus;
 
+reg [7:0] vram_pins;
+
 assign SS_PPU_BACK[21:14] = vram_latch;
 assign SS_PPU_BACK[   22] = 1'b0; // free to be used
 assign SS_PPU_BACK[57:50] = vram_a_byte;
@@ -1771,7 +1773,7 @@ assign SS_PPU_BACK[57:50] = vram_a_byte;
 // cleanliness, but if you ever wanted to add real hardware compatible pins, you'd change this here.
 assign vram_addr = {vram_a[13:8], ALE ? vram_latch_value : vram_a_byte};
 
-wire [7:0] vram_latch_value = /*vram_r ? vram_din :*/ vram_a[7:0]; // This breaks stuff if uncommented.
+wire [7:0] vram_latch_value = vram_r ? vram_pins : vram_a[7:0];
 
 always @(posedge clk) begin
 	if (SaveStateBus_load) begin
@@ -1786,6 +1788,7 @@ always @(posedge clk) begin
 			vram_a_byte <= vram_latch_value;
 		if (vram_r_ppudata)
 			vram_latch <= vram_din;
+		vram_pins <= vram_din;
 	end
 end
 
