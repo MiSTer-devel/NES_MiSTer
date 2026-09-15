@@ -409,8 +409,11 @@ wire [26:0] load_out7, load_out6, load_out5, load_out4, load_out3, load_out2, lo
 wire [4:0] bits7, bits6, bits5, bits4, bits3, bits2, bits1, bits0,
 	bits15, bits14, bits13, bits12, bits11, bits10, bits9, bits8;
 
+wire [26:0] load_head    = rendering ? load_in    : load_out0;
+wire [26:0] load_head_ex = rendering ? load_in_ex : load_out8;
+
 // Extra sprites
-Sprite sprite15(clk, ce, enable, counting, rendering, load_ex, load_in_ex, load_out15, bits15);
+Sprite sprite15(clk, ce, enable, counting, rendering, load_ex, load_head_ex, load_out15, bits15);
 Sprite sprite14(clk, ce, enable, counting, rendering, load_ex, load_out15, load_out14, bits14);
 Sprite sprite13(clk, ce, enable, counting, rendering, load_ex, load_out14, load_out13, bits13);
 Sprite sprite12(clk, ce, enable, counting, rendering, load_ex, load_out13, load_out12, bits12);
@@ -420,7 +423,7 @@ Sprite sprite9( clk, ce, enable, counting, rendering, load_ex, load_out10, load_
 Sprite sprite8( clk, ce, enable, counting, rendering, load_ex, load_out9,  load_out8,  bits8);
 
 // Basic Sprites
-Sprite sprite7( clk, ce, enable, counting, rendering, load, load_in,    load_out7,  bits7);
+Sprite sprite7( clk, ce, enable, counting, rendering, load, load_head,  load_out7,  bits7);
 Sprite sprite6( clk, ce, enable, counting, rendering, load, load_out7,  load_out6,  bits6);
 Sprite sprite5( clk, ce, enable, counting, rendering, load, load_out6,  load_out5,  bits5);
 Sprite sprite4( clk, ce, enable, counting, rendering, load, load_out5,  load_out4,  bits4);
@@ -1416,6 +1419,7 @@ reg enable_playfield, enable_objects;
 // except skip_dot calculation.
 reg [2:0] re_sr, eo_sr, eb_sr; // rendering enable shift register
 wire rendering_enabled = re_sr[1];
+wire eval_rendering = re_sr[0];
 wire rendering_regs = enable_objects | enable_playfield;
 assign render_ena_out = rendering_regs;
 
@@ -1529,7 +1533,7 @@ OAMEval spriteeval (
 	.ce                (ce),
 	.reset             (reset),
 	.end_of_line       (end_of_line),
-	.rendering_enabled (rendering_enabled),
+	.rendering_enabled (eval_rendering),
 	.obj_size          (obj_size1),
 	.scanline          (scanline_nopr),
 	.cycle             (cycle),
@@ -1656,7 +1660,7 @@ always @(posedge clk) begin
 		if (!sprite_sr[2])
 			sprite_sr <= {sprite_sr[2:0], 1'b0};
 		if (cycle == 339 && in_rendering_frame)
-			sprite_sr <= {3'b000, rendering_regs};
+			sprite_sr <= {3'b000, re_sr[2]};
 		if (cycle == 256)
 			sprite_sr <= {4'b0000};
 		if (clear_signal) begin
