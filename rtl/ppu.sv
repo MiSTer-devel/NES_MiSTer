@@ -58,7 +58,7 @@ wire write_2006b = write_shift[1];
 
 wire inc_horizontal = (cycle[2:0] == 7 && ((cycle <= 255) || (cycle >= 320 && cycle <= 335)) && is_rendering);
 wire inc_vertical = (cycle == 255) && is_rendering;
-wire copy_hscroll = ((cycle == 256) && is_rendering) || write_2006b;
+wire copy_hscroll = ((cycle == 257) && is_rendering) || write_2006b;
 wire copy_vscroll = ((cycle >= 279 && cycle <= 303) && is_pre_render && is_rendering) || write_2006b;
 
 wire  [14:0] vram_t_mask;
@@ -640,7 +640,7 @@ end else if (ce) begin
 	old_rendering <= rendering;
 	old_using_secondary <= using_secondary;
 
-	if (((old_rendering != rendering) || corrupting_write) && ~PAL) begin
+	if (((~old_rendering && rendering) || corrupting_write) && ~PAL) begin
 		if ((old_using_secondary != using_secondary) || corrupting_write) begin
 			oam[{oam_row_cur, 3'b000}] <= oam[{oam_row_last, 3'b000}];
 			oam[{oam_row_cur, 3'b001}] <= oam[{oam_row_last, 3'b001}];
@@ -744,11 +744,7 @@ end else if (ce) begin
 						if (in_range && ~n_ovr) begin
 							{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd1;
 						end else begin
-							if (oam_secondary_ovr & ~n_ovr) begin // Same buggy increment as y if secondary oam is full
-								{n_ovr, oam_addr} <= {1'b0, oam_addr} + 9'd5;
-							end else begin
-								{n_ovr, oam_addr} <= ({1'b0, oam_addr} + 9'd1) & 9'h1FC;
-							end
+							{n_ovr, oam_addr} <= ({1'b0, oam_addr} + 9'd1) & 9'h1FC;
 						end
 
 						// Some kludgy stuff for extra sprite evaluation
@@ -798,7 +794,7 @@ end else if (ce) begin
 				};
 			end
 		end else begin // STATE_REFRESH
-			oam_data <= oam_temp[0];
+			oam_data <= oam_temp[oam_secondary_addr];
 		end
 	end else begin
 		oam_data <= oam[oam_read_addr]; // Keep it available in case it's read
@@ -1478,7 +1474,7 @@ VramAddressGen vram0(
 	.read          (read),
 	.write         (write),
 	.is_pre_render (is_pre_render_line),
-	.trigger_2007  (vram_w_ppudata_d || vram_r_ppudata_d),
+	.trigger_2007  (vram_w_ppudata || vram_r_ppudata),
 	.cycle         (cycle),
 	.vram          (vram),
 	.fine_x_scroll (fine_x_scroll),
@@ -1745,12 +1741,10 @@ always_comb begin
 end
 
 // Read from VRAM, either when user requested a manual read, or when we're generating pixels.
-wire vram_r_ppudata = read_2007_delayed[2];
-wire vram_r_ppudata_d = read_2007_delayed[3];
-wire vram_w_ppudata = write_2007_delayed[2];
-wire vram_w_ppudata_d = write_2007_delayed[3];
+wire vram_r_ppudata = read_2007_delayed[4];
+wire vram_w_ppudata = write_2007_delayed[3];
 
-wire ALE = (is_rendering_d && ~read_cycle) | (read_2007_delayed[1] || write_2007_delayed[1]);
+wire ALE = (is_rendering_d && ~read_cycle) | (read_2007_delayed[2] || write_2007_delayed[2]);
 
 wire [7:0] vram_din = vram_r ? vram_dbus_in : (vram_w ? vram_dout : (ALE ? vram_a[7:0] : vram_dbus_in));
 
@@ -1762,12 +1756,8 @@ assign vram_w = ~vram_r && vram_w_ppudata && !is_pal_address; // R&W at the same
 // Value currently being written to video ram
 assign vram_dout = ALE ? vram_a[7:0] : ppu_dbus;
 
-// One cycle after vram_r was asserted, the value
-// is available on the bus.
-reg vram_read_delayed;
-
 assign SS_PPU_BACK[21:14] = vram_latch;
-assign SS_PPU_BACK[   22] = vram_read_delayed;
+assign SS_PPU_BACK[   22] = 1'b0; // free to be used
 assign SS_PPU_BACK[57:50] = vram_a_byte;
 
 // For any future person who wants to understand what is going on here: the NES PPU multiplexes the
@@ -1782,7 +1772,6 @@ wire [7:0] vram_latch_value = /*vram_r ? vram_din :*/ vram_a[7:0]; // This break
 always @(posedge clk) begin
 	if (SaveStateBus_load) begin
 		vram_latch        <= SS_PPU[21:14];
-		vram_read_delayed <= SS_PPU[   22];
 		vram_a_byte       <= SS_PPU[57:50];
 	end else if (ce) begin
 		// If it so happens that ALE and vram_r are both asserted at the same time due to a poorly
@@ -1791,9 +1780,8 @@ always @(posedge clk) begin
 		// 8 bits of the address.
 		if (ALE) // Simulate the external latch
 			vram_a_byte <= vram_latch_value;
-		if (vram_read_delayed)
+		if (vram_r_ppudata)
 			vram_latch <= vram_din;
-		vram_read_delayed <= vram_r_ppudata;
 	end
 end
 
