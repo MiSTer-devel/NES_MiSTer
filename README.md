@@ -24,6 +24,11 @@ Copy the NES_\*.rbf file to the directory or subdirectory of `/media/fat/`. Crea
 - `boot2.rom` = FDS image file.  Requires boot0.rom (BIOS).  Use a blank FDS (header only) to boot the FDS BIOS without a disk image.
 - `boot3.rom` = PAL file. It can be used to set your default custom palette. Save the menu option on "Custom" to apply immediately.
 
+## Auto system region and repairing ROM headers
+The core supports automatic selection of the system region (NTSC/PAL/Dendy), but this requires a ROM file with NES 2.0 headers because that information is not included in iNES headers. If a ROM with an iNES header is loaded while auto system region is enabled, the core will display a warning that no NES 2.0 header is found and the core will default to NTSC.
+
+A Python script to automatically repair ROM headers in bulk is available here: [NES Header Repair Tool](https://github.com/Kitrinx/NES_Header_Repair/). If you only play games from a single region, you can instead set the system region manually in the OSD and save your settings. This also disables the warning.
+
 ## Famicom Disk System Usage
 Before loading \*.FDS files, you must first load the official, unpatched FDS BIOS. The BIOS file should be renamed to boot0.rom and placed in the same folder as the ROMs (NES).  Alternatively, it can be loaded from the OSD if boot0.rom doesn't exist. After loading the core and the bios you may select an FDS image. By default, the NES core will swap disk sides for you automatically. To suppress this behavior, hold the FDS button on the player 1 controller. The "Disk Swap" OSD option manually controls the disk side.  Each button press increments the disk side.  Press and hold the fds button to eject and increment the disk side in this mode.  Some games only work correctly in manual disk swap mode, and require holding the FDS button for up to a few seconds (Gall Force,...).
 
