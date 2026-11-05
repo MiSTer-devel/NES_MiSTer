@@ -66,59 +66,63 @@ reg [7:0] chr_bank_0, chr_bank_1;  // Selected CHR banks
 reg [7:0] chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5;
 reg [7:0] chr_bank_8, chr_bank_9;
 reg [5:0] prg_bank_0, prg_bank_1, prg_bank_2;  // Selected PRG banks
-reg irq_cycle_mode, next_irq_cycle_mode;
-reg [1:0] cycle_counter;
+reg irq_cycle_mode;
+reg [4:0] a12_filt;
+reg cpu_arm;
+reg [9:0] cpu_timer;
 
 // Mapper has vram_a10 wired to CHR A17
 //wire mapper64 = (flags[7:0] == 64);//default
 wire mapper158 = (flags[7:0] == 158);
 
-// This code detects rising edges on a12.
-reg old_a12_edge, a12_edge_delayed;
-reg [4:0] a12_ctr;
-wire a12_edge = (chr_ain_o[12] && a12_ctr == 0) || old_a12_edge;
+wire [2:0] reg_sel = {prg_ain[14:13], prg_ain[0]};
+wire reg_write = prg_write && prg_ain[15];
+wire wr_c000 = reg_write && (reg_sel == 3'b10_0); // IRQ latch ($C000-$DFFE, even)
+wire wr_c001 = reg_write && (reg_sel == 3'b10_1); // IRQ reload ($C001-$DFFF, odd)
+wire wr_e000 = reg_write && (reg_sel == 3'b11_0); // IRQ disable ($E000-$FFFE, even)
+wire wr_e001 = reg_write && (reg_sel == 3'b11_1); // IRQ enable ($E001-$FFFF, odd)
 
-always @(posedge clk) begin
-	if (SaveStateBus_load) begin
-		old_a12_edge       <= SS_MAP1[   33];
-		a12_ctr            <= SS_MAP1[38:34];
-	end else begin
-		old_a12_edge <= a12_edge && !ce;
-		if (ce) begin
-			if (chr_ain_o[12]) begin
-				a12_ctr <= 5'd16;
-			end else if (a12_ctr > 0) begin
-				a12_ctr <= a12_ctr - 1'd1;
-			end
-		end
-	end
-end
+wire [7:0] latch_now      = wr_c000 ? prg_din : irq_latch;
+wire       enable_now     = wr_e001 | (irq_enable & ~wr_e000);
+wire       cycle_mode_now = wr_c001 ? prg_din[0] : irq_cycle_mode;
+wire       a12_c001       = wr_c001 && !prg_din[0];
+wire       reload_now     = a12_c001 | irq_reload;
+wire [4:0] filt_now       = (a12_c001 && a12_filt == 5'd16) ? 5'd17 : a12_filt;
+
+wire a12 = chr_ain_o[12];
+wire a12_clock = a12 && (filt_now == 5'd16) && !cycle_mode_now;
+wire a12_expire = reload_now ? (latch_now == 8'd0) : (counter == 8'd1);
+wire a12_fire = irq_delay[1] && !wr_c001;
+
+wire cpu_expire = cycle_mode_now && !cpu_arm && (cpu_timer == 10'd0) && !wr_c001;
+wire cpu_early = !irq_cycle_mode && (a12_filt < 5'd16);
 
 always @(posedge clk)
 if (~enable) begin
 	bank_select <= 0;
 	prg_rom_bank_mode <= 0;
-	chr_K <= 0;
+	chr_K <= 1;
 	chr_a12_invert <= 0;
 	mirroring <= 0;
-	{irq_enable, irq_reload} <= 0;
-	{irq_latch, counter} <= 0;
 	{chr_bank_0, chr_bank_1} <= 0;
 	{chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5} <= 0;
 	{chr_bank_8, chr_bank_9} <= 0;
-	{prg_bank_0, prg_bank_1, prg_bank_2} <= 6'b111111;
-	irq_cycle_mode <= 0;
-	next_irq_cycle_mode <= 0;
-	cycle_counter <= 0;
-	irq <= 0;
+	{prg_bank_0, prg_bank_1, prg_bank_2} <= {3{6'b111111}};
+	irq <= 1;
+	irq_enable <= 0;
+	irq_latch <= 8'hFF;
+	counter <= 0;
+	irq_reload <= 1;
+	irq_cycle_mode <= 1;
+	a12_filt <= 5'd16;
 	irq_delay <= 0;
-	a12_edge_delayed <= 0;
+	cpu_arm <= 0;
+	cpu_timer <= 10'd1017;
 end else if (SaveStateBus_load) begin
 	irq                <= SS_MAP1[    0];
-	cycle_counter      <= SS_MAP1[ 2: 1];
+	cpu_arm            <= SS_MAP1[    1];
+	irq_delay          <= {SS_MAP2[63], SS_MAP1[2]};
 	irq_cycle_mode     <= SS_MAP1[    3];
-	next_irq_cycle_mode<= SS_MAP1[    4];
-	a12_edge_delayed   <= SS_MAP1[    5];
 	bank_select        <= SS_MAP1[ 9: 6];
 	prg_rom_bank_mode  <= SS_MAP1[   10];
 	chr_a12_invert     <= SS_MAP1[   11];
@@ -127,9 +131,7 @@ end else if (SaveStateBus_load) begin
 	irq_reload         <= SS_MAP1[   14];
 	irq_latch          <= SS_MAP1[22:15];
 	counter            <= SS_MAP1[30:23];
-	irq_delay          <= SS_MAP1[32:31];
-//	old_a12_edge       <= SS_MAP1[   33];
-//	a12_ctr            <= SS_MAP1[38:34];
+	cpu_timer          <= {SS_MAP1[38:31], SS_MAP1[5:4]};
 	chr_bank_0         <= SS_MAP1[46:39];
 	chr_bank_1         <= SS_MAP1[54:47];
 	chr_bank_2         <= SS_MAP1[62:55];
@@ -142,46 +144,10 @@ end else if (SaveStateBus_load) begin
 	prg_bank_2         <= SS_MAP2[41:36];
 	chr_bank_8         <= SS_MAP2[49:42];
 	chr_bank_9         <= SS_MAP2[57:50];
+	a12_filt           <= SS_MAP2[62:58];
 end else if (ce) begin
-	// Process these before writes so irq_reload and cycle_counter register writes take precedence.
-	cycle_counter <= cycle_counter + 1'd1;
-	irq_cycle_mode <= next_irq_cycle_mode;
-	a12_edge_delayed <= a12_edge;
-
-	if (irq_cycle_mode ? (cycle_counter == 3) : a12_edge_delayed) begin
-		if (irq_reload) begin
-		    if (|irq_latch) begin
-				// Wiki and Nintendulator source: OR with 1 if not zero
-				counter <= irq_latch | 8'h01;
-			end else begin
-				counter <= 8'h00;
-			end
-			if (~|irq_latch && irq_enable) begin
-				irq_delay <= 1;
-			end
-			irq_reload <= 0;
-		end
-		else if (counter == 8'h00) begin
-			counter <= irq_latch;
-			if (~|irq_latch && irq_enable) begin
-				irq_delay <= 1;
-			end
-		end
-		else begin
-			counter <= counter - 1'd1;
-			if (counter == 8'h01 && irq_enable) begin
-				irq_delay <= 1;
-			end
-		end
-	end
-
-	if (irq_delay) begin
-		irq <= 1;
-		irq_delay <= 0;
-	end
-
-	if (prg_write && prg_ain[15]) begin
-		case({prg_ain[14:13], prg_ain[0]})
+	if (reg_write) begin
+		case(reg_sel)
 			// Bank select ($8000-$9FFE, even)
 			3'b00_0: {chr_a12_invert, prg_rom_bank_mode, chr_K, bank_select} <= {prg_din[7:5], prg_din[3:0]};
 			// Bank data ($8001-$9FFF, odd)
@@ -200,23 +166,49 @@ end else if (ce) begin
 					15: prg_bank_2 <= prg_din[5:0]; // Select 8 KB PRG ROM bank at $C000-$DFFF (or $8000-$9FFF);
 				endcase
 			3'b01_0: mirroring <= prg_din[0];                   // Mirroring ($A000-$BFFE, even)
-			3'b01_1: begin end
-			3'b10_0: irq_latch <= prg_din;                      // IRQ latch ($C000-$DFFE, even)
-			3'b10_1: begin
-						{irq_reload, next_irq_cycle_mode} <= {1'b1, prg_din[0]}; // IRQ reload ($C001-$DFFF, odd)
-						cycle_counter <= 0;
-					end
-			3'b11_0: {irq_enable, irq} <= 2'b00;                 // IRQ disable ($E000-$FFFE, even)
-			3'b11_1: {irq_enable, irq} <= 2'b10;                 // IRQ enable ($E001-$FFFF, odd)
+			default: begin end
 		endcase
 	end
+
+	irq_latch <= latch_now;
+	irq_enable <= enable_now;
+	irq_cycle_mode <= cycle_mode_now;
+
+	if (a12)
+		a12_filt <= 0;
+	else if (filt_now < 5'd16)
+		a12_filt <= filt_now + 1'd1;
+	else
+		a12_filt <= filt_now;
+
+	irq_reload <= reload_now;
+	irq_delay <= {irq_delay[0] && !wr_c001, a12_clock && a12_expire};
+	if (a12_clock) begin
+		irq_reload <= 0;
+		counter <= (reload_now || counter == 8'd0) ? latch_now : counter - 1'd1;
+	end
+
+	if (wr_c001 && prg_din[0]) begin
+		cpu_arm <= 1;
+		cpu_timer <= cpu_early ? 10'd0 : 10'd4;
+	end else if (cycle_mode_now) begin
+		if (cpu_timer != 10'd0)
+			cpu_timer <= cpu_timer - 1'd1;
+		else if (cpu_arm) begin
+			cpu_arm <= 0;
+			cpu_timer <= {latch_now, 2'b00};
+		end else
+			cpu_timer <= {latch_now, 2'b11};
+	end
+
+	irq <= (irq & ~wr_e000) | (enable_now & (a12_fire | cpu_expire));
 end
 
 assign SS_MAP1_BACK[    0] = irq;
-assign SS_MAP1_BACK[ 2: 1] = cycle_counter;
+assign SS_MAP1_BACK[    1] = cpu_arm;
+assign SS_MAP1_BACK[    2] = irq_delay[0];
 assign SS_MAP1_BACK[    3] = irq_cycle_mode;
-assign SS_MAP1_BACK[    4] = next_irq_cycle_mode;
-assign SS_MAP1_BACK[    5] = a12_edge_delayed;
+assign SS_MAP1_BACK[ 5: 4] = cpu_timer[1:0];
 assign SS_MAP1_BACK[ 9: 6] = bank_select;
 assign SS_MAP1_BACK[   10] = prg_rom_bank_mode;
 assign SS_MAP1_BACK[   11] = chr_a12_invert;
@@ -225,9 +217,7 @@ assign SS_MAP1_BACK[   13] = irq_enable;
 assign SS_MAP1_BACK[   14] = irq_reload;
 assign SS_MAP1_BACK[22:15] = irq_latch;
 assign SS_MAP1_BACK[30:23] = counter;
-assign SS_MAP1_BACK[32:31] = irq_delay;
-assign SS_MAP1_BACK[   33] = old_a12_edge;
-assign SS_MAP1_BACK[38:34] = a12_ctr;
+assign SS_MAP1_BACK[38:31] = cpu_timer[9:2];
 assign SS_MAP1_BACK[46:39] = chr_bank_0;
 assign SS_MAP1_BACK[54:47] = chr_bank_1;
 assign SS_MAP1_BACK[62:55] = chr_bank_2;
@@ -241,7 +231,8 @@ assign SS_MAP2_BACK[35:30] = prg_bank_1;
 assign SS_MAP2_BACK[41:36] = prg_bank_2;
 assign SS_MAP2_BACK[49:42] = chr_bank_8;
 assign SS_MAP2_BACK[57:50] = chr_bank_9;
-assign SS_MAP2_BACK[63:58] = 6'b0; // free to be used
+assign SS_MAP2_BACK[62:58] = a12_filt;
+assign SS_MAP2_BACK[   63] = irq_delay[1];
 
 // The PRG bank to load. Each increment here is 8kb. So valid values are 0..63.
 reg [5:0] prgsel;
@@ -252,8 +243,8 @@ always @* begin
 		3'b10_0: prgsel = prg_bank_2;  // $C000 is R:F
 		3'b11_0: prgsel = 6'b111111;   // $E000 fixed to last bank
 		3'b00_1: prgsel = prg_bank_2;  // $8000 is R:F
-		3'b01_1: prgsel = prg_bank_0;  // $A000 is R:6
-		3'b10_1: prgsel = prg_bank_1;  // $C000 is R:7
+		3'b01_1: prgsel = prg_bank_1;  // $A000 is R:7
+		3'b10_1: prgsel = prg_bank_0;  // $C000 is R:6
 		3'b11_1: prgsel = 6'b111111;   // $E000 fixed to last bank
 	endcase
 end
