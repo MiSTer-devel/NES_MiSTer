@@ -40,7 +40,7 @@ assign chr_aout_b   = enable ? chr_aout : 22'hZ;
 assign chr_allow_b  = enable ? chr_allow : 1'hZ;
 assign vram_a10_b   = enable ? vram_a10 : 1'hZ;
 assign vram_ce_b    = enable ? vram_ce : 1'hZ;
-assign irq_b        = enable ? irq : 1'hZ;
+assign irq_b        = enable ? irq_out : 1'hZ;
 assign flags_out_b  = enable ? flags_out : 16'hZ;
 assign audio_b      = enable ? {1'b0, audio_in[15:1]} : 16'hZ;
 
@@ -51,7 +51,7 @@ wire prg_allow;
 wire chr_allow;
 wire vram_a10;
 wire vram_ce;
-reg irq;
+reg irq, irq_out;
 reg [15:0] flags_out = {12'h0, 1'b1, 3'b0};
 
 reg [3:0] bank_select;             // Register to write to next
@@ -61,7 +61,7 @@ reg chr_a12_invert;                // Mode for CHR banking
 reg mirroring;                     // 0 = vertical, 1 = horizontal
 reg irq_enable, irq_reload;        // IRQ enabled, and IRQ reload requested
 reg [7:0] irq_latch, counter;      // IRQ latch value and current counter
-reg [1:0] irq_delay;
+reg irq_delay;
 reg [7:0] chr_bank_0, chr_bank_1;  // Selected CHR banks
 reg [7:0] chr_bank_2, chr_bank_3, chr_bank_4, chr_bank_5;
 reg [7:0] chr_bank_8, chr_bank_9;
@@ -92,7 +92,7 @@ wire [4:0] filt_now       = (a12_c001 && a12_filt == 5'd16) ? 5'd17 : a12_filt;
 wire a12 = chr_ain_o[12];
 wire a12_clock = a12 && (filt_now == 5'd16) && !cycle_mode_now;
 wire a12_expire = reload_now ? (latch_now == 8'd0) : (counter == 8'd1);
-wire a12_fire = irq_delay[1] && !wr_c001;
+wire a12_fire = irq_delay && !wr_c001;
 
 wire cpu_expire = cycle_mode_now && !cpu_arm && (cpu_timer == 10'd0) && !wr_c001;
 wire cpu_early = !irq_cycle_mode && (a12_filt < 5'd16);
@@ -109,6 +109,7 @@ if (~enable) begin
 	{chr_bank_8, chr_bank_9} <= 0;
 	{prg_bank_0, prg_bank_1, prg_bank_2} <= {3{6'b111111}};
 	irq <= 1;
+	irq_out <= 1;
 	irq_enable <= 0;
 	irq_latch <= 8'hFF;
 	counter <= 0;
@@ -121,7 +122,7 @@ if (~enable) begin
 end else if (SaveStateBus_load) begin
 	irq                <= SS_MAP1[    0];
 	cpu_arm            <= SS_MAP1[    1];
-	irq_delay          <= {SS_MAP2[63], SS_MAP1[2]};
+	irq_delay          <= SS_MAP1[    2];
 	irq_cycle_mode     <= SS_MAP1[    3];
 	bank_select        <= SS_MAP1[ 9: 6];
 	prg_rom_bank_mode  <= SS_MAP1[   10];
@@ -145,6 +146,7 @@ end else if (SaveStateBus_load) begin
 	chr_bank_8         <= SS_MAP2[49:42];
 	chr_bank_9         <= SS_MAP2[57:50];
 	a12_filt           <= SS_MAP2[62:58];
+	irq_out            <= SS_MAP2[   63];
 end else if (ce) begin
 	if (reg_write) begin
 		case(reg_sel)
@@ -182,7 +184,7 @@ end else if (ce) begin
 		a12_filt <= filt_now;
 
 	irq_reload <= reload_now;
-	irq_delay <= {irq_delay[0] && !wr_c001, a12_clock && a12_expire};
+	irq_delay <= a12_clock && a12_expire;
 	if (a12_clock) begin
 		irq_reload <= 0;
 		counter <= (reload_now || counter == 8'd0) ? latch_now : counter - 1'd1;
@@ -202,11 +204,12 @@ end else if (ce) begin
 	end
 
 	irq <= (irq & ~wr_e000) | (enable_now & (a12_fire | cpu_expire));
+	irq_out <= irq;
 end
 
 assign SS_MAP1_BACK[    0] = irq;
 assign SS_MAP1_BACK[    1] = cpu_arm;
-assign SS_MAP1_BACK[    2] = irq_delay[0];
+assign SS_MAP1_BACK[    2] = irq_delay;
 assign SS_MAP1_BACK[    3] = irq_cycle_mode;
 assign SS_MAP1_BACK[ 5: 4] = cpu_timer[1:0];
 assign SS_MAP1_BACK[ 9: 6] = bank_select;
@@ -232,7 +235,7 @@ assign SS_MAP2_BACK[41:36] = prg_bank_2;
 assign SS_MAP2_BACK[49:42] = chr_bank_8;
 assign SS_MAP2_BACK[57:50] = chr_bank_9;
 assign SS_MAP2_BACK[62:58] = a12_filt;
-assign SS_MAP2_BACK[   63] = irq_delay[1];
+assign SS_MAP2_BACK[   63] = irq_out;
 
 // The PRG bank to load. Each increment here is 8kb. So valid values are 0..63.
 reg [5:0] prgsel;
